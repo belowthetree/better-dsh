@@ -8,15 +8,17 @@ Status: proposed
 
 Desktop 应用只呈现一个工作区窗口。[apps/desktop/src/main.ts](../../../../apps/desktop/src/main.ts) 创建单个主 `BrowserWindow` 和一个 welcome 窗口，其余界面——更新对话框、强制更新 UI、Platform 账户视图——都是内嵌的 `WebContentsView`，而不是窗口。shell 中没有任何地方使用置顶、透明或无边框窗口，也没有使用 `globalShortcut`；[apps/desktop/tests/main-startup.spec.ts](../../../../apps/desktop/tests/main-startup.spec.ts) 甚至断言从不调用 `setAlwaysOnTop`。麦克风授权在 [apps/desktop/src/microphone-permissions.ts](../../../../apps/desktop/src/microphone-permissions.ts) 中被限制在主的 `dsh-app://app` frame 内，Host 认证 cookie 只附加到该窗口的 WebSocket，应用内快捷键目录只有一座键盘桥接。客户端也只有一个 frame：[ui-layout](../../../../packages/client/ui-layout/src/client/index.ts) 注册唯一的 `root` 占用者，并声明其他 UI 插件注册的所有 frame 席位。
 
-语音输入已经存在，但被限制在 composer 范围内。[client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) 在 `conversation.input.activity` 中挂载录音控件，并在该控件卸载、失焦或页面隐藏时拆除采集。Host 侧已经提供带本地 provider 和已认证 Remote 的 speech-to-text seam，而 [speech-to-text 参考](../../../../packages/experimental/speech-to-text/README.zh.md)记录了语音合成没有任何 service 方法。仓库中不存在音频播放、text-to-speech 或 voice-output 能力。
+语音输入已经存在，但被限制在 composer 范围内。[client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) 在 `conversation.input.activity` 中挂载录音控件，并在该控件卸载、失焦或页面隐藏时拆除采集。Host 侧提供带已认证 Remote 的 speech-to-text seam，可选实验性组合包只随附本地 SenseVoice 识别器；[speech-to-text 参考](../../../../packages/experimental/speech-to-text/README.zh.md)记录语音合成没有任何 service 方法。仓库之外的 `@dsh-external/dsh-deepseek-suite` 组合包按 profile 安装、不属于本仓库，它已经把官方 DeepSeek 语音接口包装成面向模型的 `deepseek_asr` 与 `deepseek_tts` 工具，但不注册任何 Cordis 服务，因此 UI 或其他插件都无法在不消耗一次模型轮次的情况下使用这两个接口。仓库中不存在音频播放、text-to-speech 服务或 voice-output 消费方。
 
 profile 是组装单元。随附模板为 [official-bundles](../../../../packages/util/official-bundles/src/bundles.ts) 中的 `acp`、`web`、`headless`、`sdk` 与 `sdk-minimal`；Electron 拥有 `$DSH_HOME/profiles/desktop`，并从 [paths.ts](../../../../apps/desktop/src/paths.ts) 的固定路径启动完全等于 `desktop` 的 profile 名称。Desktop 无法启动其他 profile，因此无法通过 profile 选择另一种桌面 form。
 
-本文提出由新的 `better` profile 激活的新 dsh form：桌面侧边悬浮 orb、侧边弹窗面板、桌面模态呈现、OS 全局快捷键，以及语音输入与语音输出。该 form 保持为同一随附运行时、同一 Host↔page 协议之上的 Cordis 组装；它不是应用的分支。
+本文提出由新的 `better` profile 激活的新 dsh form：桌面侧边悬浮 orb、侧边弹窗面板、桌面模态呈现、OS 全局快捷键，以及基于官方 DeepSeek 接口的语音输入与语音输出。该 form 保持为同一随附运行时、同一 Host↔page 协议之上的 Cordis 组装；它不是应用的分支。
+
 
 ## Proposal
 
-本提案由一起交付的三部分组成。第一，产品 shell 能力渲染 profile 所声明的任一 form：一个带三种呈现的产品窗口、一个客户端 surface 服务，以及 system 作用域命令。第二，一个实验性可选组合包用该能力、已有的语音输入组合包和新的客户端插件组装 orb form。第三，一个语音层把麦克风采集与 composer 解耦，并加入带系统语音 provider 的语音输出 seam。产品侧改动是增量的；classic profile 保持当前窗口、快捷键与语音行为。
+本提案由一起交付的三部分组成。第一，产品 shell 能力渲染 profile 所声明的任一 form：一个带三种呈现的产品窗口、一个客户端 surface 服务，以及 system 作用域命令。第二，一个实验性可选组合包用该能力与新的客户端插件组装 orb form。第三，一个语音层把麦克风采集与 composer 解耦，让识别与合成都走由外部 suite 组合包拥有的官方 DeepSeek 接口，并补上缺失的语音合成 seam 与播放消费方。官方接口留在仓库之外的 suite 中，由它新增两个 provider 注册；产品侧改动是增量的，classic profile 保持当前窗口、快捷键与语音行为。
+
 
 ### Profile 声明 form
 
@@ -102,36 +104,55 @@ Electron `globalShortcut` 不暴露按键抬起回调，因此本提案中的 pu
 
 ### 语音输入
 
-采集变成客户端服务，而不再是 composer 组件。新的实验性客户端包承载 `ctx.voiceCapture`：它拥有录音器、麦克风设备偏好、readiness 订阅、WAV 编码与 `remote.speech.transcribe` 调用，并暴露 begin、cancel 与 finish 以及一个 surface 与测试可观察的快照。既有的 [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) 包成为一个消费方：它的 composer 控件保留当前交互，但录音器生命周期不再随该控件卸载而结束。两个新消费方使用同一服务：orb 语音控件与全局 push-to-talk 命令。
+采集变成客户端服务，而不再是 composer 组件。新的实验性客户端包承载 `ctx.voiceCapture`：它拥有录音器、麦克风设备偏好、WAV 编码与 `remote.speech.transcribe` 调用，并暴露 begin、cancel 与 finish 以及一个 surface 与测试可观察的快照。既有的 [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) 包成为一个消费方：它的 composer 控件保留当前交互，但录音器生命周期不再随该控件卸载而结束。两个新消费方使用同一服务：orb 语音控件与全局 push-to-talk 命令。
 
-投递保持显式。完成的 transcript 先经过既有 `InputActions.insertText` 路径填入活动会话的 composer 草稿（当 panel 打开时）；当 form 收起时，surface 服务先展开 panel，再插入草稿并聚焦 composer。活动会话是 form 自己的客户端选择，默认是最近交互的会话。免提设置可以选择提交 transcript 而不是预填；该提交走普通 `session.prompt` 路径，因此模型可见文本是普通的持久 `user/message`。仅识别仍然不写 Session 事件，音频保持瞬态。
+识别使用官方 DeepSeek 接口，而不是本地模型。外部 `@dsh-external/dsh-deepseek-suite` 组合包在既有 speech-to-text seam 上注册 id 为 `deepseek-cloud` 的 `SpeechProvider`；它把 `remote.speech.transcribe` 送来的规范 16 kHz 单声道 PCM16 WAV 以 multipart 表单提交到 `POST /v1/tools/asr`，并返回响应中的 `text`。该 provider 声明处理位置为 `cloud`、只接受 `auto` 语言提示、不提供 preparation 任务、每次调用经 `ctx.credentials` 按 suite 配置解析 `DEEPSEEK_API_KEY` 凭证并沿用其回退，同时复用 suite 的 `baseUrl`、请求超时与类型化错误分类。凭证缺失、密钥无效、余额不足、限速、音频过大、超时与服务端故障都映射到 seam 的类型化失败；panel 显示本地化文案并提供跳转到模型设置的操作，且不会自动重试，因为每次重试都计费。
 
-麦克风授权跟随窗口注册表：form 窗口的 `dsh-app://app` 主 frame 像 classic 主 frame 一样被授权，且仅在 form profile 激活期间。权限拒绝、设备缺失、准备失败与超时会在 panel 中产生既有本地化失败文案，而不是让 orb 失灵。Escape、收起或两分钟上限会取消并释放音轨、丢弃录音。
+投递保持显式。完成的 transcript 先经过既有 `InputActions.insertText` 路径填入活动会话的 composer 草稿（当 panel 打开时）；当 form 收起时，surface 服务先展开 panel，再插入草稿并聚焦 composer。活动会话是 form 自己的客户端选择，默认是最近交互的会话。免提设置可以选择提交 transcript 而不是预填；该提交走普通 `session.prompt` 路径，因此模型可见文本是普通的持久 `user/message`。仅识别仍然不写 Session 事件，录音从不落盘或进入附件存储，且上传会作为一次到配置的 DeepSeek 端点的计费请求向用户说明。
+
+麦克风授权跟随窗口注册表：form 窗口的 `dsh-app://app` 主 frame 像 classic 主 frame 一样被授权，且仅在 form profile 激活期间。权限拒绝、设备缺失与两分钟采集上限会释放音轨并丢弃录音。由于识别在云端，录音只在用户结束采集并请求转写后才离开本机；取消不会上传。
+
 
 ### 语音输出
 
-语音输出是一个新的客户端能力 seam，因为播放属于渲染器，且第一个 provider 是操作系统的语音引擎。`packages/experimental/client-speech-output` 定义 `ctx.speechOutput`：具名 provider 的注册表、可用语音与语言的快照、偏好，以及 `speak`、`cancel` 与 `follow` 操作。第一个 provider 包装浏览器 `speechSynthesis` API，它在 Windows 与 macOS 上暴露系统语音，不需要 Host 模型、凭据或下载。消费包 `client-ui-voice-output` 拥有策略：自动朗读关闭、朗读由语音发起的轮次，或朗读全部回复；每条消息的朗读与停止操作；新轮次或显式停止时中断；静音；以及通过 settings 服务持久化的语音与语言选择。音频播放与队列保持进程内，且从不成为 Session 事件。
+语音输出由 Host 能力 seam 与客户端播放消费方共同组成，因为官方 DeepSeek 合成接口是需要凭证的 Host 调用，而音频播放属于渲染器。新的实验性 Host 包定义 `ctx.textToSpeech`：带语音与格式目录的具名 provider、经 settings 服务持久化的易变 `defaultProvider`、`voiceId` 与 `format` 选择、快照与 `follow`，以及与 speech-to-text seam 对称的 `resolve`、`synthesize` 与取消。新的 `api-text-to-speech` 包通过已认证 Remote 以 `speechOutput` 命名空间暴露相同操作，并限制 `maxTextChars`、`maxAudioBytes` 与 `timeoutMs`；结果携带瞬态的 base64 WAV 字节，从不成为 Session 事件或附件。
 
-Host 侧合成 seam 被刻意推迟，而不是从设计中删除：同一客户端服务之后可以接受调用 `text-to-speech` Host seam 与已认证 Remote 的 provider，云端或神经语音属于那里。该路径目前没有 provider、凭据或流式约定，在消费方需要之前发明它们是臆测。seam 名称与 provider 注册保持在客户端，因此新增远程 provider 不改变任何消费方。
+provider 是外部 suite。`@dsh-external/dsh-deepseek-suite` 注册 id 为 `deepseek-tts` 的 `TextToSpeechProvider`，复用其现有 `synthesizeSpeech` 客户端：向 `POST /v1/tools/tts` 发送 `{ text, voice_id, format, filter_markdown: true }`，使用 `stella` 与 `tide` 音色及 `wav` 输出。凭证解析、base URL、请求超时与错误分类留在 suite 中，并与识别 provider 一致。该 provider 只返回音频字节、从不写文件，因此合成没有持久产物；既有 `deepseek_tts` 工具对显式的模型调用保留其写文件行为。
 
-orb 根据语音输出快照显示朗读状态，任何新轮次、Escape 或静音都会取消播放。语音输出从不朗读工具输出、从不持久化音频、从不进入模型请求；策略与可见控件拥有唯一的用户可见行为。
+新的客户端消费方 `client-ui-voice-output` 拥有播放策略：自动朗读关闭、朗读由语音发起的轮次，或朗读全部回复；音色与静音选择；新轮次、Escape 或显式停止时的排队与中断；为 orb 发布朗读状态；以及本地化失败文案。它发送活动会话的 assistant 文本并按 Remote 上限截断，provider 的 `filter_markdown` 请求会在合成前去除 Markdown。音频播放、队列与朗读状态保持进程内，且从不成为 Session 事件；工具输出从不朗读，合成从不进入模型请求。
+
 
 ### better 组合包及其包
 
-该 form 是一个可选实验性组合包，像既有语音输入组合包一样随安装一起交付，带 icon 与 locale 元数据。其 manifest 声明它提供的 form；其 patch 插入该 form 所需的客户端条目。
+该 form 是一个可选实验性组合包，像既有语音输入组合包一样随安装一起交付，带 icon 与 locale 元数据。其 manifest 声明它提供的 form；其 patch 插入该 form 所需的 surface、orb、采集与语音条目，并配置外部 suite 注册的 provider id。新的实验性包使用不带前缀的 `@deepseek-ai/dsh-<name>` 形式并加入 `EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS`，而既有的遗留前缀语音包保留原名。
 
 ```yaml
 - insert:
     - id: client-surface
       name: '@deepseek-ai/dsh-client-surface'
     - id: client-ui-orb
-      name: '@deepseek-ai/dsh-experimental-client-ui-orb'
+      name: '@deepseek-ai/dsh-client-ui-orb'
     - id: client-voice-capture
-      name: '@deepseek-ai/dsh-experimental-client-voice-capture'
-    - id: client-speech-output
-      name: '@deepseek-ai/dsh-experimental-client-speech-output'
+      name: '@deepseek-ai/dsh-client-voice-capture'
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: deepseek-cloud
+        language: auto
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
+    - id: text-to-speech
+      name: '@deepseek-ai/dsh-text-to-speech'
+      config:
+        defaultProvider: deepseek-tts
+        voiceId: stella
+        format: wav
+    - id: api-text-to-speech
+      name: '@deepseek-ai/dsh-api-text-to-speech'
     - id: client-ui-voice-output
-      name: '@deepseek-ai/dsh-experimental-client-ui-voice-output'
+      name: '@deepseek-ai/dsh-client-ui-voice-output'
 ```
 
 | 包 | 角色 | 状态 |
@@ -140,30 +161,38 @@ orb 根据语音输出快照显示朗读状态，任何新轮次、Escape 或静
 | `packages/experimental/better-bundle` | form 组装、可选组合包元数据、form 声明 | 实验性 |
 | `packages/experimental/client-ui-orb` | orb 渲染、状态、菜单、命令、form 设置 | 实验性 |
 | `packages/experimental/client-voice-capture` | 从既有语音输入 UI 中提取的录音服务 | 实验性 |
-| `packages/experimental/client-speech-output` | 语音输出 seam 与系统语音 provider | 实验性 |
+| `packages/experimental/text-to-speech` | Host 语音合成 Service Definition 与 provider 注册表 | 实验性 |
+| `packages/experimental/api-text-to-speech` | 已认证语音合成 Remote 消费方 | 实验性 |
 | `packages/experimental/client-ui-voice-output` | 播放消费方、自动朗读策略、语音控件 | 实验性 |
 
-profile 配方是 web 模板组合包、语音输入组合包与 better 组合包，并带 `form: { kind: 'orb' }` 与 `owner: 'desktop'`。better 组合包在其 form 元数据中把语音输入组合包声明为 profile 组合包，以便 profile 创建器将其包含；语音栈保留既有实验性组合包及其既有设置。better 组合包获准进入 `OPTIONAL_BUNDLES`，因而进入安装依赖，这正是让可选实验性组合包以默认关闭状态随附的隔离例外（[决策](../../implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.zh.md)）。它不出现在任何随附 profile 模板中。
+profile 配方是 web 模板组合包加上 better 组合包，并把仓库之外的 suite 从其本地目录通过插件管理器安装进同一 profile，同时在 profile manifest 中写 `form: { kind: 'orb' }` 与 `owner: 'desktop'`。组合包配置 provider id `deepseek-cloud` 与 `deepseek-tts`；当 suite 缺失或注册了不同 id 时，两个语音 seam 都会在加载时明确失败，并指出期望的 provider 与安装步骤。better 组合包获准进入 `OPTIONAL_BUNDLES`，因而进入安装依赖，这正是让可选实验性组合包以默认关闭状态随附的隔离例外（[决策](../../implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.zh.md)）。它不出现在任何随附 profile 模板中。
+
 
 ### 交互设计
 
 orb 反映状态而不是文字：空闲时变暗、悬停时响应、采集时显示波形、活动会话运行时旋转、朗读时脉动，并在审批或提问等待时显示注意圆点。拖动移动它，点击展开 panel，右键菜单提供新会话、语音开关、静音、固定、设置与退出。减少动态效果设置会去掉旋转与脉动动画，每个 orb 状态都有一个本地化无障碍标签。
 
-panel 顶部条包含收起、固定与设置控件以及活动会话标题；其下渲染既有会话与 composer。composer 旁的语音控件无需打开 composer 菜单即可开始采集，panel 内联显示录音器状态与最近一次失败。审批与提问卡片留在会话中，既有插件已在那里渲染它们；当 panel 收起且注意事件到达时，若注意设置允许，form 会展开 panel，否则只在 orb 上显示圆点。
+panel 顶部条包含收起、固定与设置控件以及活动会话标题；其下渲染既有会话与 composer。composer 旁的语音控件无需打开 composer 菜单即可开始采集，其相邻控件选择 `stella` 或 `tide` 合成音色并静音播放，panel 内联显示录音或合成状态与最近一次失败。审批与提问卡片留在会话中，既有插件已在那里渲染它们；当 panel 收起且注意事件到达时，若注意设置允许，form 会展开 panel，否则只在 orb 上显示圆点。
 
-模态呈现由 form 拥有：首次使用的麦克风或语音设置、权限修复、form 致命错误与快速语音设置卡片使用 `shell.modal`。Escape 与背景会关闭它，焦点回到先前呈现，从 orb 打开的模态以 orb 的屏幕位置为锚点。模态呈现中的任何内容都不替换既有产品对话框；这些对话框保持其在 panel 内的 `Modal` 行为。
+模态呈现由 form 拥有：首次使用的凭证或语音设置、权限修复、form 致命错误与快速语音设置卡片使用 `shell.modal`。Escape 与背景会关闭它，焦点回到先前呈现，从 orb 打开的模态以 orb 的屏幕位置为锚点。模态呈现中的任何内容都不替换既有产品对话框；这些对话框保持其在 panel 内的 `Modal` 行为。
+
 
 ### 日志与持久性
 
-该 form 不引入 Session 事件、不改变持久化格式、不增加模型请求内容。语音 transcript 仅在普通提交后才对模型可见，而提交已经记录 `user/message` 与 composer 草稿路径。语音播放、呈现、固定状态与 orb 几何是进程内或用户设置；它们从不进入 Session 日志。profile 的 `form` 与 `owner` 字段是本地配置，由 Desktop 应用与 profile 工具读取，与会话格式版本没有关系。这保持了「模型可见即已记录」规则与已发布会话格式规则不变。
+该 form 不引入 Session 事件、不改变持久化格式、除普通用户消息外不增加模型请求内容。语音 transcript 仅在普通提交后才对模型可见，而提交已经记录 `user/message` 与 composer 草稿路径；录音与合成音频都是瞬态字节，从不进入 Session 日志、附件或磁盘。送去合成的 assistant 文本就是已经记录的消息；语音播放、呈现、固定状态与 orb 几何是进程内或用户设置。profile 的 `form` 与 `owner` 字段是本地配置，由 Desktop 应用与 profile 工具读取，与会话格式版本没有关系。这保持了「模型可见即已记录」规则与已发布会话格式规则不变。
+
 
 ### 安全
 
 新的 surface API 是唯一新增的特权渲染器边界。主进程只接受来自 form 窗口 `dsh-app://app` 顶层 frame 的调用，按封闭联合类型校验每个命令，把所有几何限制到已连接的显示器工作区，并且从不暴露任意窗口或屏幕控制。全局快捷键同步校验封闭的目录形状与绑定命令数量，注册失败不会让 shell 崩溃。profile 的 `owner: 'desktop'` 由 CLI 拒绝路径强制，而不是靠隐藏文件。麦克风授权只加到 form 窗口；classic 窗口的检查不变。form 布局文件带版本并被视为不可信输入。Host↔main 的 Node IPC 协议不扩展：窗口与快捷键控制走类型化 preload API，与既有 directory-picker、键盘和文件拖拽边界一致。
 
+语音按设计跨越网络，并作为需要凭证、按次计费的用户数据处理。suite 的 provider 每次调用经 `ctx.credentials` 解析 `DEEPSEEK_API_KEY` 凭证，除本机回环测试服务器外只接受 HTTPS base URL，从不记录或持久化密钥，并让密钥不进入渲染器与 Remote 载荷。浏览器只发送 WAV 字节或文本，Host 再发送到配置的 DeepSeek 端点，因此录音与朗读文本都会离开本机，设置文案会说明这一点以及按次计费。DSH 不保留任何音频，合成请求不会自动重试，Remote 限制文本长度、音频大小与超时，合成失败的报告不会暴露 provider 诊断或凭证。
+
+
 ### 测试与文档
 
-测试遵循仓库的阶梯。单元 spec 覆盖 profile form 解析与拒绝、窗口几何持久化与限制、用 mock Electron API 验证全局注册结果、surface 协议校验、感知呈现的 frame 渲染，以及采集与语音输出服务。mock 的 main-startup harness 增加新的窗口注册表与 form 窗口，并将既有「未使用置顶」断言替换为关于 form 窗口选项的断言。REAL 组合 Loader 测试用 better 组合包启动测试 profile，断言注入的条目与 form 声明。GUI 测试用驱动的 props 覆盖 panel、orb 与模态呈现，无密钥的 Web replay 套件覆盖保持不变的 classic profile。包 README、apps/desktop README 中关于 form 与 system 快捷键的章节、shell form surface 的子系统页面以及分组 README 行随实现一起落地。实验性组合包通过 `OPTIONAL_BUNDLES` 获准；产品客户端包在 [product-package-policy](../../../../scripts/product-package-policy.ts) 中分类为 optional，因为只有显式选择该 form 的 profile 才挂载它。
+测试遵循仓库的阶梯。单元 spec 覆盖 profile form 解析与拒绝、窗口几何持久化与限制、用 mock Electron API 验证全局注册结果、surface 协议校验、感知呈现的 frame 渲染、以 stub provider 验证 speech-to-text 与 text-to-speech seam、Remote 边界与类型化错误、采集服务与播放消费方。suite 自身的单元与集成测试继续用本地 HTTP stub 覆盖官方 API 客户端，包括 multipart 布局与 TTS 字节处理，仓库测试复用同样的 stub 模式而不访问真实端点。mock 的 main-startup harness 增加新的窗口注册表与 form 窗口，并将既有「未使用置顶」断言替换为关于 form 窗口选项的断言。REAL 组合 Loader 测试用 better 组合包、stub 语音 provider 与 form 声明启动测试 profile，断言注入的条目、默认 provider id 与 form 元数据。GUI 测试用驱动的 props 覆盖 panel、orb 与模态呈现，无密钥的 Web replay 套件覆盖保持不变的 classic profile。包 README、apps/desktop README 中关于 form 与 system 快捷键的章节、shell form surface 与 speech-synthesis seam 的子系统页面以及分组 README 行随实现一起落地。实验性组合包通过 `OPTIONAL_BUNDLES` 获准；产品客户端包在 [product-package-policy](../../../../scripts/product-package-policy.ts) 中分类为 optional，因为只有显式选择该 form 的 profile 才挂载它。
+
 
 ## Alternatives considered
 
@@ -181,11 +210,16 @@ panel 顶部条包含收起、固定与设置控件以及活动会话标题；�
 
 **在 `PROFILE_TEMPLATES` 中随附 `better` profile 模板。** 默认产品隔离门禁拒绝随附模板中的实验性包，而实验性 form 必须保持可选。form profile 改为创建为 Desktop 拥有的 profile，组合包通过 `OPTIONAL_BUNDLES` 获准。
 
-**先增加 Host 侧 text-to-speech seam。** 那需要 provider、凭据与音频传输，且在任何消费方存在之前。客户端 seam 现在交付离线系统语音，并把远程 provider 留作兼容扩展点。
+**保留本地 SenseVoice 识别器与平台系统语音。** 可选组合包已经随附离线识别器，浏览器也提供系统语音用于播放，但该 form 必须使用官方 DeepSeek 接口，而混用引擎会把质量、凭证、计费与失败语义拆成两条路径。本地 provider 与系统语音仍可供选择它们的 profile 使用，但不用于此 form。
+
+**通过一次 agent 轮次调用 suite 的面向模型工具 `deepseek_asr` 与 `deepseek_tts`。** 这些工具已经包装同一批端点，但 push-to-talk 交互不能等待模型决策、消耗 token，或仅仅为了转写或朗读就产生一次工具调用；provider 角色暴露同样的客户端函数而不改变模型契约。
+
+**在新的仓库 provider 包中复制官方 API 客户端。** suite 已经拥有凭证解析、base URL 校验、超时、multipart 编码与错误分类；复制会造出两个会漂移的客户端与两处处理计费错误的地方。把唯一所有者留在 suite，使本仓库只保留 service、Remote 与消费方角色。
 
 **用原生按键状态监听实现 push-to-talk。** Electron 对全局快捷键不暴露按键抬起，因此这需要在第一版中引入新的原生模块与打包工作。本版本交付切换语义；按住说话仍是后续的 provider 决策。
 
 **按 surface 作用域限定客户端插件，并为每个 surface 渲染各自图。** 那是内存与隔离的长期形态，但它改变模块图、每个 frame 注册以及文档间对话框仲裁。一个窗口使该问题在本提案中不再必要。
+
 
 ## Acceptance criteria
 
@@ -199,11 +233,11 @@ panel 顶部条包含收起、固定与设置控件以及活动会话标题；�
 
 默认 system 快捷键在 Windows 与 macOS 上注册；冲突绑定在 Settings 中报告失败并保留先前绑定；录制期间暂停注册，退出时释放所有 accelerator；classic profile 不注册任何快捷键，Web 保持不变。
 
-push-to-talk 在 orb 收起时采集，展开后把 transcript 插入活动会话草稿，仅在免提启用时提交，并在该情况下产生普通 `user/message`；麦克风访问被拒绝与录音超时显示本地化内联失败。
+push-to-talk 在 orb 收起时采集，经官方 DeepSeek ASR provider `deepseek-cloud` 转写，展开后把 transcript 插入活动会话草稿，仅在免提启用时提交，并在该情况下产生普通 `user/message`；API Key 缺失或无效、余额不足、限速、录音过大与超时都显示本地化、可操作的文案，且不下载任何本地模型。
 
-回复按配置的自动朗读策略朗读，在新轮次或显式停止时停止，从不朗读工具输出，且不在 Session 日志或磁盘上留下音频。
+回复经官方 DeepSeek TTS provider `deepseek-tts` 使用选定的 `stella` 或 `tide` 音色按配置的自动朗读策略合成，在新轮次或显式停止时停止，从不朗读工具输出，且不在 Session 日志、附件或磁盘上留下音频；合成请求不会自动重试。
 
-main-startup、几何、快捷键、surface、语音与组合 spec 通过；`pnpm run test:gui`、`DSH_SNAPSHOT=replay pnpm run test:web`、`pnpm run typecheck`、`pnpm run lint` 与文档门禁为绿；在 better 组合包作为可选组合包获准的情况下隔离门禁保持为绿。
+main-startup、几何、快捷键、surface、语音 provider、Remote 与组合 spec 通过；`pnpm run test:gui`、`DSH_SNAPSHOT=replay pnpm run test:web`、`pnpm run typecheck`、`pnpm run lint` 与文档门禁为绿；在 better 组合包作为可选组合包获准的情况下隔离门禁保持为绿。
 
 ## Risks
 
@@ -215,17 +249,17 @@ Electron `globalShortcut` 无法报告按键抬起、没有原子冲突检查，
 
 把麦克风与 WebSocket 授权扩大到 form 窗口会削弱目前由单变量检查构成的安全不变量；窗口注册表、封闭命令联合与拒绝路径测试必须同一改动中落地。
 
-实验性语音栈保留其遗留包名；如果之后提升，better profile 的组合包列表与本文的包名必须在同一改动中迁移。
+官方语音路径依赖一个位于本仓库之外、通过 profile 链接安装的外部组合包：它的 provider id、凭证名、默认 base URL 与错误分类构成本设计引用的契约，suite 升级必须保持两个 provider 注册兼容，否则 form 会在加载时明确失败。该包的所有权、评审与发布仍归 suite。
 
-系统语音在可用性、质量与延迟上因平台而异，且 `speechSynthesis` 需要窗口保持存活才能播放；缺少所请求语言的语音会表现为可读失败，而不是错误路径改变。
+语音从此依赖网络、凭证与计费。识别与合成增加往返延迟、按次收费、会在 401/402/429/5xx 下失败，并把录音或朗读文本发送到配置的 DeepSeek 端点；第一版没有本地回退，离线与隐私敏感部署受限，设置与失败文案必须说明这一点。
 
 form profile 是 `$DSH_HOME` 下由 Desktop 拥有的数据；较旧的 dsh 版本会忽略新 manifest 字段，但写入 profile 之后的任何降级都必须继续以 classic 启动该 profile 而不是失败，上述宽容读取器明确支持这一点。
 
-第一版不交付 Web 回退，也不交付按住说话手势；二者都是可见的产品缺口，form 的实验性状态必须说明而不是隐藏。
+第一版不交付 Web 回退、不交付按住说话手势，也不交付流式合成或部分 transcript；这些是可见的产品缺口，form 的实验性状态必须说明而不是隐藏。
 
 ## Deferred work
 
-Host 侧 `text-to-speech` seam、其 Remote，以及作为客户端语音输出服务 provider 的云端或神经 provider。
+流式合成与播放、部分 ASR transcript、按消息的朗读操作，以及面向无法把音频发送到云端端点的部署的可选本地或离线语音回退。
 
 用于按住说话 push-to-talk 的原生按键状态轮询，包括其打包与权限后果。
 

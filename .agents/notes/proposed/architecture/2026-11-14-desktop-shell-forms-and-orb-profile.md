@@ -8,15 +8,17 @@ English | [中文](2026-11-14-desktop-shell-forms-and-orb-profile.zh.md)
 
 The Desktop application presents one workspace window. [apps/desktop/src/main.ts](../../../../apps/desktop/src/main.ts) creates a single primary `BrowserWindow` plus a welcome window, and every other surface — the update dialog, the mandatory update UI, the Platform account view — is an embedded `WebContentsView`, not a window. Nothing in the shell uses always-on-top, transparent or frameless windows, or `globalShortcut`; [apps/desktop/tests/main-startup.spec.ts](../../../../apps/desktop/tests/main-startup.spec.ts) even asserts that `setAlwaysOnTop` is never called. Microphone authorization is limited to the primary `dsh-app://app` frame in [apps/desktop/src/microphone-permissions.ts](../../../../apps/desktop/src/microphone-permissions.ts), the Host authentication cookie is attached only to that window's WebSocket, and the in-app shortcut catalog has one keyboard bridge. The client has one frame: [ui-layout](../../../../packages/client/ui-layout/src/client/index.ts) registers the single `root` occupant and declares every frame seat other UI plugins register into.
 
-Voice input exists but is composer-scoped. [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) mounts a recording control in `conversation.input.activity` and tears capture down when that control unmounts, loses focus, or the page hides. The Host half already provides a speech-to-text seam with a local provider and an authenticated Remote, and the [speech-to-text reference](../../../../packages/experimental/speech-to-text/README.md) records that speech synthesis has no service method. No audio playback, text-to-speech, or voice-output capability exists anywhere in the repository.
+Voice input exists but is composer-scoped. [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) mounts a recording control in `conversation.input.activity` and tears capture down when that control unmounts, loses focus, or the page hides. The Host half provides a speech-to-text seam with an authenticated Remote, while the optional experimental bundle ships only a local SenseVoice recognizer; the [speech-to-text reference](../../../../packages/experimental/speech-to-text/README.md) records that speech synthesis has no service method. The out-of-tree `@dsh-external/dsh-deepseek-suite` bundle, installed per profile and not part of this repository, already wraps the official DeepSeek speech endpoints as the model-facing `deepseek_asr` and `deepseek_tts` tools, but it registers no Cordis service, so neither the UI nor another plugin can use either interface without a model turn. No audio playback, text-to-speech service, or voice-output consumer exists anywhere in the repository.
 
 Profiles are the composition unit. Shipped templates are `acp`, `web`, `headless`, `sdk` and `sdk-minimal` in [official-bundles](../../../../packages/util/official-bundles/src/bundles.ts); Electron owns `$DSH_HOME/profiles/desktop` and boots exactly the `desktop` profile name from the fixed path in [paths.ts](../../../../apps/desktop/src/paths.ts). Desktop cannot boot another profile, so a different desktop form cannot be selected by profile at all.
 
-This note proposes a new dsh form activated by a new `better` profile: a desktop side floating orb, a side popover panel, a desktop modal presentation, OS-global shortcuts, and voice input plus voice output. The form stays a Cordis composition over the one shipped runtime and the one Host↔page protocol; it is not a fork of the application.
+This note proposes a new dsh form activated by a new `better` profile: a desktop side floating orb, a side popover panel, a desktop modal presentation, OS-global shortcuts, and voice input plus voice output over the official DeepSeek interfaces. The form stays a Cordis composition over the one shipped runtime and the one Host↔page protocol; it is not a fork of the application.
+
 
 ## Proposal
 
-The proposal has three parts that ship together. First, a product shell capability renders whichever form a profile declares: one product window with three presentations, a client surface service, and system-scope commands. Second, an experimental optional bundle composes the orb form from that capability, the existing voice-input bundle, and new client plugins. Third, a voice layer separates microphone capture from the composer and adds a speech-output seam with a system-voice provider. Product changes are additive; the classic profile keeps its current window, shortcut, and voice behavior.
+The proposal has three parts that ship together. First, a product shell capability renders whichever form a profile declares: one product window with three presentations, a client surface service, and system-scope commands. Second, an experimental optional bundle composes the orb form from that capability and new client plugins. Third, a voice layer separates microphone capture from the composer, routes recognition and synthesis through the official DeepSeek interfaces owned by the external suite bundle, and adds the missing speech-synthesis seam and playback consumer. The official interfaces stay in the out-of-tree suite, which gains two provider registrations; product changes are additive, and the classic profile keeps its current window, shortcut, and voice behavior.
+
 
 ### Profile-declared forms
 
@@ -102,36 +104,55 @@ Electron `globalShortcut` exposes no key-up callback, so push-to-talk is press-t
 
 ### Voice input
 
-Capture becomes a client service instead of a composer component. A new experimental client package hosts `ctx.voiceCapture`: it owns the recorder, microphone device preference, readiness subscription, WAV encoding, and the `remote.speech.transcribe` call, and it exposes begin, cancel, and finish with a snapshot that surfaces and tests can observe. The existing [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) package becomes one consumer: its composer control keeps its current interaction, but the recorder lifetime no longer ends when that control unmounts. Two new consumers ride the same service: an orb voice control and a global push-to-talk command.
+Capture becomes a client service instead of a composer component. A new experimental client package hosts `ctx.voiceCapture`: it owns the recorder, microphone device preference, WAV encoding, and the `remote.speech.transcribe` call, and it exposes begin, cancel, and finish with a snapshot that surfaces and tests can observe. The existing [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) package becomes one consumer: its composer control keeps its current interaction, but the recorder lifetime no longer ends when that control unmounts. Two new consumers ride the same service: an orb voice control and a global push-to-talk command.
 
-Delivery stays explicit. A finished transcript first fills the active session's composer draft through the existing `InputActions.insertText` path when the panel is open; when the form is collapsed, the surface service expands the panel, then inserts the draft and focuses the composer. The active session is the form's own client-side selection, defaulting to the most recently interacted session. A hands-free setting may submit the transcript instead of pre-filling it; that submission goes through the ordinary `session.prompt` path, so the model-visible text is an ordinary durable `user/message`. Recognition alone still writes no Session event, and audio remains transient.
+Recognition uses the official DeepSeek interface, not a local model. The external `@dsh-external/dsh-deepseek-suite` bundle registers a `SpeechProvider` on the existing speech-to-text seam with id `deepseek-cloud`; it posts the canonical 16 kHz mono PCM16 WAV from `remote.speech.transcribe` to `POST /v1/tools/asr` as multipart form data and returns the response `text`. The provider advertises processing location `cloud` and only the `auto` language hint, advertises no preparation task, resolves the `DEEPSEEK_API_KEY` credential per call through `ctx.credentials` with the suite's configured fallback, and reuses the suite's `baseUrl`, request timeout, and typed error classification. Missing credentials, invalid keys, insufficient balance, rate limits, oversized audio, timeouts, and server failures map to the seam's typed failures; the panel shows localized copy with an action that opens the model settings, and no request is retried automatically because every retry is billable.
 
-Microphone authorization follows the window registry: the form window's `dsh-app://app` main frame is authorized like the classic primary frame, only while the form profile is active. Permission denial, missing devices, preparation failures, and timeouts produce the existing localized failure copy in the panel rather than a dead orb. Cancel on Escape, collapse, or a two-minute cap releases tracks and discards the recording.
+Delivery stays explicit. A finished transcript first fills the active session's composer draft through the existing `InputActions.insertText` path when the panel is open; when the form is collapsed, the surface service expands the panel, then inserts the draft and focuses the composer. The active session is the form's own client-side selection, defaulting to the most recently interacted session. A hands-free setting may submit the transcript instead of pre-filling it; that submission goes through the ordinary `session.prompt` path, so the model-visible text is an ordinary durable `user/message`. Recognition alone writes no Session event, the recorded audio never touches disk or attachment storage, and the upload is disclosed as a billed request to the configured DeepSeek endpoint.
+
+Microphone authorization follows the window registry: the form window's `dsh-app://app` main frame is authorized like the classic primary frame, only while the form profile is active. Permission denial, missing devices, and a two-minute capture cap release tracks and discard the recording. Because recognition is cloud-hosted, the recording leaves the machine only after the user finishes a capture and the transcript is requested; cancelling never uploads.
+
 
 ### Voice output
 
-Voice output is a new client capability seam because playback belongs to the renderer and the first provider is the operating system's voice engine. `packages/experimental/client-speech-output` defines `ctx.speechOutput`: a registry of named providers, a snapshot of available voices and languages, preferences, and `speak`, `cancel`, and `follow` operations. The first provider wraps the browser `speechSynthesis` API, which exposes the system voices on Windows and macOS and needs no Host model, credential, or download. A consumer package, `client-ui-voice-output`, owns policy: auto-speak off, replies to voice-initiated turns, or all replies; per-message speak and stop actions; interruption on a new turn or an explicit stop; mute; and voice and language selection persisted through the settings service. Audio playback and queues stay process-local and are never Session events.
+Voice output becomes a Host capability seam plus a client playback consumer, because the official DeepSeek synthesis interface is a credentialed Host call while audio playback belongs to the renderer. A new experimental Host package defines `ctx.textToSpeech`: named providers with voice and format catalogs, volatile `defaultProvider`, `voiceId`, and `format` selection persisted through the settings service, a snapshot and `follow`, and `resolve`, `synthesize`, and cancellation that mirror the speech-to-text seam. A new `api-text-to-speech` package exposes the same operations through the authenticated Remote as the `speechOutput` namespace with bounded `maxTextChars`, `maxAudioBytes`, and `timeoutMs`; the result carries base64 WAV bytes that are transient, never a Session event or attachment.
 
-A Host-side synthesis seam is deliberately deferred, not omitted from the design: the same client service can later accept a provider that calls a `text-to-speech` Host seam and an authenticated Remote, which is where cloud or neural voices belong. No current provider, credential, or streaming contract exists for that path, and inventing one before a consumer needs it would be speculative. The seam name and provider registration stay client-side, so adding the remote provider changes no consumer.
+The provider is the external suite. `@dsh-external/dsh-deepseek-suite` registers a `TextToSpeechProvider` with id `deepseek-tts`, reusing its existing `synthesizeSpeech` client: `POST /v1/tools/tts` with `{ text, voice_id, format, filter_markdown: true }`, the `stella` and `tide` voices, and `wav` output. Credential resolution, base URL, request timeout, and error classification stay in the suite and match the recognition provider. The provider returns audio bytes and never writes a file, so synthesis has no durable artifact; the existing `deepseek_tts` tool keeps its file-writing behavior for explicit model-facing use.
 
-The orb shows a speaking state from the speech-output snapshot, and any new turn, Escape, or mute cancels playback. Voice output never reads tool output, never persists audio, and never enters a model request; the policy and the visible controls own the only user-visible behavior.
+A new client consumer, `client-ui-voice-output`, owns playback policy: auto-speak off, replies to voice-initiated turns, or all replies; voice and mute selection; queueing and interruption on a new turn, Escape, or an explicit stop; speaking-state publication for the orb; and localized failure copy. It sends the assistant text of the active session, capped at the Remote limit, and the provider's `filter_markdown` request strips Markdown before synthesis. Audio playback, queues, and speaking state stay process-local and are never Session events; tool output is never spoken, and synthesis never enters a model request.
+
 
 ### The better bundle and its packages
 
-The form is one optional experimental bundle, shipped with the installation the way the existing voice-input bundle is, with an icon and locale metadata. Its manifest declares the form it provides; its patch inserts the client rows the form needs.
+The form is one optional experimental bundle, shipped with the installation the way the existing voice-input bundle is, with an icon and locale metadata. Its manifest declares the form it provides; its patch inserts the surface, orb, capture, and speech rows the form needs, and configures the provider ids the external suite registers. New experimental packages use the unprefixed `@deepseek-ai/dsh-<name>` form and join `EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS`, while the existing legacy-prefixed speech packages keep their names.
 
 ```yaml
 - insert:
     - id: client-surface
       name: '@deepseek-ai/dsh-client-surface'
     - id: client-ui-orb
-      name: '@deepseek-ai/dsh-experimental-client-ui-orb'
+      name: '@deepseek-ai/dsh-client-ui-orb'
     - id: client-voice-capture
-      name: '@deepseek-ai/dsh-experimental-client-voice-capture'
-    - id: client-speech-output
-      name: '@deepseek-ai/dsh-experimental-client-speech-output'
+      name: '@deepseek-ai/dsh-client-voice-capture'
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: deepseek-cloud
+        language: auto
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
+    - id: text-to-speech
+      name: '@deepseek-ai/dsh-text-to-speech'
+      config:
+        defaultProvider: deepseek-tts
+        voiceId: stella
+        format: wav
+    - id: api-text-to-speech
+      name: '@deepseek-ai/dsh-api-text-to-speech'
     - id: client-ui-voice-output
-      name: '@deepseek-ai/dsh-experimental-client-ui-voice-output'
+      name: '@deepseek-ai/dsh-client-ui-voice-output'
 ```
 
 | Package | Role | Status |
@@ -140,30 +161,38 @@ The form is one optional experimental bundle, shipped with the installation the 
 | `packages/experimental/better-bundle` | Form composition, optional bundle metadata, form declaration | experimental |
 | `packages/experimental/client-ui-orb` | Orb rendering, states, menus, commands, form settings | experimental |
 | `packages/experimental/client-voice-capture` | Recorder service extracted from the existing voice-input UI | experimental |
-| `packages/experimental/client-speech-output` | Speech-output seam and system-voice provider | experimental |
+| `packages/experimental/text-to-speech` | Host speech-synthesis Service Definition and provider registry | experimental |
+| `packages/experimental/api-text-to-speech` | Authenticated speech-synthesis Remote consumer | experimental |
 | `packages/experimental/client-ui-voice-output` | Playback consumer, auto-speak policy, voice controls | experimental |
 
-The profile recipe is the web template bundles, the voice-input bundle, and the better bundle, with `form: { kind: 'orb' }` and `owner: 'desktop'`. The better bundle declares the voice-input bundle as a profile bundle in its form metadata so the profile creator includes it; the speech stack keeps its existing experimental bundle and its existing settings. The better bundle is admitted to `OPTIONAL_BUNDLES` and therefore to the installation's dependencies, which is exactly the isolation exception that lets an optional experimental bundle ship switched off ([decision](../../implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.md)). It appears in no shipped profile template.
+The profile recipe is the web template bundles plus the better bundle, with the out-of-tree suite installed into the same profile through the plugin manager from its local folder, and with `form: { kind: 'orb' }` and `owner: 'desktop'` in the profile manifest. The bundle configures the provider ids `deepseek-cloud` and `deepseek-tts`, and both speech seams fail loudly at load when the suite is missing or registers a different id, naming the expected provider and the installation step. The better bundle is admitted to `OPTIONAL_BUNDLES` and therefore to the installation's dependencies, which is exactly the isolation exception that lets an optional experimental bundle ship switched off ([decision](../../implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.md)). It appears in no shipped profile template.
+
 
 ### Interaction design
 
 The orb reflects state rather than text: it dims when idle, reacts on hover, shows a waveform while capturing, spins while the active session runs, pulses while speaking, and shows an attention dot when an approval or question waits. Drag moves it, click expands the panel, and the context menu offers a new session, the voice toggle, mute, pinning, settings, and quit. A reduced-motion setting removes the spin and pulse animations, and every orb state has a localized accessibility label.
 
-The panel's top strip holds the collapse, pin, and settings controls and the active-session title; below it the existing conversation and composer render. The voice control next to the composer starts capture without opening the composer menu, and the panel shows the recorder state and the last failure inline. Approval and question cards stay in the conversation where the existing plugins already render them; when the panel is collapsed and an attention event arrives, the form expands the panel if the attention setting allows it and otherwise only badges the orb.
+The panel's top strip holds the collapse, pin, and settings controls and the active-session title; below it the existing conversation and composer render. The voice control next to the composer starts capture without opening the composer menu, its neighbouring controls select the `stella` or `tide` synthesis voice and mute playback, and the panel shows the recorder or synthesis state and the last failure inline. Approval and question cards stay in the conversation where the existing plugins already render them; when the panel is collapsed and an attention event arrives, the form expands the panel if the attention setting allows it and otherwise only badges the orb.
 
-The modal presentation is form-owned: first-use microphone or voice setup, permission repair, fatal form errors, and the quick voice-settings card use `shell.modal`. Escape and the backdrop dismiss it, focus returns to the previous presentation, and a modal opened from the orb keeps the orb's screen position as its anchor. Nothing in the modal presentation replaces the existing product dialogs; those keep their in-panel `Modal` behavior.
+The modal presentation is form-owned: first-use credential or voice setup, permission repair, fatal form errors, and the quick voice-settings card use `shell.modal`. Escape and the backdrop dismiss it, focus returns to the previous presentation, and a modal opened from the orb keeps the orb's screen position as its anchor. Nothing in the modal presentation replaces the existing product dialogs; those keep their in-panel `Modal` behavior.
+
 
 ### Logging and durability
 
-The form introduces no Session event, no persistence-format change, and no model request content. Voice transcripts become model-visible only through ordinary submission, which already records `user/message` and the composer draft path. Speech playback, presentations, pinned state, and orb geometry are process-local or user settings; they never enter the Session log. The profile `form` and `owner` fields are local configuration, read by the Desktop app and by profile tooling, and have no relationship to the Session format version. This keeps the "model-visible means logged" rule and the released-session-format rules untouched.
+The form introduces no Session event, no persistence-format change, and no model request content beyond ordinary user messages. Voice transcripts become model-visible only through ordinary submission, which already records `user/message` and the composer draft path; recorded audio and synthesized audio are transient bytes that never reach the Session log, attachments, or disk. The assistant text sent for synthesis is the already-logged message; speech playback, presentations, pinned state, and orb geometry are process-local or user settings. The profile `form` and `owner` fields are local configuration read by the Desktop app and profile tooling, with no relationship to the Session format version. This keeps the "model-visible means logged" rule and the released-session-format rules untouched.
+
 
 ### Security
 
 The new surface API is the only new privileged renderer boundary. Main accepts it only from the form window's `dsh-app://app` top frame, validates every command against a closed union, clamps all geometry to a connected display work area, and never exposes arbitrary window or screen control. The global shortcut sync validates a closed catalog shape and a bound command count, and registration failures cannot crash the shell. Profile `owner: 'desktop'` is enforced by the CLI refusal path, not by hiding files. Microphone authorization is added to the form window only; the classic window's checks are unchanged. The form layout file is versioned and treated as untrusted input. The Host↔main Node IPC protocol is not extended: window and shortcut control flows through the typed preload API, matching the existing directory-picker, keyboard, and file-drag boundaries.
 
+Voice crosses the network by design and is handled as credentialed, billable user data. The suite's providers resolve the `DEEPSEEK_API_KEY` credential per call through `ctx.credentials`, accept only HTTPS base URLs except a loopback test server, never log or persist the key, and keep it out of the renderer and the Remote payloads. The browser sends only WAV bytes or text; the Host sends them to the configured DeepSeek endpoint, so both the recording and the spoken reply leave the machine, and the settings copy states this and the per-call billing. DSH retains no audio, no synthesis request is retried automatically, the Remote bounds text length, audio size, and timeout, and synthesis failures are reported without exposing provider diagnostics or credentials.
+
+
 ### Testing and documentation
 
-Tests follow the repository ladder. Unit specs cover profile form parsing and rejection, window geometry persistence and clamping, global registration results with a mocked Electron API, the surface protocol validation, presentation-aware frame rendering, and the capture and speech-output services. The mocked main-startup harness gains the new window registry and form window, and the existing assertion that always-on-top is unused is replaced by assertions about the form window's options. A REAL-composition Loader test boots a test profile with the better bundle and asserts the injected rows and the form declaration. GUI tests cover the panel, orb, and modal presentations with driven props, and the keyless Web replay suite covers the classic profile unchanged. Package READMEs, an apps/desktop README section for forms and system shortcuts, a subsystem page for the shell form surface, and the group README rows land with the implementation. The experimental bundle is admitted through `OPTIONAL_BUNDLES`; the product client package is classified optional in [product-package-policy](../../../../scripts/product-package-policy.ts) because only explicitly selected forms mount it.
+Tests follow the repository ladder. Unit specs cover profile form parsing and rejection, window geometry persistence and clamping, global registration results with a mocked Electron API, the surface protocol validation, presentation-aware frame rendering, the speech-to-text and text-to-speech seams with stub providers, the Remote bounds and typed errors, the capture service, and the playback consumer. The suite's own unit and integration tests keep covering the official API client against a local HTTP stub, including multipart layout and TTS byte handling, and the repository tests reuse that stub pattern instead of the real endpoint. The mocked main-startup harness gains the new window registry and form window, and the existing assertion that always-on-top is unused is replaced by assertions about the form window's options. A REAL-composition Loader test boots a test profile with the better bundle, a stub speech provider, and the form declaration, and asserts the injected rows, default provider ids, and form metadata. GUI tests cover the panel, orb, and modal presentations with driven props, and the keyless Web replay suite covers the classic profile unchanged. Package READMEs, an apps/desktop README section for forms and system shortcuts, a subsystem page for the shell form surface and the speech-synthesis seam, and the group README rows land with the implementation. The experimental bundle is admitted through `OPTIONAL_BUNDLES`; the product client package is classified optional in [product-package-policy](../../../../scripts/product-package-policy.ts) because only explicitly selected forms mount it.
+
 
 ## Alternatives considered
 
@@ -181,11 +210,16 @@ Tests follow the repository ladder. Unit specs cover profile form parsing and re
 
 **Ship a `better` profile template in `PROFILE_TEMPLATES`.** The default-product isolation gate rejects experimental packages in shipped templates, and an experimental form must stay opt-in. The form profile is created as a Desktop-owned profile instead, and the bundle is admitted through `OPTIONAL_BUNDLES`.
 
-**Add a Host-side text-to-speech seam first.** That would need a provider, credentials, and an audio transport before any consumer exists. The client seam ships offline system voices now and leaves the remote provider as a compatible extension point.
+**Keep the local SenseVoice recognizer and platform system voices.** The optional bundle already ships an offline recognizer and the browser exposes system voices for playback, but the form must use the official DeepSeek interfaces, and mixing engines would split quality, credential, billing, and failure semantics across two paths. The local provider and system voices stay available to profiles that choose them, not to this form.
+
+**Call the suite's model-facing `deepseek_asr` and `deepseek_tts` tools through an agent turn.** The tools already wrap the same endpoints, but a push-to-talk interaction must not wait for a model decision, spend tokens, or produce a tool call just to transcribe or speak; the provider roles expose the same client functions without changing the model contract.
+
+**Duplicate the official API client in new repository provider packages.** The suite already owns credential resolution, base URL validation, timeouts, multipart encoding, and the error taxonomy; copying it would create two clients that drift and two places that handle billing errors. Keeping one owner in the suite leaves this repository with service, Remote, and consumer roles only.
 
 **Implement push-to-talk with a native key-state listener.** Electron exposes no key-up for global shortcuts, so this needs a new native module and packaging work in the first version. Toggle semantics ship now; held-key capture remains a deferred provider decision.
 
 **Scope client plugins per surface and render each surface with its own graph.** That is the long-term shape for memory and isolation, but it changes the module graph, every frame registration, and the dialog arbitration between documents. One window makes the question unnecessary for this proposal.
+
 
 ## Acceptance criteria
 
@@ -199,11 +233,11 @@ Clicking the orb or pressing the toggle shortcut expands the panel containing th
 
 The default system shortcuts register on Windows and macOS, a conflicting binding reports its failure in Settings and keeps the previous binding, recording suspends registration, and quitting releases every accelerator; the classic profile registers none and Web stays unchanged.
 
-Push-to-talk captures while the orb is collapsed, inserts the transcript into the active session's draft after expanding, submits only when hands-free is enabled, and produces an ordinary `user/message` in that case; denial of microphone access and recording timeouts show localized inline failures.
+Push-to-talk captures while the orb is collapsed, requests the official DeepSeek ASR provider `deepseek-cloud`, inserts the transcript into the active session's draft after expanding, submits only when hands-free is enabled, and produces an ordinary `user/message` in that case; a missing or invalid API key, insufficient balance, rate limit, oversized recording, and timeout each show localized, actionable copy, and no local model is downloaded.
 
-Replies are spoken under the configured auto-speak policy, stop on a new turn or an explicit stop, never speak tool output, and leave no audio in the Session log or on disk.
+Replies are synthesized through the official DeepSeek TTS provider `deepseek-tts` with the selected `stella` or `tide` voice under the configured auto-speak policy, stop on a new turn or an explicit stop, never speak tool output, and leave no audio in the Session log, attachments, or disk; synthesis requests are not retried automatically.
 
-The main-startup, geometry, shortcut, surface, voice, and composition specs pass; `pnpm run test:gui`, `DSH_SNAPSHOT=replay pnpm run test:web`, `pnpm run typecheck`, `pnpm run lint` and the documentation gates are green; the isolation gate stays green with the better bundle admitted as an optional bundle.
+The main-startup, geometry, shortcut, surface, speech provider, Remote, and composition specs pass; `pnpm run test:gui`, `DSH_SNAPSHOT=replay pnpm run test:web`, `pnpm run typecheck`, `pnpm run lint` and the documentation gates are green; the isolation gate stays green with the better bundle admitted as an optional bundle.
 
 ## Risks
 
@@ -215,17 +249,17 @@ Electron `globalShortcut` cannot report key release, has no atomic conflict chec
 
 Broadening microphone and WebSocket authorization to the form window weakens a security invariant that is currently a single-variable check; the window registry, the closed command union, and denial-path tests must land in the same change.
 
-The experimental speech stack keeps its legacy package names; if it is promoted later, the better profile's bundle list and this note's package names must be migrated in the same change.
+The official voice path depends on an external bundle that lives outside this repository and installs through a profile link: its provider ids, credential name, base URL default, and error taxonomy become a contract this design references, and a suite upgrade must keep both provider registrations compatible or the form fails loudly at load. Ownership, review, and release of that package stay with the suite.
 
-System voices differ in availability, quality, and latency across platforms, and `speechSynthesis` needs the window to stay alive for playback; voices missing a requested language surface as a readable failure rather than an error path change.
+Voice now depends on network, credentials, and billing. Recognition and synthesis add round-trip latency, cost money per request, fail under 401/402/429/5xx, and send the recording or the spoken reply to the configured DeepSeek endpoint; offline use and privacy-sensitive deployments have no local fallback in the first version, and the settings and failure copy must disclose this.
 
 The form profile is Desktop-owned data under `$DSH_HOME`; older dsh versions ignore the new manifest fields, but any downgrade after the profile was written must keep launching the profile as classic rather than failing, which the tolerant reader above explicitly supports.
 
-The first version ships without a Web fallback and without a held-key push-to-talk gesture; both are visible product gaps that the form's experimental status must state, not hide.
+The first version ships without a Web fallback, without a held-key push-to-talk gesture, and without streaming synthesis or partial transcripts; these are visible product gaps that the form's experimental status must state, not hide.
 
 ## Deferred work
 
-A Host-side `text-to-speech` seam, its Remote, and cloud or neural providers as a provider of the client speech-output service.
+Streaming synthesis and playback, partial ASR transcripts, a per-message read-aloud action, and an optional local or offline speech fallback for deployments that cannot send audio to a cloud endpoint.
 
 Native key-state polling for held-key push-to-talk, including its packaging and permission consequences.
 
