@@ -1,0 +1,64 @@
+# Bilingual-pair consistency record for 2026-11-14-desktop-shell-forms-and-orb-profile.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-11-14-desktop-shell-forms-and-orb-profile.md
+/agent-note-desktop-shell-forms-and-the-orb-profile:
+  en: 4b8e2e486d1f55c6
+  zh: 83aa08e81c359d59
+/agent-note-desktop-shell-forms-and-the-orb-profile/problem:
+  en: fba92741fe08582e
+  zh: 1a5127bdecff06c0
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal:
+  en: 297f3a471e7a18b0
+  zh: 3bf02d5e4a7fffe7
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/profile-declared-forms:
+  en: bda92cb9864e8216
+  zh: 54fb6ee5d048a079
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/presentations-of-one-product-window:
+  en: aabc558572d9c606
+  zh: 5fead890c6f796ba
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/startup-lifecycle-and-window-ownership:
+  en: 7aeb0abafa717547
+  zh: a130bde4bace4f12
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/client-surface-capability:
+  en: 82c368129f1e513f
+  zh: efe7643903d59568
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/presentation-aware-frame:
+  en: 1085ada5df4862a3
+  zh: 85250689f4e4554b
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/system-scope-shortcuts:
+  en: 423d55cd5551a36c
+  zh: 4722b2a080827615
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/voice-input:
+  en: fdcbdbff74fe14fe
+  zh: 262480a2bd24d7f4
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/voice-output:
+  en: 6c36266a60e8a0b5
+  zh: 9ae9c132b87b93a6
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/the-better-bundle-and-its-packages:
+  en: 8bc3e58e9491ac29
+  zh: 8e25db02be1a155c
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/interaction-design:
+  en: 704f3e919ed822e3
+  zh: 06af8487a60d829c
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/logging-and-durability:
+  en: 432a6070dbd5fa71
+  zh: 80a73ee9ec73c2ae
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/security:
+  en: 1330ceeeccb7fef5
+  zh: 143150ac0fb04675
+/agent-note-desktop-shell-forms-and-the-orb-profile/proposal/testing-and-documentation:
+  en: da641989f0311b31
+  zh: 87714764810d03d4
+/agent-note-desktop-shell-forms-and-the-orb-profile/alternatives-considered:
+  en: 730ffdf40d48129e
+  zh: 8505fd57813fcd3f
+/agent-note-desktop-shell-forms-and-the-orb-profile/acceptance-criteria:
+  en: 931ca16ce0e3721d
+  zh: 3743ed92c7f37962
+/agent-note-desktop-shell-forms-and-the-orb-profile/risks:
+  en: 2b10d935ec567a9b
+  zh: 3b207935ab58a25d
+/agent-note-desktop-shell-forms-and-the-orb-profile/deferred-work:
+  en: 51648e2df4e5e90c
+  zh: e279460fe9ba0673
