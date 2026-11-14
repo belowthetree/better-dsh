@@ -129,9 +129,11 @@ export function PreparationCard({ provider, connected, prepare, cancelPreparatio
 }
 
 /** Recognition preferences and preparation cards shared by plugin details and Settings. */
-export function VoicePreparation({ useSpeechReadiness, ...props }: Pick<InjectFace<VoiceInputInjected>,
-  'useSpeechReadiness' | 'configure' | 'prepare' | 'cancelPreparation' | 'createRecording' | 'useMicrophoneDevice' | 'selectMicrophone'> & PropsLocale<typeof NS>) {
+export function VoicePreparation({ useSpeechReadiness, useHandsFree, ...props }: Pick<InjectFace<VoiceInputInjected>,
+  'useSpeechReadiness' | 'useHandsFree' | 'setHandsFree' | 'configure' | 'prepare' | 'cancelPreparation' | 'previewMicrophone'
+  | 'useMicrophoneDevice' | 'selectMicrophone'> & PropsLocale<typeof NS>) {
   const readiness = useSpeechReadiness(value => value), catalog = readiness.catalog
+  const handsFree = useHandsFree(value => value)
   const [saving, setSaving] = useState(false), [error, setError] = useState('')
   const configure = async (patch: SpeechSelectionPatch): Promise<void> => {
     setSaving(true); setError('')
@@ -154,6 +156,9 @@ export function VoicePreparation({ useSpeechReadiness, ...props }: Pick<InjectFa
         {selected?.languages.map(language =>
           <option key={language} value={language}>{languageNames[language] ?? language}</option>)}
       </select></label>
+      <label><input type="checkbox" checked={handsFree}
+        onChange={(event) => { props.setHandsFree(event.target.checked) }} />{props.t('handsFree')}</label>
+      <small className={css.metric}>{props.t('handsFreeHelp')}</small>
       <p>{props.t(selected?.location === 'cloud' ? 'cloud' : 'local')}</p>
       {error && <p role="alert">{props.t('failed', { message: error })}</p>}
     </div>}

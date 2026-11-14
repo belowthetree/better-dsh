@@ -69,6 +69,7 @@ vi.mock('electron', () => ({
     exit: vi.fn(),
   },
   powerMonitor: { on: vi.fn(), off: vi.fn() },
+  globalShortcut: { register: () => true, unregister: vi.fn(), unregisterAll: vi.fn(), isRegistered: () => false },
   BrowserWindow: class {
     constructor(options: BrowserWindowConstructorOptions) { state.windowOptions = options }
     private ready: (() => void) | undefined

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "音声合成 API",
+    "description": "ブラウザ向けの音声合成 API を提供します。"
+  }
+}

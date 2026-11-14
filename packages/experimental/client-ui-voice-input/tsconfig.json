@@ -12,9 +12,6 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../api/remotes/tsconfig.client.json"
-    },
-    {
       "path": "../../api/session-controller/tsconfig.client.json"
     },
     {
@@ -39,22 +36,16 @@
       "path": "../../core/session"
     },
     {
-      "path": "../../typert/protocol"
-    },
-    {
-      "path": "../api-speech-to-text"
-    },
-    {
       "path": "../speech-to-text"
-    },
-    {
-      "path": "../../api/gateway/tsconfig.client.json"
     },
     {
       "path": "../../client/store"
     },
     {
       "path": "../../client/ui-plugin-manager/tsconfig.client.json"
+    },
+    {
+      "path": "../client-voice-capture/tsconfig.client.json"
     }
   ]
 }

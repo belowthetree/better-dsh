@@ -35,7 +35,7 @@ const choices: TerminalLaunchShells = {
 
 type GuideShortcut = Pick<ShortcutCatalogEntry, 'keys' | 'aria'>
 const catalogEntry = (shortcut: GuideShortcut): ShortcutCatalogEntry => ({
-  id: 'terminal.new' as ShortcutCommandId, label: en.new, aliases: [], binding: null,
+  scope: 'application', id: 'terminal.new' as ShortcutCommandId, label: en.new, aliases: [], binding: null,
   modified: false, conflicts: [], issue: null, ...shortcut,
 })
 

@@ -9,7 +9,10 @@ import type { ReferenceInjected } from './Reference.tsx'
 import { shortcutFailure, shortcutReadFailure } from './feedback.ts'
 import css from './Reference.module.css'
 
-type EditorInjected = ReferenceInjected
+/** Catalog hooks the inline recorder reads; carrier registration state belongs to the reference's Global group. */
+type EditorInjected = Omit<ReferenceInjected, 'hooks'> & {
+  hooks: Pick<ReferenceInjected['hooks'], 'catalog' | 'systemCatalog' | 'config' | 'fixedCatalog'>
+}
 type EditorProps = InjectFace<EditorInjected> & PropsLocale<'shortcuts'> & {
   target: ShortcutCatalogEntry
   onClose(this: void): void
@@ -22,12 +25,16 @@ type EditorProps = InjectFace<EditorInjected> & PropsLocale<'shortcuts'> & {
  * @param props - command, accepted snapshots, and storage/feedback callbacks.
  * @returns inline command controls; failures retain the draft and allow another recording.
  */
-export function ShortcutEditor({ target, onClose, onSaved, onError, useCatalog, useConfig, useFixedCatalog,
+export function ShortcutEditor({ target, onClose, onSaved, onError, useCatalog, useSystemCatalog, useConfig, useFixedCatalog,
   edit, recording, describeBinding, runtime, platform, t }:
 EditorProps) {
   const config = useConfig(value => value)
   const catalog = useCatalog(value => value)
+  const system = useSystemCatalog(value => value)
   const fixed = useFixedCatalog(value => value)
+  const scope = target.scope
+  /** Tag one operation with the target's channel so the service addresses the right override map. */
+  const scoped = (operation: ShortcutEdit): ShortcutEdit => scope === 'system' ? { ...operation, scope } : operation
   const [revision, setRevision] = useState<ShortcutRevision>(config.revision)
   const [candidate, setCandidate] = useState<ShortcutBinding | null>(null)
   const [captured, setCaptured] = useState(false)
@@ -54,13 +61,13 @@ EditorProps) {
     writing.current = false
     setBusy(false)
     if (result.status === 'saved') onSaved()
-    else { setRetry(operation.type === 'set' ? operation.binding : null); report(shortcutFailure(result, [...catalog, ...fixed], t, runtime)) }
+    else { setRetry(operation.type === 'set' ? operation.binding : null); report(shortcutFailure(result, [...catalog, ...system, ...fixed], t, runtime)) }
   }
   const capture = (binding: ShortcutBinding, id: ShortcutCommandId): void => {
     setCandidate(binding); setCaptured(true); setRetry(null)
-    const described = describeBinding(binding)
+    const described = describeBinding(binding, scope)
     const conflicts = described.conflicts.filter(value => value !== id)
-      .map(value => [...catalog, ...fixed].find(row => row.id === value)?.label ?? value)
+      .map(value => [...catalog, ...system, ...fixed].find(row => row.id === value)?.label ?? value)
     if (described.issue !== null) {
       report(t(described.issue))
       return
@@ -68,7 +75,7 @@ EditorProps) {
     if (conflicts.length > 0) { report(t('conflict', { commands: conflicts.join(', ') })); return }
     if (stale) { setRetry(binding); report(t('stale')); return }
     if (config.status !== 'ready') { report(config.status === 'loading' ? t('not-ready') : shortcutReadFailure(config, runtime, t)); return }
-    void save({ type: 'set', id, binding })
+    void save(scoped({ type: 'set', id, binding }))
   }
   const handlers = useRef({ capture, report, onClose })
   useLayoutEffect(() => { handlers.current = { capture, report, onClose } })
@@ -162,14 +169,14 @@ EditorProps) {
   </div>
   return <div className={css.inlineEditor} role="group" aria-label={target.label} data-shortcut-modal="shortcut-edit" aria-busy={busy}>
     <div className={css.inlineControls}>
-      <button type="button" className={css.inlineAction} disabled={readonly} onClick={() => { void save({ type: 'reset', id: target.id }) }}>{t('reset')}</button>
+      <button type="button" className={css.inlineAction} disabled={readonly} onClick={() => { void save(scoped({ type: 'reset', id: target.id })) }}>{t('reset')}</button>
       {target.binding !== null && <button type="button" className={css.inlineAction} disabled={readonly}
-        onClick={() => { void save({ type: 'set', id: target.id, binding: null }) }}>{t('clear')}</button>}
+        onClick={() => { void save(scoped({ type: 'set', id: target.id, binding: null })) }}>{t('clear')}</button>}
       <button ref={recorder} type="button" className={clsx(css.recorder, message && css.invalid)} disabled={!nativeReady} aria-disabled={busy || !nativeReady}
         onBlur={() => { restart.current() }}
         aria-label={t('record')} aria-invalid={message !== ''} aria-describedby={descriptionId}
         onClick={() => { if (!writing.current) { restart.current(); setCaptured(false); setMessage(''); setRetry(null) } }}>
-        {captured && message === '' ? <ShortcutKeys keys={describeBinding(candidate).keys} className={css.recorded} /> : t('record')}
+        {captured && message === '' ? <ShortcutKeys keys={describeBinding(candidate, scope).keys} className={css.recorded} /> : t('record')}
       </button>
     </div>
     <span id={descriptionId} className={css.srOnly}>{message || (desktopChords ? '' : t(runtime === 'web'

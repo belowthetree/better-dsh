@@ -8,7 +8,7 @@ import { ShortcutReference, ShortcutsRow } from '../src/client/Reference.tsx'
 import { createShortcutsStore } from '../src/client/store.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { initialShortcutConfig, bindingIssue, normalizeBinding, presentBinding } from '@deepseek-ai/dsh-client-shortcuts/protocol'
-import type { ShortcutConfigSnapshot } from '@deepseek-ai/dsh-client-shortcuts/protocol'
+import type { ShortcutConfigSnapshot, SystemShortcutState } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { ShortcutRegistry } from '../../shortcuts/src/client/registry.ts'
 import { apply as hostApply } from '../src/index.ts'
 import { fixedCommands } from '../src/client/fixed.ts'
@@ -52,10 +52,10 @@ it.each(['macos', 'windows'] as const)('shows the reference, filters labels and 
   hostApply()
   const store = createShortcutsStore().create()
   const catalog = createSnapshotStore<readonly ShortcutCatalogEntry[]>([
-    { id: 'shortcuts.open' as ShortcutCommandId, label: 'Open shortcuts', aliases: ['shortcuts'], binding: { code: 'Slash', modifiers: [platform === 'macos' ? 'meta' : 'control'] }, modified: false, conflicts: [], issue: null,
+    { id: 'shortcuts.open' as ShortcutCommandId, scope: 'application', label: 'Open shortcuts', aliases: ['shortcuts'], binding: { code: 'Slash', modifiers: [platform === 'macos' ? 'meta' : 'control'] }, modified: false, conflicts: [], issue: null,
       keys: platform === 'macos' ? ['⌘', '/'] : ['Ctrl', '+', '/'], aria: platform === 'macos' ? 'Meta+/' : 'Control+/' },
-    { id: 'settings.open' as ShortcutCommandId, label: 'Open settings', aliases: ['preferences'], binding: null, modified: false, conflicts: [], issue: null, keys: [], aria: undefined },
-    { id: 'sidebar.left.toggle' as ShortcutCommandId, label: 'Toggle left sidebar', aliases: ['sidebar', 'toggle left sidebar'],
+    { id: 'settings.open' as ShortcutCommandId, scope: 'application', label: 'Open settings', aliases: ['preferences'], binding: null, modified: false, conflicts: [], issue: null, keys: [], aria: undefined },
+    { id: 'sidebar.left.toggle' as ShortcutCommandId, scope: 'application', label: 'Toggle left sidebar', aliases: ['sidebar', 'toggle left sidebar'],
       binding: { code: 'KeyB', modifiers: [platform === 'macos' ? 'meta' : 'control'] }, modified: false, conflicts: [], issue: null,
       keys: platform === 'macos' ? ['⌘', 'B'] : ['Ctrl', '+', 'B'], aria: platform === 'macos' ? 'Meta+B' : 'Control+B' },
   ])
@@ -69,7 +69,10 @@ it.each(['macos', 'windows'] as const)('shows the reference, filters labels and 
   registry.registerFixed({ id: 'composer.alternate' as ShortcutCommandId, label: () => 'Alternate delivery',
     keys: describe({ code: 'Enter', modifiers: ['primary'] }).keys,
     bindings: [{ code: 'Enter', modifiers: ['primary'] }], group: 'input' })
+  const systemCatalog = createSnapshotStore<readonly ShortcutCatalogEntry[]>([])
+  const globalState = createSnapshotStore<SystemShortcutState>({ registrations: [], suspended: false })
   const props = { actions: store.actions, useStore: bindSnapshotSelector(store), useCatalog: bindSnapshotSelector(catalog),
+    useSystemCatalog: bindSnapshotSelector(systemCatalog), useGlobal: bindSnapshotSelector(globalState),
     useConfig: bindSnapshotSelector(config), useFixedCatalog: bindSnapshotSelector(registry.fixedCatalog), runtime: 'web', edit: async () => ({ status: 'saved', snapshot: config.getSnapshot() }), recording: async () => {},
     describeBinding: describe, platform, t: makeTranslate(en) } as Parameters<typeof ShortcutReference>[0]
   render(<><ShortcutsRow {...props} /><ShortcutReference {...props} /></>)
@@ -119,14 +122,16 @@ it.each(['macos', 'windows'] as const)('shows the reference, filters labels and 
 it('saves individual edits and disables changes when configuration cannot be read', async () => {
   const store = createShortcutsStore().create()
   const catalog = createSnapshotStore<readonly ShortcutCatalogEntry[]>([
-    { id: 'shortcuts.open' as ShortcutCommandId, label: 'Open shortcuts', aliases: [], binding: null, modified: true,
+    { id: 'shortcuts.open' as ShortcutCommandId, scope: 'application', label: 'Open shortcuts', aliases: [], binding: null, modified: true,
       conflicts: ['other.action' as ShortcutCommandId], issue: null, keys: [], aria: undefined },
-    { id: 'settings.open' as ShortcutCommandId, label: 'Open settings', aliases: [], binding: null, modified: true,
+    { id: 'settings.open' as ShortcutCommandId, scope: 'application', label: 'Open settings', aliases: [], binding: null, modified: true,
       conflicts: [], issue: 'reserved', keys: [], aria: undefined },
   ])
   const config = createSnapshotStore<ShortcutConfigSnapshot>(initialShortcutConfig())
   const edit = vi.fn(async () => ({ status: 'saved' as const, snapshot: config.getSnapshot() }))
   const props = { actions: store.actions, useStore: bindSnapshotSelector(store), useCatalog: bindSnapshotSelector(catalog),
+    useSystemCatalog: bindSnapshotSelector(createSnapshotStore<readonly ShortcutCatalogEntry[]>([])),
+    useGlobal: bindSnapshotSelector(createSnapshotStore<SystemShortcutState>({ registrations: [], suspended: false })),
     useConfig: bindSnapshotSelector(config), useFixedCatalog: bindSnapshotSelector(createSnapshotStore([])), runtime: 'web', platform: 'macos', edit, recording: async () => {},
     describeBinding, t: makeTranslate(en) } as Parameters<typeof ShortcutReference>[0]
   store.actions.open()
@@ -154,22 +159,43 @@ it('saves individual edits and disables changes when configuration cannot be rea
   expect(screen.getByRole('button', { name: 'Edit shortcut for Open shortcuts' }).hasAttribute('disabled')).toBe(true)
 })
 
-function referenceFixture({ runtime = 'web', dictionary = en }: { runtime?: 'web' | 'desktop'; dictionary?: typeof en } = {}) {
+/** Carrier report that marks every requested system command as registered. */
+function registeredGlobalState(rows: readonly ShortcutCatalogEntry[]): SystemShortcutState {
+  return { registrations: rows.map(row => ({ id: row.id, accelerator: 'Command+J', status: 'registered' as const })), suspended: false }
+}
+
+/** One system-scope row with representative keycaps for the Global group. */
+function systemEntry(overrides: Partial<ShortcutCatalogEntry> = {}): ShortcutCatalogEntry {
+  return { id: 'orb.toggle' as ShortcutCommandId, scope: 'system', label: 'Show orb panel', aliases: ['orb'],
+    binding: { code: 'KeyJ', modifiers: ['meta'] }, modified: false, conflicts: [], issue: null,
+    keys: ['⌘', 'J'], aria: 'Meta+J', ...overrides }
+}
+
+function referenceFixture({ runtime = 'web', dictionary = en, system = [] as readonly ShortcutCatalogEntry[],
+  global = registeredGlobalState(system) }: {
+  runtime?: 'web' | 'desktop'
+  dictionary?: typeof en
+  system?: readonly ShortcutCatalogEntry[]
+  global?: SystemShortcutState
+} = {}) {
   const store = createShortcutsStore().create()
   const catalog = createSnapshotStore<readonly ShortcutCatalogEntry[]>([
-    { id: 'settings.open' as ShortcutCommandId, label: 'Open settings', aliases: [],
+    { id: 'settings.open' as ShortcutCommandId, scope: 'application', label: 'Open settings', aliases: [],
       binding: { code: 'Comma', modifiers: ['shift', 'meta'] }, modified: false,
       conflicts: [], issue: null, keys: ['⇧', '⌘', ','], aria: 'Shift+Meta+,' },
   ])
+  const systemCatalog = createSnapshotStore<readonly ShortcutCatalogEntry[]>(system)
+  const globalState = createSnapshotStore<SystemShortcutState>(global)
   const config = createSnapshotStore<ShortcutConfigSnapshot>({ ...initialShortcutConfig(), status: 'ready' })
   const fixedCatalog = createSnapshotStore<readonly ShortcutFixedCatalogEntry[]>([])
   const edit = vi.fn<Parameters<typeof ShortcutReference>[0]['edit']>(async () => ({ status: 'saved', snapshot: config.getSnapshot() }))
   store.actions.open()
   const props = { actions: store.actions, useStore: bindSnapshotSelector(store), useCatalog: bindSnapshotSelector(catalog),
+    useSystemCatalog: bindSnapshotSelector(systemCatalog), useGlobal: bindSnapshotSelector(globalState),
     useConfig: bindSnapshotSelector(config), useFixedCatalog: bindSnapshotSelector(fixedCatalog), runtime, platform: 'macos', edit,
     recording: async () => {}, describeBinding, t: makeTranslate(dictionary) } as Parameters<typeof ShortcutReference>[0]
   const view = render(<ShortcutReference {...props} />)
-  return { store, catalog, fixedCatalog, config, edit, view }
+  return { store, catalog, systemCatalog, fixedCatalog, config, edit, global: globalState, view }
 }
 
 it('keeps core actions in product order across registration, remount and label changes', () => {
@@ -585,4 +611,129 @@ it('preserves a failed draft when its status text is clicked, then retries after
   await act(async () => { within(editor).getByRole('button', { name: en['retry-save'] }).click() })
   expect(f.edit).toHaveBeenLastCalledWith({ type: 'set', id: 'settings.open', binding: { code: 'Period', modifiers: ['shift', 'meta'] } }, f.config.getSnapshot().revision)
   expect(screen.queryByRole('group', { name: 'Open settings' })).toBeNull()
+})
+
+it('lists global commands with keycaps and the shared editor on Desktop', async () => {
+  const f = referenceFixture({ runtime: 'desktop', system: [
+    systemEntry(),
+    systemEntry({ id: 'orb.voice' as ShortcutCommandId, label: 'Start voice input', aliases: ['voice'], binding: null, keys: [], aria: undefined }),
+  ] })
+  const region = screen.getByRole('region', { name: en.global })
+  expect(within(region).getByRole('heading', { name: en.global })).toBeTruthy()
+  expect(within(region).getByText(en['global-description'])).toBeTruthy()
+  const rows = within(region).getAllByRole('listitem')
+  expect(rows).toHaveLength(2)
+  expect(within(rows[0]!).getByText('Show orb panel')).toBeTruthy()
+  expect(rows[0]!.textContent).toContain('⌘J')
+  expect(within(rows[1]!).getByText('Start voice input')).toBeTruthy()
+  expect(within(rows[1]!).getByText(en.unbound)).toBeTruthy()
+  expect(within(region).getByRole('button', { name: en['global-reset-all'] }).hasAttribute('disabled')).toBe(true)
+  expect(within(region).queryByText(en['global-failed'])).toBeNull()
+  fireEvent.click(within(rows[0]!).getByRole('button', { name: 'Edit shortcut for Show orb panel' }))
+  const editor = screen.getByRole('group', { name: 'Show orb panel' })
+  expect(within(editor).getByRole('button', { name: en.clear })).toBeTruthy()
+  await act(async () => { within(editor).getByRole('button', { name: en.reset }).click() })
+  expect(f.edit).toHaveBeenLastCalledWith({ type: 'reset', id: 'orb.toggle', scope: 'system' }, f.config.getSnapshot().revision)
+  expect(screen.queryByRole('group', { name: 'Show orb panel' })).toBeNull()
+})
+
+it('reports a carrier registration failure and keeps the previous binding selectable', () => {
+  referenceFixture({ runtime: 'desktop', system: [
+    systemEntry(),
+    systemEntry({ id: 'orb.voice' as ShortcutCommandId, label: 'Start voice input', aliases: [] }),
+  ], global: { registrations: [{ id: 'orb.toggle' as ShortcutCommandId, accelerator: 'Command+J', status: 'failed' }], suspended: false } })
+  const region = screen.getByRole('region', { name: en.global })
+  const rows = within(region).getAllByRole('listitem')
+  expect(within(rows[0]!).getByRole('status').textContent).toBe(en['global-failed'])
+  expect(rows[0]!.textContent).toContain('⌘J')
+  expect(within(rows[0]!).getByRole('button', { name: 'Edit shortcut for Show orb panel' }).hasAttribute('disabled')).toBe(false)
+  expect(within(rows[1]!).queryByRole('status')).toBeNull()
+})
+
+it('pauses registration reporting while a shortcut recording is active', () => {
+  referenceFixture({ runtime: 'desktop', system: [systemEntry()],
+    global: { registrations: [{ id: 'orb.toggle' as ShortcutCommandId, accelerator: 'Command+J', status: 'failed' }], suspended: true } })
+  expect(screen.getByText(en['global-suspended'])).toBeTruthy()
+  expect(screen.queryByText(en['global-description'])).toBeNull()
+  expect(screen.queryByText(en['global-failed'])).toBeNull()
+  expect(screen.getByRole('button', { name: 'Edit shortcut for Show orb panel' })).toBeTruthy()
+})
+
+it('explains that global shortcuts are desktop-only in the Web app', () => {
+  referenceFixture({ runtime: 'web', system: [systemEntry()] })
+  const region = screen.getByRole('region', { name: en.global })
+  expect(within(region).getByText(en['global-web'])).toBeTruthy()
+  expect(within(region).queryAllByRole('button')).toHaveLength(0)
+  expect(within(region).queryAllByRole('listitem')).toHaveLength(0)
+})
+
+it('explains the platform limitation instead of offering global controls', () => {
+  referenceFixture({ runtime: 'desktop', system: [systemEntry()],
+    global: { registrations: [], suspended: false, unavailable: 'platform' } })
+  const region = screen.getByRole('region', { name: en.global })
+  expect(within(region).getByText(en['global-platform'])).toBeTruthy()
+  expect(within(region).queryAllByRole('button')).toHaveLength(0)
+})
+
+it('offers no global editing when the window cannot carry OS registration', () => {
+  referenceFixture({ runtime: 'desktop', system: [systemEntry()],
+    global: { registrations: [], suspended: false, unavailable: 'carrier' } })
+  const region = screen.getByRole('region', { name: en.global })
+  expect(within(region).getByText(en['global-carrier'])).toBeTruthy()
+  expect(within(region).queryAllByRole('button')).toHaveLength(0)
+})
+
+it('keeps application rows unchanged when the profile registers no system commands', () => {
+  referenceFixture({ runtime: 'desktop' })
+  expect(screen.queryByRole('region', { name: en.global })).toBeNull()
+  expect(screen.getAllByRole('listitem')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: 'Edit shortcut for Open settings' })).toBeTruthy()
+})
+
+it('restores every global shortcut through the system scope after confirmation', async () => {
+  const f = referenceFixture({ runtime: 'desktop', system: [
+    systemEntry({ modified: true }),
+    systemEntry({ id: 'orb.voice' as ShortcutCommandId, label: 'Start voice input', aliases: [], modified: true, binding: null, keys: [], aria: undefined }),
+  ] })
+  act(() => {
+    f.config.set({ ...f.config.getSnapshot(), document: { schemaVersion: 3, profiles: {}, system: {
+      'orb.toggle': { code: 'KeyJ', modifiers: ['meta'] }, 'orb.voice': null,
+    } } })
+  })
+  const region = screen.getByRole('region', { name: en.global })
+  expect(within(region).getByText('2 customized')).toBeTruthy()
+  expect(screen.getByRole('button', { name: en['reset-all'] }).hasAttribute('disabled')).toBe(true)
+  const restore = within(region).getByRole('button', { name: en['global-reset-all'] })
+  expect(restore.hasAttribute('disabled')).toBe(false)
+  restore.focus(); fireEvent.click(restore)
+  const confirmation = screen.getByRole('dialog', { name: en['global-reset-title'] })
+  expect(confirmation.textContent).toContain(en['global-reset-description'])
+  await act(async () => { within(confirmation).getByRole('button', { name: en.reset }).click() })
+  expect(f.edit).toHaveBeenLastCalledWith({ type: 'reset-all', scope: 'system' }, f.config.getSnapshot().revision)
+  expect(screen.queryByRole('dialog', { name: en['global-reset-title'] })).toBeNull()
+  expect(screen.getByRole('alert').textContent).toBe(en['reset-saved'])
+})
+
+it('blocks the global restore while another shortcut write is pending', async () => {
+  const f = referenceFixture({ runtime: 'desktop', system: [systemEntry({ modified: true })] })
+  act(() => {
+    f.config.set({ ...f.config.getSnapshot(), document: { schemaVersion: 3, profiles: {}, system: { 'orb.toggle': null } } })
+  })
+  const pending = Promise.withResolvers<Awaited<ReturnType<typeof f.edit>>>()
+  f.edit.mockReturnValueOnce(pending.promise)
+  const region = screen.getByRole('region', { name: en.global })
+  fireEvent.click(within(region).getByRole('button', { name: 'Edit shortcut for Show orb panel' }))
+  await act(async () => { within(screen.getByRole('group', { name: 'Show orb panel' })).getByRole('button', { name: en.reset }).click() })
+  expect(within(region).getByRole('button', { name: en['global-reset-all'] }).hasAttribute('disabled')).toBe(true)
+  await act(async () => { pending.resolve({ status: 'saved', snapshot: f.config.getSnapshot() }); await pending.promise })
+  expect(within(region).getByRole('button', { name: en['global-reset-all'] }).hasAttribute('disabled')).toBe(false)
+})
+
+it('disables global editing while preferences cannot be read', () => {
+  const f = referenceFixture({ runtime: 'desktop', system: [systemEntry()] })
+  act(() => { f.config.set({ ...f.config.getSnapshot(), status: 'unreadable', error: null }) })
+  const region = screen.getByRole('region', { name: en.global })
+  expect(within(region).getByRole('button', { name: 'Edit shortcut for Show orb panel' }).hasAttribute('disabled')).toBe(true)
+  expect(within(region).getByRole('button', { name: en['global-reset-all'] }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('alert').textContent).toContain('userData/keybindings.json')
 })

@@ -533,7 +533,7 @@ it('opens the section requested by the contributed sidebar launcher', () => {
 })
 
 it('shows the effective settings binding on focus and exposes it to assistive technology', () => {
-  mount({ shortcuts: [{ id: 'settings.open' as ShortcutCommandId, label: 'Open settings', aliases: [], keys: ['⌘', ','], aria: 'Meta+,', binding: { code: 'Comma', modifiers: ['meta'] }, modified: false, conflicts: [], issue: null }] })
+  mount({ shortcuts: [{ scope: 'application', id: 'settings.open' as ShortcutCommandId, label: 'Open settings', aliases: [], keys: ['⌘', ','], aria: 'Meta+,', binding: { code: 'Comma', modifiers: ['meta'] }, modified: false, conflicts: [], issue: null }] })
   const trigger = screen.getByRole('button', { name: 'Settings' })
   expect(trigger.getAttribute('aria-keyshortcuts')).toBe('Meta+,')
   fireEvent.focus(trigger)
@@ -541,7 +541,7 @@ it('shows the effective settings binding on focus and exposes it to assistive te
 })
 
 it('passes current Settings key labels to the launcher and removes them when unbound', () => {
-  const row: ShortcutCatalogEntry = { id: 'settings.open' as ShortcutCommandId, label: 'Open settings', aliases: [], keys: ['⌘', ','], aria: 'Meta+,', binding: { code: 'Comma', modifiers: ['meta'] }, modified: false, conflicts: [], issue: null }
+  const row: ShortcutCatalogEntry = { scope: 'application', id: 'settings.open' as ShortcutCommandId, label: 'Open settings', aliases: [], keys: ['⌘', ','], aria: 'Meta+,', binding: { code: 'Comma', modifiers: ['meta'] }, modified: false, conflicts: [], issue: null }
   const { renderSlot, setShortcuts } = mount({ shortcuts: [row] })
   const launcher = () => renderSlot.mock.calls.filter(call => call[0] === 'settings.launcher').at(-1)?.[1]
   expect(launcher()).toMatchObject({ settingsShortcut: { keys: ['⌘', ','], aria: 'Meta+,' } })

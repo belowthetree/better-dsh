@@ -6,6 +6,9 @@ import type { ShortcutCommandId } from './binding.ts'
 export type DesktopShortcutInput = {
   readonly revision: ShortcutRevision
 } & ({ readonly kind: 'menu'; readonly commandId: ShortcutCommandId }
+  /** An OS-global accelerator carries no keyboard event, so the variant has no frame name or modifier fields.
+   * The client executes it like a menu selection. */
+  | { readonly kind: 'global'; readonly commandId: ShortcutCommandId }
   | { readonly kind: 'keyboard' | 'iframe' | 'webview'
     readonly frameName: string
     readonly code: string

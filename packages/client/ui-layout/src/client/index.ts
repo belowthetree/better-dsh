@@ -5,14 +5,18 @@
  * layout store (panel geometry), and wires the panel-action service face.
  * ctx.layout selects the main panel and controls column geometry; Session
  * selection belongs to the Session Controller. A second effect seats the theme
- * presenter, which projects ctx.theme snapshots onto document.body.
+ * presenter, which projects ctx.theme snapshots onto document.body. An optional
+ * surface service drives the frame's presentation: without one, the frame stays
+ * classic.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { PanelInfo } from './service.ts'
 import { AppFrame } from './AppFrame.tsx'
 import type { AppFrameInjected } from './AppFrame.tsx'
@@ -106,6 +110,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
     /**
+     * Modal content seat for the form modal presentation. Entries register a
+     * stable id and render inside the frame's dimmed, focus-trapped card while
+     * `ctx.surface.snapshot().modal` names that id. The frame owns the
+     * backdrop, focus trap, and Escape/backdrop dismissal; an entry owns only
+     * its content. A classic profile that never enters the modal presentation
+     * renders no entry.
+     */
+    'shell.modal': { kind: 'list'; scope: 'root' }
+    /**
      * Window-chrome seat at the frame's top-left, over every main panel.
      * Mounted for narrow drawers and collapsed macOS desktop sidebars. macOS
      * traffic lights sit before it outside native fullscreen; browser controls
@@ -153,6 +166,11 @@ export interface RightbarOwnerProps {
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme', 'locale', 'shortcuts']
 
+/** Presentation reported until an optional surface carrier publishes its own. */
+const CLASSIC_SURFACE: SurfaceSnapshot = Object.freeze({
+  form: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+})
+
 /**
  * Client plugin body: provide ctx.layout, then one register() call — AppFrame
  * into 'root' with its child-slot declarations, the layout store seat,
@@ -162,6 +180,12 @@ export const inject = ['slots', 'theme', 'locale', 'shortcuts']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register('shortcuts.layout', { zh, en, ja, es, fr, de, ru, pt }), 'layout: command labels')
   const t = ctx.locale.bind('shortcuts.layout')
+  const surfaceSnapshot = createSnapshotStore<SurfaceSnapshot>(CLASSIC_SURFACE)
+  const dismissModal = (): void => {
+    ctx.get('surface')?.dismissModal().catch((error: unknown) => {
+      console.error('ui-layout: surface modal dismissal failed', error)
+    })
+  }
 
   ctx.effect(() => {
     // Headless profiles can instantiate client registrations without browser media APIs.
@@ -198,10 +222,14 @@ export function apply(ctx: ClientContext): void {
         'rightbar': { kind: 'single', scope: 'root' },
         'shell.bottom': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
+        'shell.modal': { kind: 'list', scope: 'root' },
         'shell.leading': { kind: 'single', scope: 'root' },
       },
       store,
-      inject: (): AppFrameInjected => ({ hooks: { foldedLandscape } }),
+      inject: (): AppFrameInjected => ({
+        hooks: { foldedLandscape, surface: surfaceSnapshot },
+        dismissModal,
+      }),
     }, AppFrame)
     const disposeShortcut = ctx.shortcuts.register({
       id: 'sidebar.left.toggle' as ShortcutCommandId, label: () => t('toggle'), aliases: ['sidebar', 'toggle left sidebar'],
@@ -229,6 +257,33 @@ export function apply(ctx: ClientContext): void {
       void disposeService()
     }
   }, 'ui-layout: service + root registration')
+
+  // The surface service is optional: a profile without a form carrier keeps the
+  // classic presentation, and unloading the service restores it.
+  ctx.inject(['surface'], (scope) => {
+    surfaceSnapshot.set(scope.surface.snapshot())
+    const controller = new AbortController()
+    // The frameless orb and modal windows render over a transparent page; the
+    // web shell's opaque body background steps aside through this root attribute.
+    const root = typeof document === 'undefined' ? undefined : document.documentElement
+    const mirror = (snapshot: SurfaceSnapshot): void => {
+      if (snapshot.presentation === 'orb' || snapshot.presentation === 'modal') {
+        if (root !== undefined) root.dataset.surface = snapshot.presentation
+      } else if (root !== undefined) delete root.dataset.surface
+    }
+    mirror(scope.surface.snapshot())
+    scope.effect(() => () => {
+      controller.abort()
+      surfaceSnapshot.set(CLASSIC_SURFACE)
+      if (root !== undefined) delete root.dataset.surface
+    }, 'ui-layout: surface presentation')
+    void (async (): Promise<void> => {
+      for await (const snapshot of scope.surface.follow(controller.signal)) {
+        surfaceSnapshot.set(snapshot)
+        mirror(snapshot)
+      }
+    })()
+  })
 
   // Theme presentation: pure DOM writes from resolved snapshots — initial
   // state through the getter once, then event-driven only; no React path.

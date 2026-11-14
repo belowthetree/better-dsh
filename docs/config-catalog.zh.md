@@ -344,6 +344,27 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-terminal-controller -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-api-text-to-speech -->
+<a id="deepseek-aidsh-api-text-to-speech"></a>
+
+## `@deepseek-ai/dsh-api-text-to-speech`
+
+- `inject`: `textToSpeech` · `typert`
+- `source`: [`packages/experimental/api-text-to-speech/src/index.ts:18`](../packages/experimental/api-text-to-speech/src/index.ts)
+
+```ts config-catalog
+/** Limits applied before text admission, audio encoding, and provider time. */
+export interface Config {
+  /** Maximum UTF-16 code units of trimmed text per request. */
+  maxTextChars: number
+  /** Maximum encoded audio bytes per request. */
+  maxAudioBytes: number
+  /** Milliseconds one provider call may take before the request times out. */
+  timeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-text-to-speech -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-controller -->
 <a id="deepseek-aidsh-api-workspace-controller"></a>
 
@@ -4085,6 +4106,30 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-terminal-panel -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-text-to-speech -->
+<a id="deepseek-aidsh-text-to-speech"></a>
+
+## `@deepseek-ai/dsh-text-to-speech`
+
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/experimental/text-to-speech/src/index.ts:20`](../packages/experimental/text-to-speech/src/index.ts)
+
+```ts config-catalog
+/** Live selection read before a synthesis starts; `configure()` writes it through the profile. */
+export interface Config {
+  /** Registered provider selected when the caller omits an id. */
+  defaultProvider: Volatile<string>
+  /** Provider voice selected when the caller omits one. */
+  voiceId: Volatile<string>
+  /** Encoded audio format selected when the caller omits one. */
+  format: Volatile<TextToSpeechFormat>
+}
+
+/** Encoded audio container this version understands; providers return these bytes and never write a file. */
+export type TextToSpeechFormat = 'wav'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-text-to-speech -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-time-context -->
 <a id="deepseek-aidsh-time-context"></a>
 
@@ -5089,6 +5134,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-locale` | — | [`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts) |
 | `@deepseek-ai/dsh-client-modules` | `loader` | [`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts) |
 | `@deepseek-ai/dsh-client-resources` | — | [`packages/client/resources/src/index.ts`](../packages/client/resources/src/index.ts) |
+| `@deepseek-ai/dsh-client-surface` | — | [`packages/client/surface/src/index.ts`](../packages/client/surface/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-action-cards` | — | [`packages/experimental/client-ui-action-cards/src/index.ts`](../packages/experimental/client-ui-action-cards/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-agent-preset` | — | [`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-agent-team` | — | [`packages/client/ui-agent-team/src/index.ts`](../packages/client/ui-agent-team/src/index.ts) |
@@ -5114,6 +5160,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-message-feedback` | — | [`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-model-selection` | — | [`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-open-in-app` | — | [`packages/client/ui-open-in-app/src/index.ts`](../packages/client/ui-open-in-app/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-orb` | — | [`packages/experimental/client-ui-orb/src/index.ts`](../packages/experimental/client-ui-orb/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-permission-presets` | — | [`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plan` | — | [`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plugin-market` | — | [`packages/client/ui-plugin-market/src/index.ts`](../packages/client/ui-plugin-market/src/index.ts) |
@@ -5142,8 +5189,10 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-subagent` | — | [`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-tool` | — | [`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-user-questions` | — | [`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-voice-output` | — | [`packages/experimental/client-ui-voice-output/src/index.ts`](../packages/experimental/client-ui-voice-output/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-workflow-run` | — | [`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-workspace` | — | [`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts) |
+| `@deepseek-ai/dsh-client-voice-capture` | — | [`packages/experimental/client-voice-capture/src/index.ts`](../packages/experimental/client-voice-capture/src/index.ts) |
 | `@deepseek-ai/dsh-command-compact` | `commands` · `compaction` | [`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts) |
 | `@deepseek-ai/dsh-command-feedback` | `commands` | [`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts) |
 | `@deepseek-ai/dsh-command-goal` | `commands` · `goals` | [`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts) |
@@ -5235,6 +5284,7 @@ export interface Config {
 | `@deepseek-ai/dsh-app-boot` | — | [`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts) |
 | `@deepseek-ai/dsh-atomic-write` | — | [`packages/util/atomic-write/src/index.ts`](../packages/util/atomic-write/src/index.ts) |
 | `@deepseek-ai/dsh-base` | — | [`packages/bundle/base/src/index.ts`](../packages/bundle/base/src/index.ts) |
+| `@deepseek-ai/dsh-better-bundle` | — | [`packages/experimental/better-bundle/src/index.ts`](../packages/experimental/better-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-brand` | — | [`packages/util/brand/src/index.ts`](../packages/util/brand/src/index.ts) |
 | `@deepseek-ai/dsh-chunked-list` | — | [`packages/util/chunked-list/src/index.ts`](../packages/util/chunked-list/src/index.ts) |
 | `@deepseek-ai/dsh-client-store` | — | [`packages/client/store/src/index.ts`](../packages/client/store/src/index.ts) |

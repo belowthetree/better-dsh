@@ -988,7 +988,7 @@ describe('slot-owned useTabInfo', () => {
   it('keeps the current binding in the disabled split tooltip when it changes or is cleared', async () => {
     const h = await mountSeat()
     const split: ShortcutCatalogEntry = {
-      id: 'pane.split' as ShortcutCommandId, label: 'Split', aliases: [],
+      scope: 'application', id: 'pane.split' as ShortcutCommandId, label: 'Split', aliases: [],
       binding: { code: 'Backslash', modifiers: ['meta'] }, modified: false, conflicts: [], issue: null,
       keys: ['⌘', '\\'], aria: 'Meta+\\',
     }
@@ -1011,7 +1011,7 @@ describe('slot-owned useTabInfo', () => {
 
   it('advertises configured pane and page-close controls', async () => {
     const h = await mountSeat()
-    const entry = (id: string): ShortcutCatalogEntry => ({ id: id as ShortcutCommandId,
+    const entry = (id: string): ShortcutCatalogEntry => ({ scope: 'application', id: id as ShortcutCommandId,
       label: id, aliases: [], binding: null, modified: true, conflicts: [], issue: null,
       keys: ['Ctrl', 'G'], aria: 'Control+G' })
     act(() => {

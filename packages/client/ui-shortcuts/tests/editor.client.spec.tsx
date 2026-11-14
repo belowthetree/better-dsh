@@ -2,6 +2,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { ShortcutCatalogEntry, ShortcutFixedCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { ShortcutRegistry } from '../../shortcuts/src/client/registry.ts'
 import { bindingIssue, initialShortcutConfig, normalizeBinding, overlappingBindings, presentBinding, ShortcutPersistence } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import type { ShortcutCommandId, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
@@ -104,6 +106,7 @@ async function mount(options: {
   const onClose = vi.fn(), onSaved = vi.fn(), onError = vi.fn(), recording = vi.fn(options.recording ?? (async () => {}))
   const view = render(<ShortcutEditor target={registry.catalog.getSnapshot()[0]!}
     useFixedCatalog={bindSnapshotSelector(registry.fixedCatalog)}
+    useSystemCatalog={bindSnapshotSelector(createSnapshotStore<readonly ShortcutCatalogEntry[]>([]))}
     useCatalog={bindSnapshotSelector(registry.catalog)} useConfig={bindSnapshotSelector(registry.config)}
     runtime={runtime} platform={platform}
     edit={(edit, revision) => options.result?.() ?? persistence.edit(edit, revision)}
@@ -560,4 +563,38 @@ it.each(['macos', 'windows'] as const)('retains %s Web Escape cancellation, Tab 
   expect(f.onClose).toHaveBeenCalledOnce()
   expect(f.storage.write).not.toHaveBeenCalled()
   expect(screen.queryByRole('button', { name: 'Cancel recording' })).toBeNull()
+})
+
+it('edits a system command with system validation and scope-tagged operations', async () => {
+  const systemId = 'orb.toggle' as ShortcutCommandId
+  const target: ShortcutCatalogEntry = { id: systemId, scope: 'system', label: 'Show orb panel', aliases: [],
+    binding: { code: 'KeyJ', modifiers: ['meta'] }, modified: false, conflicts: [], issue: null, keys: ['⌘', 'J'], aria: 'Meta+J' }
+  const config = createSnapshotStore({ ...initialShortcutConfig(), status: 'ready' as const })
+  const describe = vi.fn<Parameters<typeof ShortcutEditor>[0]['describeBinding']>((binding, scope) => {
+    const normalized = binding === null ? null : normalizeBinding(binding, 'macos')
+    return { binding: normalized, keys: presentBinding(normalized, 'macos').keys, issue: null,
+      conflicts: scope === 'system' ? ['orb.voice' as ShortcutCommandId] : [] }
+  })
+  const edit = vi.fn<Parameters<typeof ShortcutEditor>[0]['edit']>(async () => ({ status: 'saved', snapshot: config.getSnapshot() }))
+  const onError = vi.fn()
+  render(<ShortcutEditor target={target} useCatalog={bindSnapshotSelector(createSnapshotStore<readonly ShortcutCatalogEntry[]>([]))}
+    useSystemCatalog={bindSnapshotSelector(createSnapshotStore<readonly ShortcutCatalogEntry[]>([
+      { id: 'orb.voice' as ShortcutCommandId, scope: 'system', label: 'Start voice input', aliases: [], binding: null, modified: false,
+        conflicts: [], issue: null, keys: [], aria: undefined },
+    ]))}
+    useConfig={bindSnapshotSelector(config)}
+    useFixedCatalog={bindSnapshotSelector(createSnapshotStore<readonly ShortcutFixedCatalogEntry[]>([]))}
+    runtime="desktop" platform="macos" edit={edit} describeBinding={describe} recording={async () => {}}
+    t={makeTranslate(en)} onClose={() => {}} onSaved={() => {}} onError={onError} />)
+  await waitFor(() => { expect(screen.getByRole('button', { name: en.record }).hasAttribute('disabled')).toBe(false) })
+  const recorder = screen.getByRole('button', { name: en.record }); recorder.focus()
+  fireEvent.keyDown(recorder, { code: 'KeyK', key: 'k', metaKey: true })
+  fireEvent.keyUp(recorder, { code: 'KeyK' })
+  expect(describe).toHaveBeenCalledWith({ code: 'KeyK', modifiers: ['meta'] }, 'system')
+  expect(onError).toHaveBeenLastCalledWith(en.conflict.replace('{commands}', 'Start voice input'))
+  expect(edit).not.toHaveBeenCalled()
+  await act(async () => { screen.getByRole('button', { name: en.clear }).click() })
+  expect(edit).toHaveBeenLastCalledWith({ type: 'set', id: systemId, binding: null, scope: 'system' }, config.getSnapshot().revision)
+  await act(async () => { screen.getByRole('button', { name: en.reset }).click() })
+  expect(edit).toHaveBeenLastCalledWith({ type: 'reset', id: systemId, scope: 'system' }, config.getSnapshot().revision)
 })

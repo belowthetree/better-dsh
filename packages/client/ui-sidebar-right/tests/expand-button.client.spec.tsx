@@ -60,7 +60,7 @@ function mountButton(shortcuts: readonly ShortcutCatalogEntry[] = [], mobile = f
 
 describe('ExpandButton', () => {
   it('advertises the configured expand binding', async () => {
-    const { instance, control, view } = mountButton([{ id: 'sidebar.right.toggle' as never, label: 'Toggle', aliases: [],
+    const { instance, control, view } = mountButton([{ scope: 'application', id: 'sidebar.right.toggle' as never, label: 'Toggle', aliases: [],
       binding: null, keys: ['Ctrl', 'B'], aria: 'Control+B', modified: true, conflicts: [], issue: null }], true)
     expect(control()?.getAttribute('aria-keyshortcuts')).toBe('Control+B')
     fireEvent.pointerEnter(control()!)

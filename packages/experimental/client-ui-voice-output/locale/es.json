@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Salida de voz",
+    "description": "Lee las respuestas completadas del asistente con una política de lectura automática, selección de voz y silencio."
+  }
+}

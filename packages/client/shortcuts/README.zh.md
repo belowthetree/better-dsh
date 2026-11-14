@@ -31,7 +31,9 @@ Web 应用 bundle 自动挂载此包。功能插件在 `ctx.effect()` 中通过 
 
 功能插件通过 `registerFixed()` 贡献只读序列，通过 `observeFixedInput()` 观察局部控件处理后的输入。固定操作行随所属注册和语言变化；owner 可使用 `application` 展示分组，操作仍不可编辑。每个操作至少声明一个物理按键组合，不保存覆盖配置。这些组合参与冲突校验，不能分配给可编辑命令。Host 的 `stopSequenceMs` 配置控制连续两次 Esc 的最大间隔，默认为 500 毫秒，只接受 1 至 2,147,483,646 的整数，确保过期计时不超过浏览器定时器上限；页面加载时采用已校验的值。
 
-偏好只保存覆盖：缺少命令表示继承默认，`null` 表示清除绑定，恢复默认则删除覆盖。全部恢复只影响当前运行端／平台配置。Web 使用同 origin 的 `dsh.keybindings.v1` 存储；Desktop 使用 Electron 设备本地的 `userData/keybindings.json`，与 Harness home 和工作区设置独立。其 schema 版本与 Session 数据无关。 macOS 和 Windows Desktop 读取版本 1 时不重写，在下次成功编辑时保存为版本 2；版本 2 增加可选的 `secondCode`。Web 和 Linux 保留原有绑定限制。
+偏好只保存覆盖：缺少命令表示继承默认，`null` 表示清除绑定，恢复默认则删除覆盖。全部恢复只影响当前运行端／平台配置。Web 使用同 origin 的 `dsh.keybindings.v1` 存储；Desktop 使用 Electron 设备本地的 `userData/keybindings.json`，与 Harness home 和工作区设置独立。其 schema 版本与 Session 数据无关。 macOS 和 Windows Desktop 读取版本 1 时不重写，在下次成功编辑时保存为版本 2；版本 2 增加可选的 `secondCode`，而任何系统命令编辑都会保存带 `system` 映射的版本 3。Web 和 Linux 保留原有绑定限制。
+
+Desktop 还会把 `scope: 'system'` 命令注册为操作系统全局加速器。系统命令只声明 Desktop 默认值，使用一个普通物理键并至少包含一个修饰键（允许单独的功能键），从不使用双键组合；其已接受绑定保存在 schema 版本 3 的设备级 `system` 映射中，而不是某个运行端／平台配置。主进程推导 Electron 加速器，在每次目录或偏好变化后重新注册，并把每次尝试报告给渲染进程；已被操作系统或其他应用占用的组合会以 `failed` 状态保持可见，原绑定继续生效。录制层占用输入期间暂停注册，退出时全部释放。全局激活以带 revision 的命令到达渲染进程，并像原生菜单选择一样执行。Windows 与 macOS 会注册；Linux 将系统命令报告为不可用，并保留其聚焦窗口模型。
 
 Windows 和 macOS Desktop 接受一至两个不同的受支持非修饰键，可搭配零至四个修饰键。双键绑定要求按住时间重叠，顺序不限；先后按键不匹配。仅含修饰键的绑定会被拒绝。同一修饰键集合下，单键与包含该键的双键组合冲突，包括固定操作占用的按键。已保存的绑定若与当前挂载的固定操作冲突，会保留显示但不能执行。包括 Command+C 和 Ctrl+C 在内的所有有效绑定优先于原生操作、编辑器、终端、内嵌页面和模态控件。录制和输入法组合状态仍受保护。只有两个键都按住时，双键组合才优先接管；第一个键仍正常处理，可能输入一个字符。
 
@@ -78,6 +80,8 @@ Desktop 原生菜单和内嵌 frame 使用与 DOM 输入相同的命令注册表
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
+
+- 操作系统全局加速器没有按键抬起事件，因此系统级命令每次按下只触发一次，无法承载按住式通话手势。操作系统保留的组合、媒体键以及 Wayland 合成器的限制会以注册失败的形式呈现，而不是在设置绑定时被拒绝。
 
 - 功能 owner 显式声明 Windows 和 macOS Web 的默认键位：Mod+Slash、Mod+Backslash 和 Control+Backquote 保持双键；其他不含 Alt 的默认键位使用 Mod+Alt，含 Alt 的使用 Mod+Shift，其中全屏使用 Mod+Alt+Enter，会话重命名使用 Mod+Alt+G。Web 设置使用 Mod+Alt+Comma，将 Mod+Comma 留给浏览器。macOS Web 的“刷新当前页”默认不绑定快捷键，以保留浏览器自身的 Command+Option+R 操作；刷新按钮和用户显式绑定仍然可用。Mod 在 macOS 上为 Command，在 Windows 上为 Control。Windows 和 macOS 的 Web、Desktop 均接受任意三个或四个不同修饰键的组合。Web 还接受上述组合及 Mod+Shift 组合；浏览器或系统能否送达按键需在对应平台测试。Linux Web 接受 Mod+Slash、Mod+Shift+Comma 和 Mod+Shift+Period。未送达窗口的操作系统快捷键无法被拦截。双键组合等待第二个键时，不延迟或消费第一个键；原生操作或焦点变化可能使组合无法完成。命令注册或注销会使打开的编辑草稿过期，即使保存的偏好未改变。Desktop 在每次命令目录更新时重新读取文件，不设置文件 watcher。
 

@@ -263,6 +263,9 @@
   "references": [
     { "path": "../../packages/experimental/auto-review" },
     {
+      "path": "../../packages/client/surface/tsconfig.host.json"
+    },
+    {
       "path": "../../packages/client/store"
     },
     {

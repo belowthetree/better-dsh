@@ -31,7 +31,7 @@ function names(root: HTMLElement): string[] {
 
 describe('FilesBody', () => {
   it('displays the effective file-tree refresh accelerator', async () => {
-    const { view, script } = mountBody(ROOT, { refreshShortcut: { id: 'page.refresh' as never, label: 'Refresh', aliases: [],
+    const { view, script } = mountBody(ROOT, { refreshShortcut: { scope: 'application', id: 'page.refresh' as never, label: 'Refresh', aliases: [],
       binding: null, keys: ['Ctrl', 'R'], aria: 'Control+R', modified: true, conflicts: [], issue: null } })
     await act(() => script.watches.ready(ROOT))
     await act(() => script.settle({ ok: true, value: ROOT_LEVEL }))

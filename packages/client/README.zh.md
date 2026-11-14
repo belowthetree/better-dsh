@@ -31,6 +31,7 @@ kind: "package-group"
 | [`connection/`](connection/README.zh.md) | 维护浏览器与宿主之间的 RPC 通信与事件投递 | `ctx.connection` |
 | [`file-upload/`](file-upload/README.zh.md) | 在页面线程之外发送原始 Blob 与字节流请求体 | `ctx.fileUpload` |
 | [`shortcuts/`](shortcuts/README.zh.md) | 注册应用键盘命令 | `ctx.shortcuts` |
+| [`surface/`](surface/README.zh.md) | 跟踪桌面产品窗口的外壳形态与呈现方式 | `ctx.surface` |
 | [`ui-shortcuts/`](ui-shortcuts/README.zh.md) | 展示快捷键速查 | — |
 | [`store/`](store/README.zh.md) | 提供不依赖 React 的 observable 与快照存储原语 | — |
 | [`hmr/`](hmr/README.zh.md) | 在开发期间刷新客户端插件 | — |

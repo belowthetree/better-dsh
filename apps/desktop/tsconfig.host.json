@@ -15,6 +15,9 @@
       "path": "../../packages/util/official-bundles"
     },
     {
+      "path": "../../packages/util/package-manifest"
+    },
+    {
       "path": "../../packages/util/home-paths"
     },
     {
@@ -28,6 +31,9 @@
     },
     {
       "path": "../../packages/client/shortcuts/tsconfig.host.json"
+    },
+    {
+      "path": "../../packages/client/surface/tsconfig.host.json"
     },
     {
       "path": "../../packages/util/atomic-write"

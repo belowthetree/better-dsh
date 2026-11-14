@@ -187,6 +187,8 @@ async function bootWeb(
   let profile: Profile = { skippedBundles: [],
     name: surface,
     dir: profileDir,
+    form: { kind: 'classic' },
+    owner: undefined,
     layers: [],
     patchPath: join(profileDir, 'cordis.patch.yml'),
     patches: [],

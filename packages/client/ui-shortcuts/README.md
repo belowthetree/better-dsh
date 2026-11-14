@@ -1,5 +1,5 @@
 ---
-description: "Browse the commands available in the current window and find them by action, English alias, or key"
+description: "Browse this window's commands and the device's global commands by action, English alias, or key"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Browse the commands available in the current window and find them by action, English alias, or key. Open the reference from General Settings or Mod+/. Record, clear, or restore application bindings; fixed input actions remain read-only.
+Browse the current window's commands and the Desktop's OS-global commands, and find them by action, English alias, or key. Open the reference from General Settings or Mod+/. Record, clear, or restore application bindings; on Desktop the Global group edits system-scope bindings and reports their OS registration; fixed input actions remain read-only.
 
 ## Table of Contents
 
@@ -35,6 +35,8 @@ Search matches an ordered subsequence within one label, English alias, or key co
 
 Hover an application row to highlight its rounded surface and reveal the edit icon; keyboard focus also reveals the icon. Clicking anywhere on the row starts its inline recorder. Unbound commands omit the inline Remove action. Windows and macOS Desktop record one or two overlapping non-modifier keys with optional modifiers; a third key rejects the draft. Releasing the first key saves the current combination, so sequential A then B records only A. Saving rejects combinations occupied by editable or fixed actions, including overlapping single-key and two-key bindings. The dialog close control exits recording. The recorder keeps the same height as key badges and uses a neutral grey border with secondary text. Other environments retain Escape cancellation and Tab navigation. Saving and cancellation return focus to the dialog. Clicking blank dialog space outside the inline editor closes it and discards any held combination; clicking its status text preserves the draft. macOS Web can record Option+Command+N reported as a dead key; composition and ordinary accent input remain protected. Remove clears the binding; Restore Default removes only that command’s override. System toasts announce successful writes and failures; a rejected combination marks the recorder with an error border. Release its non-modifier keys to record another combination without clicking; modifiers may remain held. Repeated identical errors leave a visible toast and its dismissal time unchanged; different errors and successful writes replace it immediately. An error can appear again after dismissal. Failed writes retain recorder focus and the draft for Retry Save or another recording. Configuration or command-catalog changes require review before a draft can be retried. Read failures disable editing and identify the active bindings and affected document in a system toast: Web uses the current origin’s localStorage entry `dsh.keybindings.v1`; Desktop uses `userData/keybindings.json`. Back up and repair damaged data before reloading the page or restarting Harness; upgrade Harness for a document written by a newer version. Restore All never overwrites unreadable data. The footer shows Restore All Defaults and the current runtime/platform’s override count, including removed bindings and commands that are not currently mounted. Search does not change the count. At zero overrides, the count is hidden and the action is disabled. Its confirmation initially focuses Cancel; cancellation returns focus to Restore All Defaults, including when opened from the recorder. Confirming restores only this profile. A stale revision closes the confirmation and requires another confirmation against the latest configuration; a failed write retains the accepted bindings and allows retry.
 
+The Global group follows the application rows on Desktop and lists the profile's system-scope commands with the same keycap blocks and inline recorder. Its description states that these shortcuts work while any application is focused. Remove and Restore default act on one command; Restore all global shortcuts restores only the device-global overrides, and its customized count is independent of the window-scoped count in the footer. A combination that the operating system or another application owns keeps the previous binding, shows an actionable failure message on its row, and stays editable so another combination can be chosen; a successful registration leaves the row unchanged. OS-global registration is suspended while a recorder is open, and the group reports that pause. On Web, and on a Desktop device or window that cannot register OS-global accelerators, the group explains why instead of offering controls. A profile that registers no system commands shows no Global group.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -43,7 +45,7 @@ Hover an application row to highlight its rounded surface and reveal the edit ic
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The General Settings entry and shell overlay share one declared interaction store. Catalog and configuration updates arrive through injected observable hooks; recording and persistence use injected service callbacks. The shared modal primitive owns top-layer Escape, Tab traversal, and restoration to the invoking control.
+The General Settings entry and shell overlay share one declared interaction store. Catalog and configuration updates arrive through injected observable hooks; recording and persistence use injected service callbacks. The shared modal primitive owns top-layer Escape, Tab traversal, and restoration to the invoking control. System rows and their OS-global registration state arrive through separate injected hooks; the reference joins registrations to commands by command ID and never owns accelerators.
 
 All fixed actions come from the service's observable fixed catalog. Conversation and approval plugins contribute their own actions; this integration contributes shared menu actions. Rows follow locale updates and disappear when their registration is disposed.
 
@@ -75,6 +77,8 @@ None; this package neither assembles nor sends a provider request.
 
 - Loading or unloading command owners invalidates an open recording draft even when saved overrides are unchanged; review the current bindings before retrying.
 - Key recording uses physical positions with US-layout key names. Browser combinations are limited by the [shortcut service](../shortcuts/README.md). Only mounted feature owners contribute approval and double-Escape stop rows.
+- Electron reports no key release for OS-global shortcuts, so a held-key gesture behaves as press-to-start and press-to-stop; native key-state polling is deferred.
+- An OS-global combination that another application, the operating system, a media key, or a Wayland compositor owns is reported after registration is refused, not prevented. Linux and Web register no OS-global accelerators, so the Global group offers no controls there.
 
 <a id="dev-note"></a>
 ### Dev Note

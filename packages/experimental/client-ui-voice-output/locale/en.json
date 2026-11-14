@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Voice output",
+    "description": "Speaks completed assistant replies with an auto-speak policy, voice selection, and mute."
+  }
+}

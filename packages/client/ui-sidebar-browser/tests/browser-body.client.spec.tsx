@@ -88,7 +88,7 @@ afterEach(async () => {
 
 describe('BrowserBody', () => {
   it('displays the effective browser refresh accelerator', () => {
-    const mounted = mountBrowser(undefined, { refreshShortcut: { id: 'page.refresh' as never,
+    const mounted = mountBrowser(undefined, { refreshShortcut: { scope: 'application', id: 'page.refresh' as never,
       label: 'Refresh', aliases: [], binding: null, keys: ['Ctrl', 'R'], aria: 'Control+R',
       modified: true, conflicts: [], issue: null } })
     expect(mounted.view.getByRole('button', { name: zh.reload }).getAttribute('aria-keyshortcuts')).toBe('Control+R')

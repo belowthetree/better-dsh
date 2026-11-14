@@ -10,6 +10,7 @@ import { AppFrame } from '../src/client/AppFrame.tsx'
 import type { AppFrameProps } from '../src/client/AppFrame.tsx'
 import type { MainPanelId, RightbarOwnerProps, SidebarOwnerProps } from '../src/client/index.ts'
 import { createLayoutStore } from '../src/client/stores.ts'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
@@ -36,6 +37,11 @@ let animationFrames: Map<number, FrameRequestCallback>
 let nextFrame: number
 let originalTitle: string
 let foldedLandscape: SnapshotStore<boolean>
+let surfaceState: SnapshotStore<SurfaceSnapshot>
+/** Presentation without a carrier: the classic profile. */
+const CLASSIC_SURFACE: SurfaceSnapshot = {
+  form: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+}
 const restoreProperties: (() => void)[] = []
 
 function replaceProperty<T extends object, K extends keyof T>(target: T, key: K, value: T[K]): void {
@@ -63,7 +69,7 @@ function resize(width: number): void {
   })
 }
 
-function mountFrame(windowWidth = frameWidth, content?: AppFrameProps['renderSlot']) {
+function mountFrame(windowWidth = frameWidth, content?: AppFrameProps['renderSlot'], dismissModal: () => void = () => {}) {
   vi.stubGlobal('innerWidth', windowWidth)
   const instance = createLayoutStore().create()
   const slotCalls: { key: string; props: object; options: RenderOpts | undefined }[] = []
@@ -99,6 +105,8 @@ function mountFrame(windowWidth = frameWidth, content?: AppFrameProps['renderSlo
       useSessions={useSessions}
       usePanelInfo={usePanelInfo}
       useFoldedLandscape={bindSnapshotSelector(foldedLandscape)}
+      useSurface={bindSnapshotSelector(surfaceState)}
+      dismissModal={dismissModal}
       useSessionStatus={useSessionStatus}
       useSessionRetainInfo={() => undefined}
       useContextMenu={contextMenuHook()} useResource={useResource}
@@ -157,6 +165,7 @@ beforeEach(() => {
   vi.stubEnv('DSH_CLIENT_TITLE', undefined)
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   foldedLandscape = createSnapshotStore(false)
+  surfaceState = createSnapshotStore(CLASSIC_SURFACE)
   vi.stubGlobal('matchMedia', () => ({ matches: false }))
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     const id = nextFrame++
@@ -795,5 +804,112 @@ describe('sidebar drawer', () => {
     resize(767)
     expect(sidebarOwner().collapsed).toBe(true)
     expect(tracks(frame)).toEqual([0, 0])
+  })
+})
+
+describe('AppFrame surface presentations', () => {
+  /** Presentation used by a form profile's collapsed and expanded states. */
+  const ORB: SurfaceSnapshot = {
+    form: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+  }
+
+  it('keeps the classic frame unchanged without a carrier presentation', () => {
+    const { frame, slotCalls } = mountFrame()
+    expect(frame.hasAttribute('data-surface')).toBe(false)
+    expect(tracks(frame)).toEqual([280, 0])
+    expect(slotCalls.some(call => call.key === 'shell.modal')).toBe(false)
+  })
+
+  it('marks the panel presentation while rendering the classic frame', () => {
+    surfaceState = createSnapshotStore({ ...ORB, presentation: 'panel' })
+    const { frame, getByTestId } = mountFrame()
+    expect(frame.dataset.surface).toBe('panel')
+    expect(getByTestId('main-content')).toBeTruthy()
+    expect(getByTestId('sidebar-content')).toBeTruthy()
+  })
+
+  it('renders the transparent orb root with only the overlay seat', () => {
+    surfaceState = createSnapshotStore(ORB)
+    const { frame, slotCalls, getByTestId } = mountFrame()
+    expect(frame.dataset.surface).toBe('orb')
+    expect(getByTestId('shell.overlay-content')).toBeTruthy()
+    expect(slotCalls.map(call => call.key)).toEqual(['shell.overlay'])
+    expect(frame.querySelector('[data-shell-modal]')).toBeNull()
+  })
+
+  it('renders the modal backdrop and the active shell.modal entry', () => {
+    const dismissModal = vi.fn()
+    surfaceState = createSnapshotStore({ ...ORB, presentation: 'modal', modal: 'voice-setup' })
+    const content: AppFrameProps['renderSlot'] = key => key === 'shell.modal'
+      ? <button data-testid="modal-action">confirm</button>
+      : <div data-testid={`${key}-content`} />
+    const { frame, slotCalls, getByTestId } = mountFrame(undefined, content, dismissModal)
+    expect(frame.dataset.surface).toBe('modal')
+    expect(slotCalls.find(call => call.key === 'shell.modal')).toEqual({
+      key: 'shell.modal', props: {}, options: { only: 'voice-setup' },
+    })
+    const dialog = frame.querySelector('[data-shell-modal]')
+    expect(dialog?.getAttribute('role')).toBe('dialog')
+    expect(dialog?.getAttribute('aria-modal')).toBe('true')
+    expect(document.activeElement).toBe(getByTestId('modal-action'))
+    // Escape and a backdrop click dismiss; a click inside the card does not.
+    expect(fireEvent.keyDown(getByTestId('modal-action'), { key: 'Escape' })).toBe(false)
+    expect(dismissModal).toHaveBeenCalledTimes(1)
+    fireEvent.click(frame.querySelector('[data-shell-modal-backdrop]')!)
+    expect(dismissModal).toHaveBeenCalledTimes(2)
+    fireEvent.click(getByTestId('modal-action'))
+    expect(dismissModal).toHaveBeenCalledTimes(2)
+  })
+
+  it('renders no modal layer while the modal presentation has no active entry', () => {
+    surfaceState = createSnapshotStore({ ...ORB, presentation: 'modal' })
+    const { frame, slotCalls } = mountFrame()
+    expect(frame.dataset.surface).toBe('modal')
+    expect(frame.querySelector('[data-shell-modal]')).toBeNull()
+    expect(slotCalls.map(call => call.key)).toEqual(['shell.overlay'])
+  })
+
+  it('traps Tab focus in the card, wraps both ends, and restores focus on close', () => {
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    outside.focus()
+    surfaceState = createSnapshotStore({ ...ORB, presentation: 'modal', modal: 'voice-setup' })
+    const content: AppFrameProps['renderSlot'] = key => key === 'shell.modal'
+      ? <><button data-testid="first">first</button><button data-testid="second">second</button></>
+      : <div data-testid={`${key}-content`} />
+    const { getByTestId, rerenderFrame } = mountFrame(undefined, content)
+    const first = getByTestId('first')
+    const second = getByTestId('second')
+    expect(document.activeElement).toBe(first)
+    // Shift+Tab from the first element wraps to the last.
+    expect(fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })).toBe(false)
+    expect(document.activeElement).toBe(second)
+    // Tab from the last element wraps to the first.
+    expect(fireEvent.keyDown(second, { key: 'Tab' })).toBe(false)
+    expect(document.activeElement).toBe(first)
+    // Interior navigation and other keys keep their native behavior.
+    expect(fireEvent.keyDown(first, { key: 'Tab' })).toBe(true)
+    expect(fireEvent.keyDown(first, { key: 'a' })).toBe(true)
+    act(() => { surfaceState.set(CLASSIC_SURFACE) })
+    rerenderFrame()
+    expect(document.activeElement).toBe(outside)
+    outside.remove()
+  })
+
+  it('focuses the card itself when the entry has nothing focusable', () => {
+    surfaceState = createSnapshotStore({ ...ORB, presentation: 'modal', modal: 'voice-setup' })
+    const { frame } = mountFrame()
+    const card = frame.querySelector<HTMLElement>('[data-shell-modal]')
+    if (card === null) throw new Error('the modal card did not mount')
+    expect(document.activeElement).toBe(card)
+    expect(fireEvent.keyDown(card, { key: 'Tab' })).toBe(false)
+    expect(document.activeElement).toBe(card)
+  })
+
+  it('restores no focus when no element owned it before the modal opened', () => {
+    replaceProperty(document, 'activeElement', null)
+    surfaceState = createSnapshotStore({ ...ORB, presentation: 'modal', modal: 'voice-setup' })
+    const { unmount } = mountFrame()
+    unmount()
   })
 })

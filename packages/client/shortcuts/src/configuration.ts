@@ -1,12 +1,18 @@
 /** Validated preference documents and deterministic conflict resolution, without browser dependencies. */
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { bindingKey, isWebBindingAllowed, normalizeBinding } from './binding.ts'
-import type { NormalizedBinding, ShortcutBinding, ShortcutCommandId, ShortcutModifier, ShortcutPlatform, ShortcutProfile, ShortcutRuntime } from './binding.ts'
+import { SYSTEM_SHORTCUT_CODES } from './system.ts'
+import type {
+  NormalizedBinding, ShortcutBinding, ShortcutCommandId, ShortcutModifier, ShortcutPlatform, ShortcutProfile,
+  ShortcutRuntime, ShortcutScope,
+} from './binding.ts'
 
 /** Overrides are platform-local; absent commands inherit defaults and null explicitly unbinds. */
 export interface ShortcutDocument {
-  readonly schemaVersion: 1 | 2
+  readonly schemaVersion: 1 | 2 | 3
   readonly profiles: Readonly<Partial<Record<ShortcutProfile, Readonly<Record<string, ShortcutBinding | null>>>>>
+  /** Device-global system-command overrides; only schema version 3 carries the field. */
+  readonly system?: Readonly<Record<string, ShortcutBinding | null>>
 }
 /** Serializable command definitions accepted from the trusted product frame. */
 export interface ShortcutDefinition {
@@ -14,6 +20,8 @@ export interface ShortcutDefinition {
   readonly defaults: Readonly<Partial<Record<ShortcutProfile, ShortcutBinding>>>
   /** Fixed actions reserve one or more combinations instead of exposing an editable default. */
   readonly fixed?: readonly [ShortcutBinding, ...ShortcutBinding[]]
+  /** Input channel owning the command; absent means application. */
+  readonly scope?: ShortcutScope
 }
 /** Validation failures select localized copy in the UI. */
 export type BindingIssue = 'reserved' | 'unsupported-browser' | 'modifier-required' | 'unsupported-key'
@@ -26,8 +34,8 @@ export interface EffectiveShortcut {
   readonly issue: BindingIssue | null
 }
 /** One revision-checked preference edit, limited to the current runtime and platform. */
-export type ShortcutEdit = { type: 'set'; id: ShortcutCommandId; binding: ShortcutBinding | null }
-  | { type: 'reset'; id: ShortcutCommandId } | { type: 'reset-all' }
+export type ShortcutEdit = { type: 'set'; id: ShortcutCommandId; binding: ShortcutBinding | null; readonly scope?: ShortcutScope }
+  | { type: 'reset'; id: ShortcutCommandId; readonly scope?: ShortcutScope } | { type: 'reset-all'; readonly scope?: ShortcutScope }
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const commandPattern = /^[a-z][a-zA-Z0-9-]*(?:\.[a-zA-Z][a-zA-Z0-9-]*)+$/u
@@ -64,9 +72,9 @@ export function parseShortcutDocument(raw: string | null): ShortcutDocument | 'i
   try {
     const value: unknown = JSON.parse(raw)
     if (!record(value)) return 'invalid'
-    if (typeof value.schemaVersion === 'number' && value.schemaVersion > 2) return 'future'
-    if ((value.schemaVersion !== 1 && value.schemaVersion !== 2) || !record(value.profiles)
-      || Object.keys(value).some(key => key !== 'schemaVersion' && key !== 'profiles')) return 'invalid'
+    if (typeof value.schemaVersion === 'number' && value.schemaVersion > 3) return 'future'
+    if ((value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3) || !record(value.profiles)
+      || Object.keys(value).some(key => key !== 'schemaVersion' && key !== 'profiles' && key !== 'system')) return 'invalid'
     const profiles: Record<string, Record<string, ShortcutBinding | null>> = {}
     for (const [profile, overrides] of Object.entries(value.profiles)) {
       if (!/^(desktop|web):(macos|windows|linux)$/u.test(profile) || !record(overrides)) return 'invalid'
@@ -79,7 +87,16 @@ export function parseShortcutDocument(raw: string | null): ShortcutDocument | 'i
       }
       profiles[profile] = bindings
     }
-    return { schemaVersion: value.schemaVersion, profiles }
+    let system: Record<string, ShortcutBinding | null> | undefined
+    if (Object.hasOwn(value, 'system')) {
+      if (value.schemaVersion !== 3 || !record(value.system)) return 'invalid'
+      system = {}
+      for (const [id, binding] of Object.entries(value.system)) {
+        if (!commandPattern.test(id)) return 'invalid'
+        system[id] = parseBinding(binding)
+      }
+    }
+    return { schemaVersion: value.schemaVersion, profiles, ...(system === undefined ? {} : { system }) }
   } catch (_error) {
     // Invalid JSON and invalid binding fields both preserve the original document.
     return 'invalid'
@@ -113,6 +130,35 @@ export function bindingIssue(binding: NormalizedBinding, runtime: ShortcutRuntim
 }
 
 /**
+ * Report whether a command registers an OS-global key rather than a focused-window key.
+ * @param definition - command identity and per-profile defaults.
+ * @returns true for system scope; an absent scope means application scope.
+ */
+export function isSystemCommand(definition: ShortcutDefinition): boolean {
+  return definition.scope === 'system'
+}
+
+/**
+ * Check whether Desktop may attempt native registration of one system binding.
+ * macOS and Windows reservations are not rejected statically because native registration reports them as failures.
+ * @param binding - normalized candidate.
+ * @param runtime - receiving application shell; only Desktop owns OS-global input.
+ * @param platform - receiving device whose native registration reports reservations.
+ * @returns the rejection reason, or null when this device may attempt registration.
+ */
+export function systemShortcutIssue(binding: NormalizedBinding, runtime: ShortcutRuntime,
+  platform?: ShortcutPlatform): BindingIssue | null {
+  // The device only owns the failure report, so no reservation is rejected here.
+  void platform
+  if (runtime !== 'desktop') return 'unsupported-browser'
+  if (binding.secondCode !== undefined) return 'unsupported-key'
+  const { code, modifiers } = binding
+  if (!SYSTEM_SHORTCUT_CODES.includes(code)) return 'unsupported-key'
+  if (modifiers.length === 0 && !/^F([1-9]|1[0-9]|2[0-4])$/u.test(code)) return 'modifier-required'
+  return null
+}
+
+/**
  * Select the command owner's explicit default for one device profile.
  * @param definition - command identity and per-profile defaults.
  * @param runtime - receiving shell.
@@ -135,20 +181,76 @@ export function resolveShortcutDefault(definition: ShortcutDefinition, runtime: 
 export function effectiveShortcuts(definitions: readonly ShortcutDefinition[], document: ShortcutDocument,
   runtime: ShortcutRuntime, platform: ShortcutPlatform): readonly EffectiveShortcut[] {
   const overrides = document.profiles[`${runtime}:${platform}`] ?? {}
-  const fixed = definitions.flatMap(row => row.fixed?.map(binding => ({ id: row.id, binding: normalizeBinding(binding, platform) })) ?? [])
-  const rows = definitions.filter(row => row.fixed === undefined).map(({ id, defaults }) => {
+  const application = definitions.filter(definition => !isSystemCommand(definition))
+  const fixed = application.flatMap(row => row.fixed?.map(binding => ({ id: row.id, binding: normalizeBinding(binding, platform) })) ?? [])
+  const rows = application.filter(row => row.fixed === undefined).map(({ id, defaults }) => {
     const modified = Object.hasOwn(overrides, id)
     const candidate = modified ? overrides[id] : resolveShortcutDefault({ id, defaults }, runtime, platform)
     const binding = candidate == null ? null : normalizeBinding(candidate, platform)
     return { id, binding, modified, issue: binding === null ? null : bindingIssue(binding, runtime, platform) }
   })
+  const system = resolvedSystemRows(definitions, document, platform)
+  /* jscpd:ignore-start -- each channel reports overlaps against its own row set so one validation change cannot alter the other. */
   return rows.map((row) => {
     const binding = row.binding
     return { ...row, conflicts: binding === null ? [] : [...new Set([...rows.filter(other => other.id !== row.id
       && other.binding !== null && other.issue === null && overlappingBindings(other.binding, binding)
       && (!row.modified || other.modified)).map(other => other.id),
-    ...fixed.filter(other => overlappingBindings(other.binding, binding)).map(other => other.id)])] }
+    ...fixed.filter(other => overlappingBindings(other.binding, binding)).map(other => other.id),
+    ...system.filter(other => other.binding !== null && other.issue === null
+      && overlappingBindings(other.binding, binding)).map(other => other.id)])] }
   })
+  /* jscpd:ignore-end */
+}
+
+/** One resolved command row before cross-command conflicts are computed. */
+interface ResolvedShortcutRow {
+  readonly id: ShortcutCommandId
+  readonly binding: NormalizedBinding | null
+  readonly modified: boolean
+  readonly issue: BindingIssue | null
+}
+
+/**
+ * Resolve system rows from device-global overrides and Desktop defaults.
+ * @param definitions - active commands.
+ * @param document - accepted preferences.
+ * @param platform - receiving Desktop device.
+ * @returns one row per system command before conflict resolution.
+ */
+function resolvedSystemRows(definitions: readonly ShortcutDefinition[], document: ShortcutDocument,
+  platform: ShortcutPlatform): readonly ResolvedShortcutRow[] {
+  const overrides: Readonly<Record<string, ShortcutBinding | null>> = document.system ?? {}
+  return definitions.filter(isSystemCommand).map(({ id, defaults }) => {
+    const modified = Object.hasOwn(overrides, id)
+    const candidate = modified ? overrides[id] : defaults[`desktop:${platform}`]
+    const binding = candidate == null ? null : normalizeBinding(candidate, platform)
+    return { id, binding, modified, issue: binding === null ? null : systemShortcutIssue(binding, 'desktop', platform) }
+  })
+}
+
+/**
+ * Resolve OS-global system rows and their conflicts for one Desktop device.
+ * @param definitions - active commands; application commands contribute conflicts only.
+ * @param document - accepted preferences.
+ * @param platform - receiving Desktop device.
+ * @returns one row per system command, including rows this device cannot register.
+ */
+export function effectiveSystemShortcuts(definitions: readonly ShortcutDefinition[], document: ShortcutDocument,
+  platform: ShortcutPlatform): readonly EffectiveShortcut[] {
+  const rows = resolvedSystemRows(definitions, document, platform)
+  const application = effectiveShortcuts(definitions.filter(definition => !isSystemCommand(definition)), document, 'desktop', platform)
+  /* jscpd:ignore-start -- the system channel keeps its own overlap expression for the same reason as the application channel. */
+  return rows.map((row) => {
+    const binding = row.binding
+    return { ...row, conflicts: binding === null ? [] : [...new Set([
+      ...rows.filter(other => other.id !== row.id && other.binding !== null && other.issue === null
+        && overlappingBindings(other.binding, binding) && (!row.modified || other.modified)).map(other => other.id),
+      ...application.filter(other => other.binding !== null && other.issue === null
+        && overlappingBindings(other.binding, binding)).map(other => other.id),
+    ])] }
+  })
+  /* jscpd:ignore-end */
 }
 
 /**
@@ -164,30 +266,46 @@ export function overlappingBindings(left: NormalizedBinding, right: NormalizedBi
 }
 
 /**
- * Apply an edit without modifying other profiles or dormant overrides.
+ * Apply an edit without modifying other profiles, dormant overrides, or the other scope.
  * @param document - accepted document.
  * @param edit - validated operation.
  * @param runtime - current shell.
  * @param platform - current device.
+ * @param scope - input channel the edit addresses; application keeps today's profile overrides.
  * @returns the candidate document, pending conflict checks and durable storage.
  */
 export function editShortcutDocument(document: ShortcutDocument, edit: ShortcutEdit,
-  runtime: ShortcutRuntime, platform: ShortcutPlatform): ShortcutDocument {
-  const schemaVersion = runtime === 'desktop' && (platform === 'macos' || platform === 'windows') ? 2 : document.schemaVersion
+  runtime: ShortcutRuntime, platform: ShortcutPlatform, scope: ShortcutScope = 'application'): ShortcutDocument {
+  if (scope === 'system') return { ...document, schemaVersion: 3, system: applyShortcutEdit(document.system ?? {}, edit) }
+  const schemaVersion: 1 | 2 | 3 = runtime === 'desktop' && (platform === 'macos' || platform === 'windows')
+    ? document.schemaVersion === 3 ? 3 : 2
+    : document.schemaVersion
   const profile = `${runtime}:${platform}` as const
-  let overrides = { ...document.profiles[profile] }
+  return { ...document, schemaVersion,
+    profiles: { ...document.profiles, [profile]: applyShortcutEdit(document.profiles[profile] ?? {}, edit) } }
+}
+
+/**
+ * Apply one edit to one override map.
+ * @param overrides - current overrides for the addressed profile or the device-global system map.
+ * @param edit - validated operation.
+ * @returns the edited map; other entries are preserved.
+ */
+function applyShortcutEdit(overrides: Readonly<Record<string, ShortcutBinding | null>>,
+  edit: ShortcutEdit): Record<string, ShortcutBinding | null> {
+  let next = { ...overrides }
   switch (edit.type) {
-    case 'set': overrides[edit.id] = edit.binding; break
+    case 'set': next[edit.id] = edit.binding; break
     case 'reset': {
-      const { [edit.id]: _removed, ...remaining } = overrides
-      overrides = remaining
+      const { [edit.id]: _removed, ...remaining } = next
+      next = remaining
       break
     }
-    case 'reset-all': overrides = {}; break
+    case 'reset-all': next = {}; break
     /* v8 ignore next -- parseShortcutEdit validates this closed union before persistence. */
     default: return assertNever(edit, 'shortcut edit')
   }
-  return { schemaVersion, profiles: { ...document.profiles, [profile]: overrides } }
+  return next
 }
 
 /**
@@ -197,11 +315,25 @@ export function editShortcutDocument(document: ShortcutDocument, edit: ShortcutE
  */
 export function parseShortcutEdit(value: unknown): ShortcutEdit {
   if (!record(value)) throw new Error('Invalid shortcut edit')
-  if (value.type === 'reset-all' && Object.keys(value).length === 1) return { type: value.type }
+  const scope = parseEditScope(value.scope)
+  const scopeField: { readonly scope?: ShortcutScope } = scope === undefined ? {} : { scope }
+  const keys = Object.keys(value).length - (scope === undefined ? 0 : 1)
+  if (value.type === 'reset-all' && keys === 1) return { type: 'reset-all', ...scopeField }
   if (typeof value.id !== 'string' || !commandPattern.test(value.id)) throw new Error('Invalid shortcut command')
-  if (value.type === 'reset' && Object.keys(value).length === 2) return { type: 'reset', id: value.id as ShortcutCommandId }
-  if (value.type === 'set' && Object.keys(value).length === 3) return { type: 'set', id: value.id as ShortcutCommandId, binding: parseBinding(value.binding) }
+  if (value.type === 'reset' && keys === 2) return { type: 'reset', id: value.id as ShortcutCommandId, ...scopeField }
+  if (value.type === 'set' && keys === 3) return { type: 'set', id: value.id as ShortcutCommandId, binding: parseBinding(value.binding), ...scopeField }
   throw new Error('Invalid shortcut edit')
+}
+
+/**
+ * Validate one optional edit scope.
+ * @param value - untrusted scope field.
+ * @returns the requested channel, or undefined when the field is absent.
+ */
+function parseEditScope(value: unknown): ShortcutScope | undefined {
+  if (value === undefined) return undefined
+  if (value === 'application' || value === 'system') return value
+  throw new Error('Invalid shortcut edit scope')
 }
 
 /**
@@ -214,14 +346,22 @@ export function parseShortcutDefinitions(value: unknown): readonly ShortcutDefin
   const ids = new Set<string>()
   for (const entry of value) {
     if (!record(entry) || typeof entry.id !== 'string' || !commandPattern.test(entry.id) || ids.has(entry.id)
-      || !record(entry.defaults) || Object.keys(entry).some(key => key !== 'id' && key !== 'defaults' && key !== 'fixed')) throw new Error('Invalid shortcut definition')
+      || !record(entry.defaults)
+      || (Object.hasOwn(entry, 'scope') && entry.scope !== 'application' && entry.scope !== 'system')
+      || Object.keys(entry)
+        .some(key => key !== 'id' && key !== 'defaults' && key !== 'fixed' && key !== 'scope')) throw new Error('Invalid shortcut definition')
     ids.add(entry.id)
+    const system = entry.scope === 'system'
     if (Object.hasOwn(entry, 'fixed')) {
-      if (!Array.isArray(entry.fixed) || entry.fixed.length === 0 || Object.keys(entry.defaults).length > 0) throw new Error('Invalid fixed shortcut definition')
+      // A fixed action is read-only and never registers natively.
+      if (!Array.isArray(entry.fixed) || entry.fixed.length === 0 || Object.keys(entry.defaults).length > 0
+        || system) throw new Error('Invalid fixed shortcut definition')
       for (const binding of entry.fixed) if (parseBinding(binding) === null) throw new Error('Invalid fixed shortcut binding')
     }
     for (const [profile, candidate] of Object.entries(entry.defaults)) {
-      if (!/^(desktop|web):(macos|windows|linux)$/u.test(profile)) throw new Error('Invalid shortcut profile')
+      if (!/^(desktop|web):(macos|windows|linux)$/u.test(profile) || (system && !profile.startsWith('desktop:'))) {
+        throw new Error('Invalid shortcut profile')
+      }
       const binding = parseBinding(candidate)
       if (binding === null) throw new Error('Invalid shortcut default')
     }
@@ -234,8 +374,11 @@ export function parseShortcutDefinitions(value: unknown): readonly ShortcutDefin
         const binding = resolveShortcutDefault(entry, runtime, platform)
         if (binding === undefined) continue
         const normalized = normalizeBinding(binding, platform)
-        if (bindings.some(other => overlappingBindings(other, normalized))
-          || bindingIssue(normalized, runtime, platform) !== null) throw new Error('Conflicting or reserved shortcut default')
+        const issue = isSystemCommand(entry)
+          ? systemShortcutIssue(normalized, runtime, platform) : bindingIssue(normalized, runtime, platform)
+        if (bindings.some(other => overlappingBindings(other, normalized)) || issue !== null) {
+          throw new Error('Conflicting or reserved shortcut default')
+        }
         bindings.push(normalized)
       }
     }

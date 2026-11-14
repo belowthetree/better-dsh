@@ -471,6 +471,7 @@ class MatrixFixture {
 
   async observe(mode: 'current' | 'native' = 'current'): Promise<MatrixRow> {
     const profile: Profile = { skippedBundles: [], name: 'web', dir: this.profileDir, layers: [],
+      form: { kind: 'classic' }, owner: undefined,
       patchPath: join(this.profileDir, 'cordis.patch.yml'), patches: [] }
     const resolution = mode === 'current'
       ? await createRuntimeResolution({ installAnchor: join(this.installDir, 'package.json'), profile, home: this.home }) : undefined

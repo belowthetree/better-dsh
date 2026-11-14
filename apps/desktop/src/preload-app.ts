@@ -3,8 +3,10 @@ import type { FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/typ
 
 import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
+import type { SystemShortcutState } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
+import { DESKTOP_IPC, SCHEME, type DesktopBootPayload, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
 import { PLATFORM_IPC } from './platform-ipc.ts'
 import { markDocumentPlatform, syncWindowFullscreen } from './preload-platform.ts'
 import { syncNativeTheme } from './preload-theme.ts'
@@ -64,6 +66,27 @@ function createProductApi(): DshDesktopProductApi {
         ipcRenderer.on(DESKTOP_IPC.shortcutsChanged, handle)
         return () => { ipcRenderer.off(DESKTOP_IPC.shortcutsChanged, handle) }
       },
+      global: () => ipcRenderer.invoke(DESKTOP_IPC.shortcutsGlobal) as Promise<SystemShortcutState>,
+      subscribeGlobal(listener) {
+        const handle = (_event: Electron.IpcRendererEvent, state: SystemShortcutState): void => { listener(state) }
+        ipcRenderer.on(DESKTOP_IPC.shortcutsGlobalChanged, handle)
+        return () => { ipcRenderer.off(DESKTOP_IPC.shortcutsGlobalChanged, handle) }
+      },
+    },
+    surface: {
+      snapshot: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceSnapshot) as Promise<SurfaceSnapshot>,
+      subscribe(listener) {
+        const handle = (_event: Electron.IpcRendererEvent, snapshot: SurfaceSnapshot): void => { listener(snapshot) }
+        ipcRenderer.on(DESKTOP_IPC.surfaceChanged, handle)
+        return () => { ipcRenderer.off(DESKTOP_IPC.surfaceChanged, handle) }
+      },
+      expand: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'expand' }) as Promise<void>,
+      collapse: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'collapse' }) as Promise<void>,
+      presentModal: id => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'presentModal', id }) as Promise<void>,
+      dismissModal: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'dismissModal' }) as Promise<void>,
+      setPinned: pinned => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'setPinned', pinned }) as Promise<void>,
+      dragBy: (deltaX, deltaY) => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'dragBy', deltaX, deltaY }) as Promise<void>,
+      pointerInside: (inside) => { ipcRenderer.send(DESKTOP_IPC.surfacePointer, inside) },
     },
     updates: {
       channels: {
@@ -111,7 +134,7 @@ if (location.protocol === `${SCHEME}:` && location.hostname === 'app') {
     pathFor: (file: File) => webUtils.getPathForFile(file),
   })
   contextBridge.exposeInMainWorld('dshDesktopBoot', {
-    ready: () => ipcRenderer.invoke(DESKTOP_IPC.boot) as Promise<unknown>,
+    ready: () => ipcRenderer.invoke(DESKTOP_IPC.boot) as Promise<DesktopBootPayload>,
     failed: (message: string) => ipcRenderer.invoke(DESKTOP_IPC.bootFailed, message) as Promise<void>,
   })
   contextBridge.exposeInMainWorld('dshPlatform', {

@@ -9,5 +9,7 @@
         dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
     - id: api-speech-to-text
       name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+    - id: client-voice-capture
+      name: '@deepseek-ai/dsh-client-voice-capture'
     - id: ui-voice-input
       name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'

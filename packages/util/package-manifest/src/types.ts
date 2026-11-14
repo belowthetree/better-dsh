@@ -77,10 +77,23 @@ export interface DshBundleManifest {
   listedByDefault?: boolean
 }
 
+/** Shell presentation a profile requests from its desktop carrier. */
+export type DshProfileFormKind = 'classic' | 'orb'
+
+/** Desktop shell presentation declaration of a profile manifest. */
+export interface DshProfileForm {
+  /** Presentation the profile requests; an absent declaration resolves to classic. */
+  readonly kind: DshProfileFormKind
+}
+
 /** The bundle composition declared by a profile directory. */
 export interface DshProfileManifest {
   /** Ordered bundle layer list, using installed package names. */
   bundles?: string[]
+  /** Application that exclusively manages this profile's executable packages; the CLI refuses to manage it. */
+  owner?: 'desktop'
+  /** Desktop shell presentation this profile requests; absent means classic. */
+  form?: DshProfileForm
 }
 
 /** Client module declaration read by client-modules and the client build. */

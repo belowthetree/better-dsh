@@ -65,11 +65,17 @@ kind: "package-group"
 | [`speech-to-text`](speech-to-text/README.zh.md) | 具名语音识别 Provider | `ctx.speechToText` |
 | [`speech-to-text-sensevoice`](speech-to-text-sensevoice/README.zh.md) | 托管本地 SenseVoice 推理 | — |
 | [`api-speech-to-text`](api-speech-to-text/README.zh.md) | 带认证的临时转写 Remote | `ctx.speechController` |
-| [`client-ui-voice-input`](client-ui-voice-input/README.zh.md) | 麦克风录音与版本检查后的草稿插入 | — |
+| [`client-ui-voice-input`](client-ui-voice-input/README.zh.md) | 基于共享捕获服务的输入区控件，插入前检查版本 | — |
+| [`client-ui-orb`](client-ui-orb/README.zh.md) | 形态的球体与面板外观、系统级开关命令，以及形态自有模态内容 | — |
+| [`client-ui-voice-output`](client-ui-voice-output/README.zh.md) | 基于语音输出 Remote 的播放、自动朗读策略、音色选择与静音 | `ctx.voiceOutput` |
+| [`client-voice-capture`](client-voice-capture/README.zh.md) | 共享麦克风捕获、设备偏好与语音 Remote 归属 | `ctx.voiceCapture` |
+| [`text-to-speech`](text-to-speech/README.zh.md) | 具名语音合成 Provider | `ctx.textToSpeech` |
+| [`api-text-to-speech`](api-text-to-speech/README.zh.md) | 带认证的临时语音合成 Remote | `ctx.textToSpeechController` |
 | [`plugin-market-bundle`](plugin-market-bundle/README.zh.md) | 默认禁用的可选自定义插件索引：索引服务和「发现」标签页 | — |
 | [`liveshare`](liveshare/README.zh.md) | 可选 LiveShare host bundle：通过 Relay 以 `view` 或 `write` 档分享会话，派生与附件上传为独立开关 | 注入 `connection`；通过宿主 Web 资源提供查看页 |
 | [`liveshare-protocol`](liveshare-protocol/README.zh.md) | owner bundle 与 Relay 共用的线路帧与身份契约 | 库与协议，不使用 ctx key |
 | [`voice-input-bundle`](voice-input-bundle/README.zh.md) | 默认禁用的可选语音输入组合 | — |
+| [`better-bundle`](better-bundle/README.zh.md) | 默认禁用的可选 Desktop 球体形态，组合 Surface、语音与播放插件 | — |
 | [`client-ui-stats`](client-ui-stats/README.zh.md) | Web 端按轮次与步骤展示上下文、耗时、缓存与工具成本 | — |
 | [`auto-review`](auto-review/README.zh.md) | 显式 Web 层，在每个原生或 PTC inner 工具调用前使用同一模型审查 | — |
 | [`subagent-oar`](subagent-oar/README.zh.md) | 通过 OAR 执行外部编程智能体的独立任务 | `ctx.subagents` |

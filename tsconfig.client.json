@@ -17,6 +17,7 @@
     // The native/renderer keyboard fixture imports only these Cordis-free Desktop modules.
     "apps/desktop/tests/keyboard.spec.ts",
     "apps/desktop/src/keyboard.ts",
+    "apps/desktop/src/global-shortcuts.ts",
     "apps/desktop/src/keybindings.ts",
     "apps/desktop/src/browser-guests.ts",
     "apps/desktop/src/ipc.ts",
@@ -66,6 +67,9 @@
     { "path": "./apps/desktop/tsconfig.client.json" },
     { "path": "./packages/util/atomic-write" },
     { "path": "./packages/experimental/client-ui-voice-input" },
+    { "path": "./packages/experimental/client-voice-capture/tsconfig.client.json" },
+    { "path": "./packages/experimental/client-ui-orb/tsconfig.client.json" },
+    { "path": "./packages/experimental/client-ui-voice-output/tsconfig.client.json" },
     { "path": "./packages/experimental/client-ui-claude-code-mods" },
 
     { "path": "./packages/client/ui-sidebar-terminal" },
@@ -109,6 +113,7 @@
     { "path": "./packages/test-support/remote-mock" },
     { "path": "./packages/test-support/tool-testkit" },
     { "path": "./packages/client/shortcuts/tsconfig.client.json" },
+    { "path": "./packages/client/surface/tsconfig.client.json" },
     { "path": "./packages/client/ui-shortcuts" },
     { "path": "./packages/client/ui-context-menu" },
     { "path": "./packages/client/ui-file-actions" },

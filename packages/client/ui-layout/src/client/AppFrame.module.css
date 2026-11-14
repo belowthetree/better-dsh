@@ -370,3 +370,58 @@
 .overlayLayer > * {
   pointer-events: auto;
 }
+
+/* Presentation roots: the orb and modal windows are frameless and transparent,
+   so the shell layer paints no background outside the seats it renders. */
+.surfaceRoot {
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+/* Modal presentation: a display-sized dimmed backdrop with one centered card.
+   The card traps focus and caps its own width; the entry inside owns the
+   content and its chrome. */
+.modalBackdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 24px;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+}
+
+.modalCard {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(100%, 720px);
+  max-height: 100%;
+  overflow: auto;
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-bg-base);
+  box-shadow: var(--dsw-elevation-panel);
+  outline: none;
+}
+
+/* Panel presentation: the panel window is frameless, so the frame draws the
+   card itself and drops the window-chrome step above its content. The narrow
+   column behavior still follows the measured frame width. */
+.frame[data-surface='panel'] {
+  --dsh-frame-top-clearance: 0px;
+  --dsh-frame-chrome-top: 0px;
+  --dsh-frame-overlay-top: 12px;
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-bg-base);
+  box-shadow: var(--dsw-elevation-panel);
+}
+
+/* A form window carries no Windows caption row, even when the preload mirrors
+   the platform marker onto the document. */
+:global([data-windows-titlebar]) .frame[data-surface='panel'] {
+  padding-top: 0;
+}

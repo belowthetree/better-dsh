@@ -13,26 +13,37 @@
  * shown/track/fullscreen through `ctx.layout`; fullscreen keeps the reported
  * track but hides the outer resize handle. Everything arrives through the framework
  * shares — zero cordis or framework imports, zero self-made hooks.
+ *
+ * The optional surface service selects the frame's presentation: the classic
+ * three-column frame for `classic` and `panel`, and a transparent root holding
+ * the overlay and modal seats for `orb` and `modal`. Without that service the
+ * frame stays classic and renders exactly as before.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import { CENTER_MIN, clampWidth, computeColumns, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_DRAWER_BREAKPOINT } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
 
-/** Browser posture supplied by the root registration. */
+/** Browser posture and presentation supplied by the root registration. */
 export interface AppFrameInjected {
-  hooks: { foldedLandscape: HostObservable<boolean> }
+  hooks: {
+    foldedLandscape: HostObservable<boolean>
+    surface: HostObservable<SurfaceSnapshot>
+  }
+  /** Dismiss the active modal presentation through the optional surface carrier. */
+  dismissModal: () => void
 }
 
-/** Full composed props: runtime, child slots, store, locale, and injected posture. */
+/** Full composed props: runtime, child slots, store, locale, injected posture, and presentation. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'main' | 'rightbar' | 'shell.bottom' | 'shell.overlay' | 'shell.leading'>
+  & PropsRenderSlots<'sidebar' | 'main' | 'rightbar' | 'shell.bottom' | 'shell.overlay' | 'shell.modal' | 'shell.leading'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
   & PropsLocale<'common'>
   & InjectFace<AppFrameInjected>
@@ -125,8 +136,131 @@ function DragHandle(props: { side: 'sidebar' | 'rightbar'; left: number; onStart
   )
 }
 
+/** Presentation the three-column frame renders; the orb and modal presentations replace it. */
+type FramePresentation = 'classic' | 'panel'
+
+/** Descendants the modal card traps focus among, in document order. */
+const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+
+/**
+ * Focusable descendants of the modal card.
+ * @param card - modal card container.
+ * @returns focusable elements in document order.
+ */
+function modalFocusables(card: HTMLElement): HTMLElement[] {
+  return [...card.querySelectorAll<HTMLElement>(MODAL_FOCUSABLE)]
+}
+
+/**
+ * One modal presentation layer: a dimmed backdrop and a focus-trapped card
+ * around the active `shell.modal` entry. Escape and backdrop activation dismiss
+ * the presentation through the surface carrier; clicking the card does not.
+ */
+function ModalLayer({ modal, renderSlot, dismissModal }: {
+  modal: string
+  renderSlot: AppFrameProps['renderSlot']
+  dismissModal: () => void
+}) {
+  const card = useRef<HTMLDivElement | null>(null)
+  const restoreFocus = useRef<HTMLElement | null>(null)
+
+  useLayoutEffect(() => {
+    const previous = document.activeElement
+    restoreFocus.current = previous instanceof HTMLElement ? previous : null
+    const element = card.current
+    /* v8 ignore next -- the ref is always attached by effect time: the card renders unconditionally. */
+    if (element === null) return
+    const target = modalFocusables(element)[0] ?? element
+    target.focus()
+    return () => { restoreFocus.current?.focus() }
+  }, [])
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      dismissModal()
+      return
+    }
+    if (event.key !== 'Tab') return
+    const element = card.current
+    /* v8 ignore next -- keydown reaches this handler only while the card is mounted. */
+    if (element === null) return
+    const focusable = modalFocusables(element)
+    if (focusable.length === 0) {
+      event.preventDefault()
+      element.focus()
+      return
+    }
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    /* v8 ignore next -- the empty check above guarantees both ends. */
+    if (first === undefined || last === undefined) return
+    const active = document.activeElement
+    const wrapTarget = event.shiftKey && active === first ? last : !event.shiftKey && active === last ? first : undefined
+    if (wrapTarget === undefined) return
+    event.preventDefault()
+    wrapTarget.focus()
+  }
+
+  return (
+    <div
+      className={css.modalBackdrop}
+      data-shell-modal-backdrop
+      onClick={(event) => { if (event.target === event.currentTarget) dismissModal() }}
+    >
+      <div
+        ref={card}
+        className={css.modalCard}
+        data-shell-modal
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+      >
+        {renderSlot('shell.modal', {}, { only: modal })}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Transparent root of the orb and modal presentations: the frame columns are
+ * absent, and only the overlay seat and, while a modal entry is active, the
+ * modal layer render.
+ */
+function PresentationRoot({ presentation, modal, renderSlot, dismissModal }: {
+  presentation: 'orb' | 'modal'
+  modal: string | null
+  renderSlot: AppFrameProps['renderSlot']
+  dismissModal: () => void
+}) {
+  const overlays = useMemo(() => renderSlot('shell.overlay', {}), [renderSlot])
+  return (
+    <div className={css.surfaceRoot} data-surface={presentation}>
+      <div className={css.overlayLayer} data-shell-overlay>{overlays}</div>
+      {presentation === 'modal' && modal !== null && (
+        <ModalLayer modal={modal} renderSlot={renderSlot} dismissModal={dismissModal} />
+      )}
+    </div>
+  )
+}
+
+/** The frame for the carrier's current presentation (see module doc). */
+export function AppFrame(props: AppFrameProps) {
+  const surface = props.useSurface(snapshot => snapshot)
+  if (surface.presentation === 'orb' || surface.presentation === 'modal') {
+    return <PresentationRoot
+      presentation={surface.presentation}
+      modal={surface.modal}
+      renderSlot={props.renderSlot}
+      dismissModal={props.dismissModal}
+    />
+  }
+  return <ClassicFrame {...props} presentation={surface.presentation} />
+}
+
 /** The three-column frame (see module doc). */
-export function AppFrame({
+function ClassicFrame({
   useStore,
   useSessions,
   usePanelInfo,
@@ -134,7 +268,8 @@ export function AppFrame({
   actions,
   renderSlot,
   t,
-}: AppFrameProps) {
+  presentation,
+}: AppFrameProps & { presentation: FramePresentation }) {
   const layoutInfo = useStore(state => state.layoutInfo)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const viewport = layoutInfo.viewportWidth
@@ -289,6 +424,7 @@ export function AppFrame({
     <div
       ref={frameRef}
       className={css.frame}
+      data-surface={presentation === 'panel' ? 'panel' : undefined}
       style={{
         ...(windowsTitlebar
           ? { '--dsh-windows-sidebar-width': `${cols.sidebar}px` } : {}),

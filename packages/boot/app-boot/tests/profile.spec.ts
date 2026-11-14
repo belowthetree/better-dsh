@@ -102,6 +102,8 @@ function stageProfile(home: string, name: string, bundleAnchor: string): Profile
   return { skippedBundles: [],
     name,
     dir,
+    form: { kind: 'classic' },
+    owner: undefined,
     layers: [{
       packageName,
       packageDir: join(bundleAnchor, '..'),
@@ -583,6 +585,8 @@ describe('createRuntimeResolution', () => {
     const profile: Profile = { skippedBundles: [],
       name: 'symlinked',
       dir,
+      form: { kind: 'classic' },
+      owner: undefined,
       layers: [{
         packageName: 'selected-bundle',
         packageDir: bundleLink,
@@ -633,6 +637,8 @@ describe('createRuntimeResolution', () => {
     const profile: Profile = { skippedBundles: [],
       name: 'explicit-roots',
       dir,
+      form: { kind: 'classic' },
+      owner: undefined,
       layers: ([['bundle-a', bundleA], ['bundle-b', bundleB]] as const).map(([packageName, packageDir]) => ({
         packageName,
         packageDir,

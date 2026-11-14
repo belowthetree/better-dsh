@@ -1,50 +1,143 @@
 // @vitest-environment jsdom
-/** Click capture preserves draft edits and Session ownership without composer banners. */
+/** The composer control drives the shared capture service and keeps transcripts reviewable. */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { bindSnapshotSelector, makeTranslate, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
+import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SpeechPreparationState, SpeechProviderId, Transcript } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
-import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { SpeechPreparationState } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
+import type { VoiceCaptureCatalog, VoiceCaptureFailure, VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import { VoiceInput, type VoiceInputProps } from '../src/client/VoiceInput.tsx'
-import { RecordingError, Recording } from '../src/client/audio.ts'
 import type { SpeechReadiness } from '../src/client/readiness.ts'
 import { zh } from '../src/client/locales.ts'
-import { captureFixture } from './audio-fixture.client.ts'
+import { CATALOG, IDLE_SNAPSHOT } from './capture-service.client.ts'
 
 beforeEach(() => { vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1)); vi.stubGlobal('cancelAnimationFrame', vi.fn()) })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
-const id = 'sensevoice-local' as SpeechProviderId
-const transcript: Transcript = { text: '检查 TypeScript 类型', audioSeconds: 2, inferenceSeconds: 0.4 }
-function fixture(recording?: Recording, navigable = true) {
-  const capture = Object.assign(new Recording(() => {}), { start: vi.fn<Recording['start']>(async () => {}), stop: vi.fn(async () => new Uint8Array(48)),
-    amplitude: () => 0, dispose: vi.fn(async () => {}) })
+
+const transcript = { text: '检查 TypeScript 类型', audioSeconds: 2, inferenceSeconds: 0.4 }
+const spanA = { start: 3, end: 3, draftRev: 1 }, spanB = { start: 0, end: 0, draftRev: 2 }
+
+/**
+ * Build the tagged rejection one capture command throws.
+ * @param failure - closed failure member to carry.
+ * @returns an error the shared failure translation recognizes.
+ */
+function captureError(failure: VoiceCaptureFailure): Error {
+  return Object.assign(new Error(failure), { failure })
+}
+
+/** @returns a fresh ready-provider catalog. */
+function readyCatalog(): VoiceCaptureCatalog {
+  return { ...CATALOG, selection: { ...CATALOG.selection }, providers: CATALOG.providers.map(provider => ({ ...provider })) }
+}
+
+function fixture(options: { navigable?: boolean } = {}) {
+  const snapshots = createSnapshotStore<VoiceCaptureSnapshot>(IDLE_SNAPSHOT)
+  const handsFree = createSnapshotStore(false)
+  const readiness = createSnapshotStore<SpeechReadiness>({ connected: true, error: null, catalog: readyCatalog() })
+  const onActiveChange = vi.fn()
   const inputActions = { notify: vi.fn(), insertQuote: () => false,
-    captureInsertion: vi.fn(() => ({ start: 3, end: 3, draftRev: 1 })), insertText: vi.fn(() => true),
+    captureInsertion: vi.fn(() => spanA), insertText: vi.fn(() => true),
     setDraft: vi.fn(), persistDraft: vi.fn(), addAttachments: vi.fn(() => true), removeAttachment: vi.fn(),
     pruneAttachments: vi.fn(), submit: vi.fn() }
-  const readiness = createSnapshotStore<SpeechReadiness>({ connected: true, error: null, catalog: {
-    providers: [{ id, name: 'SenseVoiceSmall', location: 'host-local', languages: ['auto', 'zh', 'en', 'ja'], preparation: { phase: 'ready' } }],
-    selection: { providerId: id, language: 'auto' }, maxAudioBytes: 100, maxDurationSeconds: 120,
-  } })
-  const transcribe = vi.fn<(request: unknown, signal: AbortSignal) => Promise<RemoteResult<Transcript>>>(
-    async () => ({ ok: true, value: transcript }))
-  const props: VoiceInputProps = { sessionId: 'one' as SessionId, inputActions, transcribe, locked: false, onActiveChange: vi.fn(),
-    openSettings: vi.fn(), prepare: vi.fn(async () => {}), cancelPreparation: vi.fn(async () => {}), configure: vi.fn(async () => {}),
-    selectMicrophone: vi.fn(), useMicrophoneDevice: bindSnapshotSelector(createSnapshotStore({ id: '', label: '' })),
-    useSpeechReadiness: bindSnapshotSelector(readiness), createRecording: () => recording ?? capture,
-    usePluginNavigation: bindSnapshotSelector(createSnapshotStore(navigable)),
-    t: makeTranslate(zh, commonZh) }
+  const takeTranscript = vi.fn((): string | null => {
+    const pending = snapshots.getSnapshot().pendingTranscript
+    if (pending === null) return null
+    snapshots.set({ ...snapshots.getSnapshot(), pendingTranscript: null })
+    return pending
+  })
+  const settle = (phase: VoiceCaptureSnapshot['phase'] = 'idle', patch: Partial<VoiceCaptureSnapshot> = {}): void => {
+    snapshots.set({ ...IDLE_SNAPSHOT, ...patch, phase })
+  }
+  const begin = vi.fn(async () => { snapshots.set({ ...snapshots.getSnapshot(), phase: 'capturing' }) })
+  const finish = vi.fn(async () => { settle(); return transcript })
+  const cancel = vi.fn(async () => { settle() })
+  const props: VoiceInputProps = {
+    sessionId: 'one' as SessionId, inputActions, locked: false, onActiveChange,
+    openSettings: vi.fn(), selectMicrophone: vi.fn(),
+    previewMicrophone: vi.fn(async () => ({ level: () => 0, deviceInfo: () => undefined, dispose: async () => {} })),
+    captureSnapshot: () => snapshots.getSnapshot(), begin, finish, cancel,
+    takeTranscript,
+    configure: vi.fn(async () => {}), prepare: vi.fn(async () => {}), cancelPreparation: vi.fn(async () => {}),
+    useSpeechReadiness: bindSnapshotSelector(readiness),
+    useMicrophoneDevice: bindSnapshotSelector(createSnapshotStore({ id: '', label: '' })),
+    useVoiceSnapshot: bindSnapshotSelector(snapshots),
+    usePluginNavigation: bindSnapshotSelector(createSnapshotStore(options.navigable ?? true)),
+    useHandsFree: bindSnapshotSelector(handsFree),
+    setHandsFree: vi.fn((enabled: boolean) => { handsFree.set(enabled) }),
+    t: makeTranslate(zh, commonZh),
+  }
   const view = render(<VoiceInput {...props} />)
-  return { props, capture, inputActions, readiness, transcribe, view }
+  return { props, view, snapshots, handsFree, readiness, inputActions, onActiveChange, begin, finish, cancel, takeTranscript, settle }
 }
+
 async function start(): Promise<void> {
   fireEvent.click(screen.getByRole('button', { name: zh.start }))
   await screen.findByRole('button', { name: zh.stop })
 }
 function stop(): void { fireEvent.click(screen.getByRole('button', { name: zh.stop })) }
+
+/**
+ * Publish one preparation state for the selected provider.
+ * @param readiness - shared readiness store.
+ * @param preparation - Host preparation state to show.
+ */
+function publishPreparation(readiness: ReturnType<typeof fixture>['readiness'], preparation: SpeechPreparationState): void {
+  const state = readiness.getSnapshot()
+  act(() => { readiness.set({ ...state, catalog: { ...state.catalog!, providers: [{ ...state.catalog!.providers[0]!, preparation }] } }) })
+}
+
+it('submits the transcript instead of leaving it in the draft when hands-free is on', async () => {
+  const b = fixture()
+  act(() => { b.handsFree.set(true) })
+  await start()
+  stop()
+  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith(transcript.text, spanA) })
+  expect(b.inputActions.submit).toHaveBeenCalledOnce()
+  expect(b.inputActions.notify).not.toHaveBeenCalled()
+})
+
+it('keeps a rejected hands-free insertion in the retry row without submitting', async () => {
+  const b = fixture()
+  act(() => { b.handsFree.set(true) })
+  b.inputActions.insertText.mockReturnValue(false)
+  await start()
+  stop()
+  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledOnce() })
+  expect(b.inputActions.submit).not.toHaveBeenCalled()
+  expect(screen.getByText(zh.conflict)).toBeTruthy()
+})
+
+it('inserts a transcript a collapsed-panel capture held and submits it when hands-free is on', async () => {
+  const b = fixture()
+  act(() => {
+    b.handsFree.set(true)
+    b.snapshots.set({ ...b.snapshots.getSnapshot(), pendingTranscript: '把标题改成项目说明' })
+  })
+  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith('把标题改成项目说明', spanA) })
+  expect(b.inputActions.submit).toHaveBeenCalledOnce()
+  expect(b.snapshots.getSnapshot().pendingTranscript).toBeNull()
+})
+
+it('keeps a held transcript beside the microphone when its insertion is rejected', async () => {
+  const b = fixture()
+  b.inputActions.insertText.mockReturnValue(false)
+  act(() => { b.snapshots.set({ ...b.snapshots.getSnapshot(), pendingTranscript: 'held' }) })
+  await waitFor(() => { expect(screen.getByText(zh.conflict)).toBeTruthy() })
+  expect(b.inputActions.insertText).toHaveBeenCalledWith('held', spanA)
+  expect(b.inputActions.submit).not.toHaveBeenCalled()
+})
+
+it('leaves the held transcript for the next mount when taking it produced nothing', async () => {
+  const b = fixture()
+  b.takeTranscript.mockReturnValue(null)
+  act(() => { b.snapshots.set({ ...b.snapshots.getSnapshot(), pendingTranscript: 'held' }) })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(b.inputActions.insertText).not.toHaveBeenCalled()
+  expect(b.snapshots.getSnapshot().pendingTranscript).toBe('held')
+})
 
 it('clicks to record, shows measured audio, and stops to insert without sending or a popup', async () => {
   const b = fixture()
@@ -52,135 +145,202 @@ it('clicks to record, shows measured audio, and stops to insert without sending 
   expect((await screen.findByRole('tooltip')).textContent).toBe('听写')
   fireEvent.mouseDown(screen.getByRole('button', { name: zh.start }))
   await start()
-  expect(b.props.onActiveChange).toHaveBeenLastCalledWith(true)
+  expect(b.begin).toHaveBeenCalledOnce()
+  expect(b.onActiveChange).toHaveBeenLastCalledWith(true)
+  act(() => { b.snapshots.set({ ...b.snapshots.getSnapshot(), level: 0.3 }) })
   expect(screen.getByRole('img', { name: zh.recording })).toBeTruthy()
-  expect(b.transcribe).not.toHaveBeenCalled()
+  expect(b.finish).not.toHaveBeenCalled()
   stop()
-  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith(transcript.text, { start: 3, end: 3, draftRev: 1 }) })
+  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith(transcript.text, spanA) })
   expect(b.inputActions.submit).not.toHaveBeenCalled()
   expect(b.inputActions.notify).not.toHaveBeenCalled()
   expect(screen.queryByRole('dialog')).toBeNull()
-  expect(b.props.onActiveChange).toHaveBeenLastCalledWith(false)
+  expect(b.onActiveChange).toHaveBeenLastCalledWith(false)
 })
 
-it.each(['cancel', 'escape', 'blur', 'hidden'])('releases a recording without transcription on %s', async (how) => {
-  const b = fixture(); await start()
+it.each(['cancel', 'escape'])('discards the capture without transcription on %s', async (how) => {
+  const b = fixture()
+  await start()
   if (how === 'cancel') fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
-  if (how === 'escape') fireEvent.keyDown(document, { key: 'Escape' })
-  if (how === 'blur') fireEvent.blur(window)
-  if (how === 'hidden') {
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
-    try { fireEvent(document, new Event('visibilitychange')) } finally { delete (document as { hidden?: boolean }).hidden }
-  }
+  else fireEvent.keyDown(document, { key: 'Escape' })
   await screen.findByRole('button', { name: zh.start })
-  expect(b.capture.dispose).toHaveBeenCalled()
-  expect(b.transcribe).not.toHaveBeenCalled()
+  expect(b.cancel).toHaveBeenCalledOnce()
+  expect(b.finish).not.toHaveBeenCalled()
 })
 
-it.each([false, true])('invalidates permission settlement after cancel (failure=%s)', async (failure) => {
+it('ignores a begin failure that arrives after cancellation', async () => {
   const b = fixture(), permission = Promise.withResolvers<undefined>()
-  b.capture.start.mockReturnValueOnce(permission.promise)
+  b.begin.mockImplementationOnce(async () => {
+    b.snapshots.set({ ...b.snapshots.getSnapshot(), phase: 'starting' })
+    await permission.promise
+  })
+  fireEvent.click(screen.getByRole('button', { name: zh.start }))
+  fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
+  permission.reject(captureError('permission'))
+  await act(async () => {})
+  expect(screen.queryByText(zh.permission)).toBeNull()
+  expect(screen.getByRole('button', { name: zh.start })).toBeTruthy()
+})
+
+it('ignores a finish failure that arrives after cancellation', async () => {
+  const b = fixture(), pending = Promise.withResolvers<typeof transcript>()
+  b.finish.mockImplementationOnce(async () => {
+    b.snapshots.set({ ...b.snapshots.getSnapshot(), phase: 'transcribing' })
+    return pending.promise
+  })
+  await start()
+  stop()
+  await act(async () => {})
+  fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
+  pending.reject(captureError('transcribe'))
+  await act(async () => {})
+  expect(screen.queryByText(/语音识别失败/)).toBeNull()
+  expect(screen.getByRole('button', { name: zh.start })).toBeTruthy()
+})
+
+it('records without a deadline when the Host advertises no duration cap', async () => {
+  const b = fixture()
+  const state = b.readiness.getSnapshot()
+  act(() => { b.readiness.set({ ...state, catalog: { ...state.catalog!, maxDurationSeconds: 0 } }) })
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  fireEvent.click(screen.getByRole('button', { name: zh.start }))
+  await act(async () => {})
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_000_000) })
+  expect(b.finish).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: zh.stop })).toBeTruthy()
+})
+
+it('keeps capturing when another key is pressed', async () => {
+  const b = fixture()
+  await start()
+  fireEvent.keyDown(document, { key: 'x' })
+  expect(b.cancel).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: zh.stop })).toBeTruthy()
+})
+
+it('keeps capturing when the window loses focus or the page hides', async () => {
+  const b = fixture()
+  await start()
+  fireEvent.blur(window)
+  Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+  try { fireEvent(document, new Event('visibilitychange')) } finally { delete (document as { hidden?: boolean }).hidden }
+  await act(async () => {})
+  expect(b.cancel).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: zh.stop })).toBeTruthy()
+})
+
+it('shows the permission phase and invalidates it after cancellation', async () => {
+  const b = fixture(), permission = Promise.withResolvers<undefined>()
+  b.begin.mockImplementationOnce(async () => {
+    b.snapshots.set({ ...b.snapshots.getSnapshot(), phase: 'starting' })
+    await permission.promise
+  })
   fireEvent.click(screen.getByRole('button', { name: zh.start }))
   expect(screen.getByRole('status').textContent).toBe(zh.requesting)
   fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
-  if (failure) permission.reject(new Error('permission closed'))
-  else permission.resolve(undefined)
+  expect(b.cancel).toHaveBeenCalledOnce()
+  permission.resolve(undefined)
   await act(async () => {})
-  expect(b.capture.dispose).toHaveBeenCalled()
   expect(b.inputActions.notify).not.toHaveBeenCalled()
-  expect(screen.queryByText('permission closed')).toBeNull()
+  expect(screen.getByRole('button', { name: zh.start })).toBeTruthy()
 })
 
-it('keeps provider and language fixed and preserves conflicting text for explicit insertion', async () => {
-  const b = fixture(); b.inputActions.insertText.mockReturnValue(false)
+it('preserves conflicting text for explicit insertion or discard', async () => {
+  const b = fixture()
+  b.inputActions.insertText.mockReturnValue(false)
   await start()
-  const state = b.readiness.getSnapshot()
-  act(() => { b.readiness.set({ ...state, catalog: { ...state.catalog!, selection: { providerId: id, language: 'en' } } }) })
   stop()
   const insert = await screen.findByRole('button', { name: zh.insert })
-  expect(b.transcribe).toHaveBeenCalledWith(expect.objectContaining({ language: 'auto' }), expect.any(AbortSignal))
   fireEvent.click(insert)
   expect(screen.getByRole('button', { name: zh.insert })).toBeTruthy()
   b.inputActions.insertText.mockReturnValue(true)
   fireEvent.click(insert)
   expect(screen.getByRole('button', { name: zh.start })).toBeTruthy()
   b.inputActions.insertText.mockReturnValue(false)
-  await start(); stop()
+  await start()
+  stop()
   fireEvent.click(await screen.findByRole('button', { name: zh.discard }))
   expect(screen.queryByRole('button', { name: zh.insert })).toBeNull()
 })
 
-it.each(['transcription', 'conversion', 'failed conversion'])('discards late %s after switching Sessions', async (phase) => {
-  const b = fixture(), result = Promise.withResolvers<RemoteResult<Transcript>>()
-  const conversion = Promise.withResolvers<Uint8Array<ArrayBuffer>>()
-  if (phase === 'transcription') b.transcribe.mockReturnValueOnce(result.promise)
-  else b.capture.stop.mockReturnValueOnce(conversion.promise)
-  await start(); stop()
+it('retargets a transcript that arrives after a Session change to the current draft', async () => {
+  const b = fixture(), result = Promise.withResolvers<typeof transcript>()
+  b.inputActions.captureInsertion.mockReturnValueOnce(spanA).mockReturnValue(spanB)
+  b.finish.mockImplementationOnce(async () => { b.settle(); return result.promise })
+  await start()
+  stop()
   await act(async () => {})
   b.view.rerender(<VoiceInput {...b.props} sessionId={'two' as SessionId} />)
-  if (phase === 'transcription') result.resolve({ ok: true, value: transcript })
-  else if (phase === 'conversion') conversion.resolve(new Uint8Array(48))
-  else conversion.reject(new Error('cancelled'))
-  await act(async () => {})
-  expect(b.inputActions.insertText).not.toHaveBeenCalled()
+  result.resolve(transcript)
+  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith(transcript.text, spanB) })
   expect(b.inputActions.notify).not.toHaveBeenCalled()
 })
 
 it('keeps empty-speech and service errors inside the toolbar with retry and dismissal', async () => {
   const b = fixture()
-  b.transcribe.mockResolvedValueOnce({ ok: true, value: { ...transcript, text: '' } })
-  await start(); stop()
+  b.finish.mockImplementationOnce(async () => { b.settle(); return { ...transcript, text: '' } })
+  await start()
+  stop()
   expect((await screen.findByRole('status')).textContent).toBe(zh.empty)
   expect(b.inputActions.notify).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: zh.retryRecording }))
   await screen.findByRole('button', { name: zh.stop })
-  b.transcribe.mockResolvedValueOnce({ ok: false, error: new RemoteError('gateway/internal', 'offline', {}) })
+  b.finish.mockImplementationOnce(async () => { b.settle(); throw captureError('transcribe') })
   stop()
-  await screen.findByText('语音识别失败：offline')
+  await screen.findByText('语音识别失败：transcribe')
   fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
   expect(screen.getByRole('button', { name: zh.start })).toBeTruthy()
 })
 
-it.each([new RecordingError('permission'), new Error('device lost'), 'device lost'])('handles capture failure locally (%s)', async (failure) => {
-  const b = fixture(); b.capture.start.mockRejectedValueOnce(failure)
+it.each([captureError('permission'), new Error('device lost'), 'device lost',
+  Object.assign(new Error('unknown failure'), { failure: 'bogus' })])('handles capture failure locally (%s)', async (failure) => {
+  const b = fixture()
+  b.begin.mockImplementationOnce(async () => { b.settle(); throw failure })
   fireEvent.click(screen.getByRole('button', { name: zh.start }))
-  await screen.findByText(failure instanceof RecordingError ? zh.permission : '语音识别失败：device lost')
+  await screen.findByText(failure instanceof Error && 'failure' in failure && failure.message === 'permission'
+    ? zh.permission
+    : failure instanceof Error && 'failure' in failure ? '语音识别失败：unknown failure' : '语音识别失败：device lost')
   expect(b.inputActions.notify).not.toHaveBeenCalled()
 })
 
-it.each([new RecordingError('empty'), new Error('decode failed'), 'decode failed'])('handles conversion failure locally (%s)', async (failure) => {
-  const b = fixture(); b.capture.stop.mockRejectedValueOnce(failure)
-  await start(); stop()
-  await screen.findByText(failure instanceof RecordingError ? zh.empty : '语音识别失败：decode failed')
-  expect(b.capture.dispose).toHaveBeenCalledOnce()
+it.each([captureError('empty'), new Error('decode failed'), 'decode failed'])('handles conversion failure locally (%s)', async (failure) => {
+  const b = fixture()
+  b.finish.mockImplementationOnce(async () => { b.settle(); throw failure })
+  await start()
+  stop()
+  await screen.findByText(failure instanceof Error && 'failure' in failure ? zh.empty : '语音识别失败：decode failed')
   expect(b.inputActions.insertText).not.toHaveBeenCalled()
 })
 
-it('bounds recordings, indicates idle wake-up, and cancels an in-flight transcription', async () => {
-  const b = fixture(), result = Promise.withResolvers<RemoteResult<Transcript>>()
-  b.transcribe.mockReturnValueOnce(result.promise)
+it('bounds recordings, reports idle wake-up, and ignores a cancelled transcription', async () => {
+  const b = fixture(), result = Promise.withResolvers<typeof transcript>()
+  b.finish.mockImplementationOnce(async () => {
+    b.snapshots.set({ ...b.snapshots.getSnapshot(), phase: 'transcribing', level: 0 })
+    return result.promise
+  })
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-  fireEvent.click(screen.getByRole('button', { name: zh.start })); await act(async () => {})
+  fireEvent.click(screen.getByRole('button', { name: zh.start }))
+  await act(async () => {})
   await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
-  expect(b.capture.stop).toHaveBeenCalledWith(120)
-  fireEvent.blur(window)
-  const state = b.readiness.getSnapshot()
-  act(() => { b.readiness.set({ ...state, catalog: { ...state.catalog!, providers: [
-    { ...state.catalog!.providers[0]!, preparation: { phase: 'waking', startedAt: Date.now() } },
-  ] } }) })
+  expect(b.finish).toHaveBeenCalledOnce()
+  publishPreparation(b.readiness, { phase: 'waking', startedAt: Date.now() })
   expect(screen.getByRole('status').textContent).toBe(zh.wakingShort)
-  expect(b.transcribe.mock.calls[0]?.[1].aborted).toBe(false)
   fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
-  expect(b.transcribe.mock.calls[0]?.[1].aborted).toBe(true)
-  result.resolve({ ok: true, value: transcript }); await act(async () => {})
+  result.resolve(transcript)
+  await act(async () => {})
   expect(b.inputActions.insertText).not.toHaveBeenCalled()
 })
 
-it('rejects excessive audio and keeps locked recognition disabled', async () => {
-  const b = fixture(); b.capture.stop.mockResolvedValueOnce(new Uint8Array(101))
-  await start(); stop(); await screen.findByText(zh.tooLarge)
-  expect(b.transcribe).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
+it('allows recording while verified local resources are waking', async () => {
+  const b = fixture()
+  publishPreparation(b.readiness, { phase: 'waking', startedAt: 0 })
+  await start()
+  stop()
+  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith(transcript.text, spanA) })
+})
+
+it('keeps locked recognition and unavailable readiness disabled', async () => {
+  const b = fixture()
   act(() => { b.readiness.set({ catalog: null, connected: false, error: null }) })
   expect(screen.getByRole<HTMLButtonElement>('button', { name: zh['setupPrompt.trigger'] }).disabled).toBe(false)
   b.view.rerender(<VoiceInput {...b.props} locked />)
@@ -188,17 +348,16 @@ it('rejects excessive audio and keeps locked recognition disabled', async () => 
   expect(locked.disabled).toBe(true)
   fireEvent.click(locked)
   expect(screen.queryByRole('dialog')).toBeNull()
-  expect(b.capture.start).toHaveBeenCalledOnce()
+  expect(b.begin).not.toHaveBeenCalled()
 })
 
-it('releases expansion and contains cleanup failures on unmount', async () => {
+it('releases expansion without cancelling capture when the composer unmounts', async () => {
   const b = fixture()
-  fireEvent.keyDown(document, { key: 'x' }); fireEvent.blur(window); fireEvent(document, new Event('visibilitychange'))
   await start()
-  b.capture.dispose.mockRejectedValueOnce(new Error('already closed'))
-  b.view.unmount(); await act(async () => {})
-  expect(b.props.onActiveChange).toHaveBeenLastCalledWith(false)
-  expect(b.capture.dispose).toHaveBeenCalledOnce()
+  b.view.unmount()
+  await act(async () => {})
+  expect(b.onActiveChange).toHaveBeenLastCalledWith(false)
+  expect(b.cancel).not.toHaveBeenCalled()
 })
 
 it('coalesces repeated capture and stop clicks before the toolbar rerenders', async () => {
@@ -207,102 +366,24 @@ it('coalesces repeated capture and stop clicks before the toolbar rerenders', as
   const stopButton = await screen.findByRole<HTMLButtonElement>('button', { name: zh.stop })
   act(() => { stopButton.click(); stopButton.click() })
   await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledOnce() })
-  expect(b.capture.start).toHaveBeenCalledOnce()
-  expect(b.capture.stop).toHaveBeenCalledOnce()
+  expect(b.begin).toHaveBeenCalledOnce()
+  expect(b.finish).toHaveBeenCalledOnce()
 })
 
-it('ends the recording UI immediately on a device failure and clears automatic transcription', async () => {
-  const devices = captureFixture(), b = fixture(devices.recording), closing = Promise.withResolvers<undefined>()
-  devices.close.mockReturnValueOnce(closing.promise)
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-  try {
-    fireEvent.click(screen.getByRole('button', { name: zh.start }))
-    await act(async () => {})
-    expect(screen.getByRole('button', { name: zh.stop })).toBeTruthy()
-    act(() => { devices.failRecorder() })
-    expect(screen.queryByRole('button', { name: zh.stop })).toBeNull()
-    expect(screen.queryByRole('img', { name: zh.recording })).toBeNull()
-    expect(screen.getByRole('status').textContent).toBe(zh.interrupted)
-    expect(devices.disposed).not.toHaveBeenCalled()
-    await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
-    expect(b.transcribe).not.toHaveBeenCalled()
-    expect(b.inputActions.notify).not.toHaveBeenCalled()
-  } finally { closing.resolve(undefined); await devices.recording.dispose() }
-})
-
-it.each(['cancel', 'session', 'unmount', 'finishing', 'finished'])('ignores interruption notifications after %s', async (action) => {
+it('ends the recording UI immediately on a device failure', async () => {
   const b = fixture()
   await start()
-  const failed = b.capture.start.mock.calls[0]![0]!
-  if (action === 'cancel') fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
-  if (action === 'session') b.view.rerender(<VoiceInput {...b.props} sessionId={'two' as SessionId} />)
-  if (action === 'unmount') b.view.unmount()
-  const pending = Promise.withResolvers<RemoteResult<Transcript>>()
-  if (action === 'finishing') b.transcribe.mockReturnValueOnce(pending.promise)
-  if (action === 'finishing' || action === 'finished') { stop(); await act(async () => {}) }
-  try {
-    act(() => { failed(new RecordingError('interrupted')) })
-    expect(screen.queryByText(zh.interrupted)).toBeNull()
-    expect(b.inputActions.notify).not.toHaveBeenCalled()
-  } finally { pending.resolve({ ok: true, value: transcript }); await act(async () => {}) }
-})
-
-it('does not restore recording when capture reports failure before start settles', async () => {
-  const b = fixture()
-  b.capture.start.mockImplementationOnce(async (failed) => { failed!(new RecordingError('interrupted')) })
-  fireEvent.click(screen.getByRole('button', { name: zh.start }))
-  await act(async () => {})
+  act(() => { b.snapshots.set({ ...IDLE_SNAPSHOT, failure: 'interrupted' }) })
   expect(screen.getByRole('status').textContent).toBe(zh.interrupted)
   expect(screen.queryByRole('button', { name: zh.stop })).toBeNull()
-  expect(b.transcribe).not.toHaveBeenCalled()
-})
-
-it('allows recording while verified local resources are waking', async () => {
-  const b = fixture(), state = b.readiness.getSnapshot()
-  act(() => { b.readiness.set({ ...state, catalog: { ...state.catalog!, providers: [
-    { ...state.catalog!.providers[0]!, preparation: { phase: 'waking', startedAt: 0 } },
-  ] } }) })
-  await start()
-  stop()
-  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith(transcript.text, expect.anything()) })
-})
-
-it('keeps the first recording after the permission prompt causes window blur', async () => {
-  const b = fixture(), permission = Promise.withResolvers<undefined>()
-  b.capture.start.mockReturnValueOnce(permission.promise)
-  fireEvent.click(screen.getByRole('button', { name: zh.start }))
-  fireEvent.blur(window)
-  expect(screen.getByRole('status').textContent).toBe(zh.requesting)
-  expect(b.capture.dispose).not.toHaveBeenCalled()
-  permission.resolve(undefined)
-  await screen.findByRole('button', { name: zh.stop })
-  stop()
-  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledOnce() })
-})
-
-it.each(['escape', 'hidden', 'session'])('discards pending permission after %s', async (action) => {
-  const b = fixture(), permission = Promise.withResolvers<undefined>()
-  b.capture.start.mockReturnValueOnce(permission.promise)
-  fireEvent.click(screen.getByRole('button', { name: zh.start }))
-  if (action === 'escape') fireEvent.keyDown(document, { key: 'Escape' })
-  if (action === 'session') b.view.rerender(<VoiceInput {...b.props} sessionId={'two' as SessionId} />)
-  if (action === 'hidden') {
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
-    try { fireEvent(document, new Event('visibilitychange')) } finally { delete (document as { hidden?: boolean }).hidden }
-  }
-  permission.resolve(undefined)
-  await act(async () => {})
-  expect(b.capture.dispose).toHaveBeenCalledOnce()
-  expect(screen.getByRole('button', { name: zh.start })).toBeTruthy()
-  expect(screen.queryByRole('button', { name: zh.stop })).toBeNull()
-  expect(b.transcribe).not.toHaveBeenCalled()
+  expect(screen.queryByRole('img', { name: zh.recording })).toBeNull()
+  expect(b.finish).not.toHaveBeenCalled()
+  expect(b.inputActions.notify).not.toHaveBeenCalled()
 })
 
 it('offers installation on click without a preparation tooltip', () => {
-  const b = fixture(), state = b.readiness.getSnapshot()
-  act(() => { b.readiness.set({ ...state, catalog: { ...state.catalog!, providers: [
-    { ...state.catalog!.providers[0]!, preparation: { phase: 'unprepared' } },
-  ] } }) })
+  const b = fixture()
+  publishPreparation(b.readiness, { phase: 'unprepared' })
   const mic = screen.getByRole<HTMLButtonElement>('button', { name: zh['setupPrompt.trigger'] })
   expect(mic.disabled).toBe(false)
   expect(mic.getAttribute('aria-haspopup')).toBe('dialog')
@@ -310,7 +391,7 @@ it('offers installation on click without a preparation tooltip', () => {
   expect(screen.queryByRole('tooltip')).toBeNull()
   fireEvent.click(mic)
   expect(screen.getByRole('dialog').textContent).toContain(zh['setupPrompt.body'])
-  expect(b.capture.start).not.toHaveBeenCalled()
+  expect(b.begin).not.toHaveBeenCalled()
   expect(b.props.prepare).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: zh['setupPrompt.open'] }))
   expect(b.props.openSettings).toHaveBeenCalledOnce()
@@ -322,25 +403,20 @@ it.each<SpeechPreparationState>([
   { phase: 'downloading', resource: 'model', completedBytes: 0 },
   { phase: 'failed', message: 'download failed' },
   { phase: 'cancelled' },
-])('guides $phase recognition to its status page without starting recording or preparation', (preparation) => {
-  const b = fixture(), state = b.readiness.getSnapshot()
-  act(() => { b.readiness.set({ ...state, catalog: { ...state.catalog!, providers: [
-    { ...state.catalog!.providers[0]!, preparation },
-  ] } }) })
+])('guides $phase recognition to its status page without starting recording', (preparation) => {
+  const b = fixture()
+  publishPreparation(b.readiness, preparation)
   fireEvent.click(screen.getByRole('button', { name: zh['setupPrompt.trigger'] }))
   expect(screen.getByRole('dialog').textContent).toContain(zh['setupPrompt.unavailableBody'])
-  expect(screen.queryByText(zh['setupPrompt.body'])).toBeNull()
-  expect(b.capture.start).not.toHaveBeenCalled()
+  expect(b.begin).not.toHaveBeenCalled()
   expect(b.props.prepare).not.toHaveBeenCalled()
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: zh['setupPrompt.details'] }))
   expect(b.props.openSettings).toHaveBeenCalledOnce()
 })
 
 it('offers no plugin details from setup guidance while the Plugins page navigation is absent', () => {
-  const b = fixture(undefined, false), state = b.readiness.getSnapshot()
-  act(() => { b.readiness.set({ ...state, catalog: { ...state.catalog!, providers: [
-    { ...state.catalog!.providers[0]!, preparation: { phase: 'unprepared' } },
-  ] } }) })
+  const b = fixture({ navigable: false })
+  publishPreparation(b.readiness, { phase: 'unprepared' })
   fireEvent.click(screen.getByRole('button', { name: zh['setupPrompt.trigger'] }))
   const dialog = within(screen.getByRole('dialog'))
   expect(dialog.queryByRole('button', { name: zh['setupPrompt.open'] })).toBeNull()
@@ -376,7 +452,7 @@ it('moves focus into setup guidance, contains Tab traversal, and restores the dr
 it.each(['later', 'escape', 'ready', 'session'])('dismisses unavailable recognition guidance on %s without changing the draft', (reason) => {
   const b = fixture(), ready = b.readiness.getSnapshot()
   act(() => { b.readiness.set({ catalog: null, connected: false, error: 'offline' }) })
-  const open = () => { fireEvent.click(screen.getByRole('button', { name: zh['setupPrompt.trigger'] })) }
+  const open = (): void => { fireEvent.click(screen.getByRole('button', { name: zh['setupPrompt.trigger'] })) }
   open()
   expect(screen.getByRole('dialog').textContent).toContain(zh['setupPrompt.unavailableTitle'])
   if (reason === 'later') fireEvent.click(screen.getByRole('button', { name: zh['setupPrompt.later'] }))
@@ -385,7 +461,7 @@ it.each(['later', 'escape', 'ready', 'session'])('dismisses unavailable recognit
   if (reason === 'session') b.view.rerender(<VoiceInput {...b.props} sessionId={'two' as SessionId} />)
   expect(screen.queryByRole('dialog')).toBeNull()
   expect(b.props.openSettings).not.toHaveBeenCalled()
-  expect(b.capture.start).not.toHaveBeenCalled()
+  expect(b.begin).not.toHaveBeenCalled()
   expect(b.inputActions.setDraft).not.toHaveBeenCalled()
   expect(b.inputActions.insertText).not.toHaveBeenCalled()
   if (reason === 'ready') {

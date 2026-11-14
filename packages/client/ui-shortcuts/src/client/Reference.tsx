@@ -3,21 +3,28 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Button, IconCloseOutlineRegular, IconRefreshOutlineRegular, Modal, ShortcutKeys, Tooltip, Toast, focusWithoutRing, isBehindModal, rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot, PropsStore } from '@deepseek-ai/dsh-client-store'
-import type { ShortcutCatalogEntry, ShortcutPlatform, Shortcuts } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type { ShortcutCatalogEntry, ShortcutCommandId, ShortcutFixedCatalogEntry, ShortcutPlatform, Shortcuts } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type { ShortcutEdit, ShortcutRevision, SystemShortcutState } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { ShortcutEditor } from './Editor.tsx'
 import { ShortcutIcon } from './Icons.tsx'
 import { shortcutFailure, shortcutReadFailure } from './feedback.ts'
 import type { createShortcutsStore } from './store.ts'
 import css from './Reference.module.css'
 
-/** Catalog and device labels delivered through renderer-bound hooks. */
+/** Catalog, carrier registration, and device labels delivered through renderer-bound hooks. */
 export interface ReferenceInjected {
   platform: ShortcutPlatform
   runtime: Shortcuts['runtime']
   edit: Shortcuts['edit']
   recording: Shortcuts['recording']
   describeBinding: Shortcuts['describeBinding']
-  hooks: { catalog: ObservableSnapshot<readonly ShortcutCatalogEntry[]>; config: Shortcuts['config']; fixedCatalog: Shortcuts['fixedCatalog'] }
+  hooks: {
+    catalog: ObservableSnapshot<readonly ShortcutCatalogEntry[]>
+    systemCatalog: Shortcuts['systemCatalog']
+    global: Shortcuts['global']
+    config: Shortcuts['config']
+    fixedCatalog: Shortcuts['fixedCatalog']
+  }
 }
 type Store = PropsStore<ReturnType<typeof createShortcutsStore>>
 type Locale = PropsLocale<'shortcuts'>
@@ -46,6 +53,47 @@ const coreActionOrder = new Map<string, number>([
   'page.close',
 ].map((id, index) => [id, index]))
 
+/** Reference groups in display order; OS-global commands follow application commands. */
+const groups = ['application', 'global', 'input', 'menus', 'approval'] as const
+/** Why the Global group cannot offer controls, keyed by the carrier's reported availability. */
+const globalUnavailableCopy = { web: 'global-web', platform: 'global-platform', carrier: 'global-carrier' } as const
+
+/** Editable command row tagged with its reference group and search names. */
+type EditableEntry = ShortcutCatalogEntry & { readonly group: 'application' | 'global'; readonly names: readonly string[] }
+/** Read-only fixed action with its search names. */
+type FixedEntry = ShortcutFixedCatalogEntry & { readonly names: readonly string[] }
+type ReferenceEntry = EditableEntry | FixedEntry
+
+/**
+ * Join one command's OS-global registration report by command ID.
+ * @param state - carrier state reported for the current run.
+ * @param id - command whose accelerator was requested.
+ * @returns the carrier outcome, or suspended while the recording layer owns input.
+ */
+function registrationState(state: SystemShortcutState, id: ShortcutCommandId): 'registered' | 'failed' | 'suspended' {
+  if (state.suspended) return 'suspended'
+  return state.registrations.find(row => row.id === id)?.status ?? 'registered'
+}
+
+/**
+ * Build the search keys for one editable command.
+ * @param row - effective command with visible keycaps and ARIA text.
+ * @returns aliases, both keycap spellings, and the ARIA combination.
+ */
+function searchNames(row: ShortcutCatalogEntry): readonly string[] {
+  const keys = row.keys.filter(key => key !== '+')
+  return [...row.aliases, keys.join('+'), keys.join(''), row.aria ?? '', row.aria?.replace('Meta', 'Cmd') ?? '']
+}
+
+/**
+ * Distinguish editable commands from read-only fixed actions.
+ * @param row - searchable reference row.
+ * @returns whether the row exposes an editable binding.
+ */
+function isEditable(row: ReferenceEntry): row is EditableEntry {
+  return 'modified' in row
+}
+
 /**
  * Render the General Settings action that opens the shortcut reference.
  * @param props - shared dialog action and localized labels.
@@ -67,19 +115,22 @@ export function ShortcutsRow({ actions, t, useCatalog }: PropsRuntime<'settings.
 
 /**
  * Render core actions in product order, then other commands by ID within each group. Search relevance takes precedence.
- * @param props - root store, effective catalog, and localized copy.
+ * @param props - root store, effective catalogs, carrier state, and localized copy.
  * @returns the single reference dialog when open.
  */
 export function ShortcutReference({
-  useStore, actions, useCatalog, useConfig, useFixedCatalog, platform, runtime, edit, recording, describeBinding, t,
+  useStore, actions, useCatalog, useSystemCatalog, useGlobal, useConfig, useFixedCatalog,
+  platform, runtime, edit, recording, describeBinding, t,
 }:
   PropsRuntime<'shell.overlay'> & Store & Locale & InjectFace<ReferenceInjected>) {
   const { open, query, focusRequest } = useStore(state => state)
   const catalog = useCatalog(value => value)
+  const systemCatalog = useSystemCatalog(value => value)
+  const globalState = useGlobal(value => value)
   const config = useConfig(value => value)
   const fixedCatalog = useFixedCatalog(value => value)
   const [target, setTarget] = useState<ShortcutCatalogEntry | null>(null)
-  const [resetRevision, setResetRevision] = useState<typeof config.revision | null>(null)
+  const [reset, setReset] = useState<{ revision: ShortcutRevision; scope: 'application' | 'system' } | null>(null)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<{ text: string; error: boolean; seq: number } | null>(null)
   const mounted = useRef(true)
@@ -104,11 +155,11 @@ export function ShortcutReference({
   const closeReference = (): void => {
     if (busy) return
     /* v8 ignore next -- The confirmation modal blocks the reference's close control. */
-    if (resetRevision !== null) setResetRevision(null)
+    if (reset !== null) setReset(null)
     else if (target !== null) closeEditor()
     else actions.close()
   }
-  useEffect(() => { if (!open) setResetRevision(null) }, [open])
+  useEffect(() => { if (!open) setReset(null) }, [open])
   const persist: typeof edit = async (...args) => {
     setBusy(true)
     const result = await edit(...args)
@@ -117,15 +168,16 @@ export function ShortcutReference({
   }
   const resetAll = async (): Promise<void> => {
     /* v8 ignore next -- The reset control is accessible only while its confirmation is open. */
-    if (resetRevision === null) return
-    const result = await persist({ type: 'reset-all' }, resetRevision)
+    if (reset === null) return
+    const operation: ShortcutEdit = reset.scope === 'system' ? { type: 'reset-all', scope: 'system' } : { type: 'reset-all' }
+    const result = await persist(operation, reset.revision)
     if (!mounted.current) return
-    if (result.status === 'saved' || result.status === 'stale') setResetRevision(null)
+    if (result.status === 'saved' || result.status === 'stale') setReset(null)
     notify(result.status === 'saved' ? t('reset-saved')
-      : result.status === 'write-failed' ? t('reset-failed') : shortcutFailure(result, catalog, t, runtime), result.status !== 'saved')
+      : result.status === 'write-failed' ? t('reset-failed') : shortcutFailure(result, [...catalog, ...systemCatalog], t, runtime), result.status !== 'saved')
   }
-  const editorProps = { useCatalog, useConfig, useFixedCatalog, platform, runtime, edit: persist, recording, describeBinding, t,
-    onClose: closeEditor,
+  const editorProps = { useCatalog, useSystemCatalog, useConfig, useFixedCatalog, platform, runtime,
+    edit: persist, recording, describeBinding, t, onClose: closeEditor,
     onSaved: () => { notify(t('saved')); closeEditor() },
     onError: (message: string) => { notify(message, true) } }
   useLayoutEffect(() => {
@@ -133,12 +185,9 @@ export function ShortcutReference({
     if (open && input !== null && !isBehindModal(input)) focusWithoutRing(input)
   }, [open, focusRequest])
   // Stop stays after the other fixed input actions.
-  const entries = [
-    ...catalog.map(row => ({
-      ...row,
-      names: [...row.aliases, row.keys.filter(key => key !== '+').join('+'), row.keys.filter(key => key !== '+').join(''), row.aria ?? '', row.aria?.replace('Meta', 'Cmd') ?? ''],
-      group: 'application' as const,
-    })),
+  const entries: readonly ReferenceEntry[] = [
+    ...catalog.map(row => ({ ...row, group: 'application' as const, names: searchNames(row) })),
+    ...systemCatalog.map(row => ({ ...row, group: 'global' as const, names: searchNames(row) })),
     ...fixedCatalog.map(row => ({ ...row, names: [row.id, row.keys.join(' ')] })),
   ].sort((left, right) => Number(left.id === 'response.stop') - Number(right.id === 'response.stop')
     || (coreActionOrder.get(left.id) ?? coreActionOrder.size) - (coreActionOrder.get(right.id) ?? coreActionOrder.size)
@@ -146,12 +195,37 @@ export function ShortcutReference({
   const ranked = rankByName(entries.flatMap(row => row.names.map(name => ({ name, label: row.label, row }))), query.trim())
   const matches = [...new Set(ranked.map(match => match.row))]
   const modifiedCount = Object.keys(config.document.profiles[`${runtime}:${platform}`] ?? {}).length
+  const systemModifiedCount = Object.keys(config.document.system ?? {}).length
+  const globalLocked = runtime === 'web' ? 'web' : globalState.unavailable ?? null
+  const groupCopy = globalLocked === null
+    ? t(globalState.suspended ? 'global-suspended' : 'global-description')
+    : t(globalUnavailableCopy[globalLocked])
   useLayoutEffect(() => {
     const input = search.current
-    if (open && resetRevision === null && modifiedCount === 0 && document.activeElement === document.body && input !== null) {
+    if (open && reset === null && modifiedCount === 0 && document.activeElement === document.body && input !== null) {
       focusWithoutRing(input)
     }
-  }, [open, resetRevision, modifiedCount])
+  }, [open, reset, modifiedCount])
+  const editableRow = (row: EditableEntry) => <li key={row.id} className={row.group === 'global' ? `${css.row} ${css.globalRow}` : css.row}>
+    {target?.id !== row.id && <button type="button" className={css.rowButton}
+      aria-label={t('edit-label', { command: row.label })} disabled={busy || config.status !== 'ready'}
+      onClick={() => { setTarget(row) }} />}
+    <span className={css.commandLabel}>{row.label}</span>
+    <span className={css.binding}>
+      {target?.id === row.id
+        ? <ShortcutEditor key={row.id} target={row} {...editorProps} />
+        : <>
+          <span className={css.rowActions}><ShortcutIcon kind="edit" /></span>
+          {row.keys.length === 0 ? <span className={css.unbound}>{t('unbound')}</span> : <ShortcutKeys keys={row.keys} className={css.keyBadge} />}
+        </>}
+    </span>
+    {row.group === 'global' && registrationState(globalState, row.id) === 'failed'
+      && <p className={css.rowWarning} role="status">{t('global-failed')}</p>}
+  </li>
+  const fixedRow = (row: FixedEntry) => <li key={row.id} className={css.row}>
+    <span className={css.commandLabel}>{row.label}</span>
+    <span className={css.binding}><ShortcutKeys keys={row.keys} className={css.fixedKeyBadge} /></span>
+  </li>
   return <><Modal open={open} onClose={closeReference} title={t('title')} headless
     shortcutModal="shortcuts" className={css.dialog as string}>
     <div className={css.contents} onPointerDownCapture={(event) => {
@@ -178,44 +252,44 @@ export function ShortcutReference({
         </div>
       </div>
       <div className={css.list} aria-busy={config.status === 'loading'}>
-        {(['application', 'input', 'menus', 'approval'] as const).map((group) => {
+        {groups.map((group) => {
           const rows = matches.filter(row => row.group === group)
           if (rows.length === 0) return null
+          if (group === 'global') return <section key={group} aria-label={t(group)}>
+            <h3 className={css.group}>{t(group)}</h3>
+            <p className={css.groupDescription}>{groupCopy}</p>
+            {globalLocked === null && <>
+              <ul className={css.rows}>{rows.filter(isEditable).map(editableRow)}</ul>
+              <div className={css.groupFooter}>
+                <button type="button" className={css.resetAll} disabled={busy || config.status !== 'ready' || systemModifiedCount === 0}
+                  onClick={(event) => { event.currentTarget.focus(); setTarget(null); setReset({ revision: config.revision, scope: 'system' }) }}>
+                  <IconRefreshOutlineRegular size={12} />{t('global-reset-all')}
+                </button>
+                {systemModifiedCount > 0 && <span className={css.modifiedCount}>{t('modified-count', { count: systemModifiedCount })}</span>}
+              </div>
+            </>}
+          </section>
           return <section key={group} aria-label={t(group)}>
             {group !== 'application' && <h3 className={css.group}>{t(group)}</h3>}
-            <ul className={css.rows}>{rows.map(row => <li key={row.id} className={css.row}>
-              {'modified' in row && target?.id !== row.id && <button type="button" className={css.rowButton}
-                aria-label={t('edit-label', { command: row.label })} disabled={busy || config.status !== 'ready'}
-                onClick={() => { setTarget(row) }} />}
-              <span className={css.commandLabel}>{row.label}</span>
-              <span className={css.binding}>
-                {'modified' in row
-                  ? target?.id === row.id
-                    ? <ShortcutEditor key={row.id} target={row} {...editorProps} />
-                    : <>
-                      <span className={css.rowActions}><ShortcutIcon kind="edit" /></span>
-                      {row.keys.length === 0 ? <span className={css.unbound}>{t('unbound')}</span> : <ShortcutKeys keys={row.keys} className={css.keyBadge} />}
-                    </>
-                  : <ShortcutKeys keys={row.keys} className={css.fixedKeyBadge} />}
-              </span>
-            </li>)}</ul>
+            <ul className={css.rows}>{rows.map(row => isEditable(row) ? editableRow(row) : fixedRow(row))}</ul>
           </section>
         })}
         {matches.length === 0 && <p className={css.hint} role="status">{t('empty')}</p>}
       </div>
       <footer className={css.footer}>
         <button type="button" className={css.resetAll} disabled={busy || config.status !== 'ready' || modifiedCount === 0}
-          onClick={(event) => { event.currentTarget.focus(); setTarget(null); setResetRevision(config.revision) }}>
+          onClick={(event) => { event.currentTarget.focus(); setTarget(null); setReset({ revision: config.revision, scope: 'application' }) }}>
           <IconRefreshOutlineRegular size={12} />{t('reset-all')}
         </button>
         {modifiedCount > 0 && <span className={css.modifiedCount}>{t('modified-count', { count: modifiedCount })}</span>}
       </footer>
     </div>
   </Modal>
-  <Modal open={open && resetRevision !== null} title={t('reset-title')} description={t('reset-description')}
-    closeLabel={t('close-confirmation')} onClose={() => { if (!busy) setResetRevision(null) }}
+  <Modal open={open && reset !== null} title={t(reset?.scope === 'system' ? 'global-reset-title' : 'reset-title')}
+    description={t(reset?.scope === 'system' ? 'global-reset-description' : 'reset-description')}
+    closeLabel={t('close-confirmation')} onClose={() => { if (!busy) setReset(null) }}
     footer={<>
-      <Button data-modal-autofocus disabled={busy} onClick={() => { setResetRevision(null) }}>{t('cancel')}</Button>
+      <Button data-modal-autofocus disabled={busy} onClick={() => { setReset(null) }}>{t('cancel')}</Button>
       <Button variant="primary" disabled={busy || config.status !== 'ready'} onClick={() => { void resetAll() }}>{t('reset')}</Button>
     </>} />
   {toast !== null && <Toast key={toast.seq} text={toast.text} onDone={dismissToast}

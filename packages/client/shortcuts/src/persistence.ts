@@ -1,9 +1,10 @@
 /** Serialized preference transactions; storage owners publish only accepted writes or read diagnostics. */
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import { editShortcutDocument, effectiveShortcuts, parseShortcutDocument } from './configuration.ts'
+import { editShortcutDocument, effectiveShortcuts, effectiveSystemShortcuts, isSystemCommand, parseShortcutDocument } from './configuration.ts'
 import type { BindingIssue, ShortcutDefinition, ShortcutDocument, ShortcutEdit } from './configuration.ts'
-import type { ShortcutCommandId, ShortcutPlatform, ShortcutRuntime } from './binding.ts'
+import type { ShortcutCommandId, ShortcutPlatform, ShortcutRuntime, ShortcutScope } from './binding.ts'
+import type { SystemShortcutState } from './system.ts'
 
 /** Opaque accepted-state identity, invalidated by configuration and catalog changes. */
 export type ShortcutRevision = Branded<'ShortcutRevision'>
@@ -35,6 +36,10 @@ export interface DesktopShortcutsApi {
   edit(edit: ShortcutEdit, revision: ShortcutRevision): Promise<ShortcutSaveResult>
   subscribe(listener: (snapshot: ShortcutConfigSnapshot) => void): () => void
   recording(active: boolean): Promise<void>
+  /** Read the current OS-global registration state. @returns registration results and carrier availability from Desktop main. */
+  global(): Promise<SystemShortcutState>
+  /** Subscribe to OS-global registration state. @param listener - current document consumer. @returns listener disposer. */
+  subscribeGlobal(listener: (state: SystemShortcutState) => void): () => void
 }
 
 /**
@@ -91,9 +96,17 @@ export class ShortcutPersistence {
       if (!this.active || this.definitions === null || this.snapshot.status === 'loading') return result('not-ready')
       if (revision !== this.snapshot.revision) return result('stale')
       if (this.snapshot.status === 'unreadable') return result('unreadable')
-      if ((edit.type === 'set' || edit.type === 'reset') && !this.definitions.some(row => row.id === edit.id && row.fixed === undefined)) return result('not-ready')
-      const document = editShortcutDocument(this.snapshot.document, edit, this.runtime, this.platform)
-      const rows = effectiveShortcuts(this.definitions, document, this.runtime, this.platform)
+      const target = edit.type === 'set' || edit.type === 'reset'
+        ? this.definitions.find(row => row.id === edit.id && row.fixed === undefined) : undefined
+      const scope: ShortcutScope = edit.scope ?? target?.scope ?? 'application'
+      if ((edit.type === 'set' || edit.type === 'reset')
+        && (target === undefined || isSystemCommand(target) !== (scope === 'system'))) return result('not-ready')
+      const document = editShortcutDocument(this.snapshot.document, edit, this.runtime, this.platform, scope)
+      const applicationRows = effectiveShortcuts(this.definitions, document, this.runtime, this.platform)
+      const systemRows = effectiveSystemShortcuts(this.definitions, document, this.platform)
+      // A reset-all owns one channel: a pre-existing conflict in the other channel must not block it.
+      const rows = edit.type !== 'reset-all' ? [...applicationRows, ...systemRows]
+        : scope === 'system' ? systemRows : applicationRows
       const invalid = rows.find(row => (edit.type === 'reset-all' || row.id === edit.id)
         && (row.issue !== null || row.conflicts.length > 0))
       // An explicit edit must not silently disable another command's default binding.

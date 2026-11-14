@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import ShortcutsService from '../src/client/index.ts'
 import { initialShortcutConfig } from '../src/protocol.ts'
-import type { DesktopKeyboardApi, DesktopShortcutsApi, ShortcutConfigSnapshot, ShortcutCommandId } from '../src/protocol.ts'
+import type { DesktopKeyboardApi, DesktopShortcutInput, DesktopShortcutsApi, ShortcutConfigSnapshot, ShortcutCommandId, SystemShortcutState } from '../src/protocol.ts'
 
 const disposers: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -24,19 +24,26 @@ function deferred<T>() {
 function desktop() {
   document.documentElement.dataset.platform = 'darwin'
   let publish!: (value: ShortcutConfigSnapshot) => void
+  let publishGlobal!: (value: SystemShortcutState) => void
   const unsubscribe = vi.fn()
+  const unsubscribeGlobal = vi.fn()
   const api = {
     get: vi.fn<DesktopShortcutsApi['get']>().mockResolvedValue(snapshot(1)),
     edit: vi.fn<DesktopShortcutsApi['edit']>().mockResolvedValue({ status: 'saved', snapshot: snapshot(3) }),
     recording: vi.fn<DesktopShortcutsApi['recording']>().mockResolvedValue(),
     subscribe: vi.fn<DesktopShortcutsApi['subscribe']>((listener) => { publish = listener; return unsubscribe }),
+    global: vi.fn<DesktopShortcutsApi['global']>().mockResolvedValue({ registrations: [], suspended: false }),
+    subscribeGlobal: vi.fn<DesktopShortcutsApi['subscribeGlobal']>((listener) => { publishGlobal = listener; return unsubscribeGlobal }),
   }
+  let nativeInput!: (value: DesktopShortcutInput) => void
   const keyboard = {
     closeWindow: vi.fn<DesktopKeyboardApi['closeWindow']>().mockResolvedValue(),
-    subscribe: vi.fn<DesktopKeyboardApi['subscribe']>(() => () => {}),
+    subscribe: vi.fn<DesktopKeyboardApi['subscribe']>((listener) => { nativeInput = listener; return () => {} }),
   }
   Object.defineProperty(window, 'dshDesktop', { configurable: true, value: { shortcuts: api, keyboard } })
-  return { api, keyboard, publish: (value: ShortcutConfigSnapshot) => { publish(value) }, unsubscribe }
+  return { api, keyboard, publish: (value: ShortcutConfigSnapshot) => { publish(value) }, unsubscribe,
+    publishGlobal: (value: SystemShortcutState) => { publishGlobal(value) }, unsubscribeGlobal,
+    nativeInput: (value: DesktopShortcutInput) => { nativeInput(value) } }
 }
 function mount() {
   const ctx = new Context()
@@ -120,6 +127,8 @@ it('reports unavailable Desktop storage without reading or writing localStorage'
   const read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
   const { service } = mount()
   expect(service.config.getSnapshot().status).toBe('unreadable')
+  expect(service.global.getSnapshot()).toEqual({ registrations: [], suspended: false, unavailable: 'carrier' })
+  expect(service.systemCatalog.getSnapshot()).toEqual([])
   expect((await service.edit({ type: 'reset-all' }, service.config.getSnapshot().revision)).status).toBe('unreadable')
   await expect(service.recording(true)).rejects.toThrow('bridge unavailable')
   expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled()
@@ -197,4 +206,106 @@ it('propagates catalog publication failures after a successful preference save',
   await expect(service.edit({ type: 'reset-all' }, service.config.getSnapshot().revision))
     .rejects.toThrow('Command label unavailable')
   expect(f.api.edit).toHaveBeenCalledOnce()
+})
+
+const systemCommand = { id: 'orb.toggle' as ShortcutCommandId, label: () => 'Toggle orb', aliases: [],
+  scope: 'system' as const, defaults: { 'desktop:macos': { code: 'F13', modifiers: [] as const } },
+  regions: ['page'] as const, modals: [], resolve: () => ({ status: 'handled' as const, run() {} }) }
+
+it('sends system definitions with their scope to the Desktop carrier', () => {
+  const f = desktop()
+  const { service } = mount()
+  service.register(systemCommand)
+  expect(f.api.get).toHaveBeenLastCalledWith([{ id: 'orb.toggle',
+    defaults: { 'desktop:macos': { code: 'F13', modifiers: [] } }, scope: 'system' }])
+})
+
+it('adopts the carrier OS-global registration state after the handshake and each accepted change', async () => {
+  const f = desktop()
+  const registered: SystemShortcutState = { registrations: [
+    { id: 'orb.toggle' as ShortcutCommandId, accelerator: 'F13', status: 'registered' }], suspended: false }
+  f.api.global.mockResolvedValue(registered)
+  const { service } = mount()
+  expect(service.global.getSnapshot()).toEqual({ registrations: [], suspended: false, unavailable: 'carrier' })
+  await vi.waitFor(() => { expect(service.config.getSnapshot().status).toBe('ready') })
+  await vi.waitFor(() => { expect(service.global.getSnapshot()).toEqual(registered) })
+  const adopted = f.api.global.mock.calls.length
+  const suspended: SystemShortcutState = { registrations: [], suspended: true }
+  f.api.global.mockResolvedValue(suspended)
+  f.publish(snapshot(6))
+  await vi.waitFor(() => { expect(service.global.getSnapshot()).toEqual(suspended) })
+  expect(f.api.global).toHaveBeenCalledTimes(adopted + 1)
+})
+
+it('adopts subscribed OS-global state and releases both bridge subscriptions together', async () => {
+  const f = desktop()
+  const { service, dispose } = mount()
+  await vi.waitFor(() => { expect(service.config.getSnapshot().status).toBe('ready') })
+  const platformUnavailable: SystemShortcutState = { registrations: [], suspended: false, unavailable: 'platform' }
+  f.publishGlobal(platformUnavailable)
+  expect(service.global.getSnapshot()).toBe(platformUnavailable)
+  await dispose()
+  expect(f.unsubscribe).toHaveBeenCalledOnce()
+  expect(f.unsubscribeGlobal).toHaveBeenCalledOnce()
+  f.publishGlobal({ registrations: [], suspended: true })
+  expect(service.global.getSnapshot()).toBe(platformUnavailable)
+})
+
+it('keeps the last accepted OS-global state when the carrier read fails', async () => {
+  const f = desktop()
+  const carrier: SystemShortcutState = { registrations: [], suspended: false }
+  f.api.global.mockResolvedValue(carrier)
+  const { service } = mount()
+  await vi.waitFor(() => { expect(service.config.getSnapshot().status).toBe('ready') })
+  await vi.waitFor(() => { expect(service.global.getSnapshot()).toBe(carrier) })
+  const read = f.api.global.mock.calls.length
+  let reject!: (reason: Error) => void
+  const pending = new Promise<SystemShortcutState>((_resolve, no) => { reject = no })
+  f.api.global.mockReturnValueOnce(pending)
+  f.publish(snapshot(4))
+  await vi.waitFor(() => { expect(f.api.global).toHaveBeenCalledTimes(read + 1) })
+  reject(new Error('global channel closed'))
+  await pending.catch(() => {})
+  expect(service.global.getSnapshot()).toBe(carrier)
+})
+
+it('validates a candidate with the selected scope and reports every catalog conflict', async () => {
+  desktop()
+  const { service } = mount()
+  const offSystem = service.register(systemCommand)
+  const offApplication = service.register(command)
+  const offFixed = service.registerFixed({ id: 'menu.close' as ShortcutCommandId, label: () => 'Close', keys: ['Esc'],
+    bindings: [{ code: 'Escape', modifiers: [] }], group: 'menus' })
+  await vi.waitFor(() => { expect(service.config.getSnapshot().status).toBe('ready') })
+  const chord = { code: 'KeyK', secondCode: 'KeyJ', modifiers: ['primary'] as const }
+  expect(service.describeBinding(chord)).toMatchObject({ issue: null })
+  expect(service.describeBinding(chord, 'system')).toMatchObject({ issue: 'unsupported-key' })
+  expect(service.describeBinding({ code: 'F13', modifiers: [] }, 'system').conflicts).toEqual(['orb.toggle'])
+  expect(service.describeBinding({ code: 'KeyB', modifiers: ['primary'] }, 'system').conflicts).toEqual(['test.toggle'])
+  expect(service.describeBinding({ code: 'Escape', modifiers: [] }, 'system').conflicts).toEqual(['menu.close'])
+  offFixed(); offApplication(); offSystem()
+})
+
+it('reports system-scope candidates as unsupported on Web', async () => {
+  const { service } = mount()
+  await vi.waitFor(() => { expect(service.config.getSnapshot().status).toBe('ready') })
+  expect(service.describeBinding({ code: 'F13', modifiers: [] }, 'system')).toMatchObject({ issue: 'unsupported-browser' })
+  expect(service.describeBinding({ code: 'F13', modifiers: [] })).toMatchObject({ issue: 'modifier-required' })
+})
+
+it('publishes OS-global state to subscribers and resets fixed sequences on native input', async () => {
+  const f = desktop()
+  const { service } = mount()
+  await vi.waitFor(() => { expect(service.config.getSnapshot().status).toBe('ready') })
+  const changed = vi.fn()
+  service.global.subscribe(changed)
+  const state: SystemShortcutState = { registrations: [], suspended: true }
+  f.publishGlobal(state)
+  expect(changed).toHaveBeenCalledOnce()
+  expect(service.global.getSnapshot()).toBe(state)
+  const reset = vi.fn()
+  service.observeFixedInput(reset)
+  f.nativeInput({ kind: 'global', revision: service.config.getSnapshot().revision,
+    commandId: 'orb.toggle' as ShortcutCommandId })
+  expect(reset).toHaveBeenCalledExactlyOnceWith({ type: 'reset' })
 })

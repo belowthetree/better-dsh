@@ -1,0 +1,13 @@
+# Bilingual-pair consistency record for text-to-speech.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/text-to-speech.md
+/speech-synthesis:
+  en: 8aca3dc48a0bc9d3
+  zh: 5b839243d367ff86
+/speech-synthesis/selection-and-routing:
+  en: 26ac1fd9971e2d63
+  zh: d1770b6d0ca3a7d4
+/speech-synthesis/browser-delivery:
+  en: b712f44a6685c3e2
+  zh: 39ee7118ad80b715

@@ -9,6 +9,8 @@ export type {
   DshEnginesManifest,
   DshManifest,
   DshPackageManifest,
+  DshProfileForm,
+  DshProfileFormKind,
   DshProfileManifest,
   LocalizedText,
   PluginLocalizedMeta,

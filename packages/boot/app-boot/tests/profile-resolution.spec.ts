@@ -161,6 +161,8 @@ function fixture(name = '@deepseek-ai/dsh-core'): {
     profile: { skippedBundles: [],
       name: 'web',
       dir: profileDir,
+      form: { kind: 'classic' },
+      owner: undefined,
       layers: [],
       patchPath: join(profileDir, 'cordis.patch.yml'),
       patches: [],

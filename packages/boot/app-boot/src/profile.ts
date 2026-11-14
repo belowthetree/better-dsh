@@ -27,7 +27,9 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { applyEntryPatches, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import type { DshBundleManifest, DshPackageManifest } from '@deepseek-ai/dsh-package-manifest'
+import type {
+  DshBundleManifest, DshPackageManifest, DshProfileForm, DshProfileFormKind,
+} from '@deepseek-ai/dsh-package-manifest'
 import { INSTALLATION_OWNED_PROFILE_TUPLES, PROFILE_TEMPLATES, RETIRED_BUNDLES } from '@deepseek-ai/dsh-official-bundles'
 import { assertBundlePlatform } from './bundle-platform.ts'
 import { evaluatePluginCompatibility, pluginCompatibilityWarning } from './plugin-compatibility.ts'
@@ -43,6 +45,60 @@ export const PROFILE_PATCH_FILENAME = 'cordis.patch.yml'
 
 /** Package metadata accepted by the profile reader; local profiles need no published identity. */
 export type ProfileManifest = Partial<DshPackageManifest>
+
+/** Shell presentation kinds a profile may request from its desktop carrier. */
+export const PROFILE_FORM_KINDS: readonly DshProfileFormKind[] = ['classic', 'orb']
+
+/** Desktop carrier declarations resolved from one profile manifest. */
+export interface ProfileIdentity {
+  /** Shell form the profile requests; classic when undeclared. */
+  readonly form: DshProfileForm
+  /** Application that exclusively manages the profile's executable packages, when declared. */
+  readonly owner: 'desktop' | undefined
+}
+
+/** Whether a manifest value is one of {@link PROFILE_FORM_KINDS}. */
+function isProfileFormKind(value: unknown): value is DshProfileFormKind {
+  return PROFILE_FORM_KINDS.some(kind => kind === value)
+}
+
+/**
+ * Resolve the desktop carrier declarations of one profile manifest.
+ * An absent `dsh.profile.form` requests the classic shell; a present declaration must name a
+ * supported kind, and an unsupported or malformed declaration throws instead of falling back,
+ * because a profile that asked for a form must not boot as a different one.
+ * An unrecognized `dsh.profile.owner` claims nothing: only the Desktop application manages a
+ * profile, so a forward-compatible manifest keeps loading.
+ * @param binName - the diagnostic prefix on thrown errors.
+ * @param profileName - the profile name named in thrown errors.
+ * @param manifest - the profile manifest read from package.json.
+ * @returns the requested shell form and the declared package-management owner.
+ * @throws {Error} when `dsh.profile.form` is present without a supported string kind.
+ */
+export function readProfileIdentity(
+  binName: string, profileName: string, manifest: ProfileManifest,
+): ProfileIdentity {
+  const declared: unknown = manifest.dsh?.profile?.form
+  let form: DshProfileForm = { kind: 'classic' }
+  if (declared !== undefined) {
+    const supported = PROFILE_FORM_KINDS.join(', ')
+    if (typeof declared !== 'object' || declared === null || Array.isArray(declared)
+      || !('kind' in declared) || typeof declared.kind !== 'string') {
+      throw new Error(
+        `${binName}: profile ${JSON.stringify(profileName)} has a malformed dsh.profile.form declaration`
+        + `; supported forms: ${supported}`,
+      )
+    }
+    if (!isProfileFormKind(declared.kind)) {
+      throw new Error(
+        `${binName}: profile ${JSON.stringify(profileName)} declares unsupported form ${JSON.stringify(declared.kind)}`
+        + `; supported forms: ${supported}`,
+      )
+    }
+    form = { kind: declared.kind }
+  }
+  return { form, owner: manifest.dsh?.profile?.owner === 'desktop' ? 'desktop' : undefined }
+}
 
 /**
  * The patch files a bundle declares, as written: one file for a string
@@ -88,6 +144,10 @@ export interface Profile {
   name: string
   /** Absolute profile directory. */
   dir: string
+  /** Shell form the profile requests; classic when undeclared. */
+  readonly form: DshProfileForm
+  /** Application that exclusively manages this profile's executable packages, when declared. */
+  readonly owner: 'desktop' | undefined
   /** Bundle layers in `dsh.profile.bundles` order. */
   layers: ProfileLayer[]
   /** Absolute path of the profile's own patch file. */
@@ -682,6 +742,9 @@ export function loadProfileDirectory(
   options: { userLayer?: boolean } = {},
 ): Profile {
   const manifest = dropRetiredBundles(dir, readProfileManifest(binName, dir))
+  // The form is resolved before bundle resolution so an unsupported declaration fails first.
+  const name = basename(dir)
+  const { form, owner } = readProfileIdentity(binName, name, manifest)
   const bundles = manifest.dsh?.profile?.bundles ?? []
   const layers: ProfileLayer[] = []
   const skippedBundles: SkippedBundle[] = []
@@ -709,7 +772,7 @@ export function loadProfileDirectory(
   const patches = options.userLayer !== false && existsSync(patchPath)
     ? loadOverlayPatches(binName, patchPath)
     : []
-  return { name: basename(dir), dir, layers, patchPath, patches, skippedBundles }
+  return { name, dir, form, owner, layers, patchPath, patches, skippedBundles }
 }
 
 /**

@@ -1,0 +1,26 @@
+- insert:
+    - id: client-surface
+      name: '@deepseek-ai/dsh-client-surface'
+    - id: client-ui-orb
+      name: '@deepseek-ai/dsh-client-ui-orb'
+    - id: client-voice-capture
+      name: '@deepseek-ai/dsh-client-voice-capture'
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: deepseek-cloud
+        language: auto
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
+    - id: text-to-speech
+      name: '@deepseek-ai/dsh-text-to-speech'
+      config:
+        defaultProvider: deepseek-tts
+        voiceId: stella
+        format: wav
+    - id: api-text-to-speech
+      name: '@deepseek-ai/dsh-api-text-to-speech'
+    - id: client-ui-voice-output
+      name: '@deepseek-ai/dsh-client-ui-voice-output'

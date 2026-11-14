@@ -1,5 +1,11 @@
 /** Browser-owned microphone capture and native Web Audio resampling. */
 
+/** Bytes in the canonical WAV header emitted by {@link encodeWave}. */
+export const WAVE_HEADER_BYTES = 44
+
+/** Bytes per second of the canonical 16 kHz mono PCM16 audio this module emits. */
+export const PCM_BYTES_PER_SECOND = 32_000
+
 /** Capture failure whose message is localized by the caller. */
 export class RecordingError extends Error {
   constructor(readonly kind: 'unavailable' | 'permission' | 'empty' | 'cancelled' | 'interrupted' | 'deviceMissing') { super(kind); this.name = 'RecordingError' }

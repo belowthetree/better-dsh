@@ -1,6 +1,6 @@
 /** Command contributions and immutable catalog values. */
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { BindingIssue, NormalizedBinding, ShortcutConfigSnapshot, ShortcutEdit, ShortcutRevision, ShortcutSaveResult, ShortcutBinding, ShortcutCommandId, ShortcutPlatform, ShortcutProfile, ShortcutRuntime } from '../protocol.ts'
+import type { BindingIssue, NormalizedBinding, ShortcutConfigSnapshot, ShortcutEdit, ShortcutRevision, ShortcutSaveResult, ShortcutBinding, ShortcutCommandId, ShortcutPlatform, ShortcutProfile, ShortcutRuntime, ShortcutScope, SystemShortcutState } from '../protocol.ts'
 
 /** Local input owner resolved before an application command. */
 export type ShortcutRegion = 'page' | 'editable' | 'terminal'
@@ -28,11 +28,15 @@ export interface ShortcutCommand {
    * Windows/macOS Desktop keyboard bindings take priority.
    */
   readonly modals: readonly string[]
+  /** OS-global system command on Desktop; absent means an application command with focused bindings. */
+  readonly scope?: ShortcutScope
   resolve(context: ShortcutContext): ShortcutResolution
 }
 /** JSON-compatible catalog row, shared by reference, tooltips, and controls. */
 export interface ShortcutCatalogEntry {
   readonly id: ShortcutCommandId
+  /** Input channel owning the binding; system rows describe OS-global registration. */
+  readonly scope: ShortcutScope
   readonly label: string
   readonly aliases: readonly string[]
   readonly keys: readonly string[]
@@ -83,7 +87,12 @@ export interface ShortcutFixedCatalogEntry {
 export interface Shortcuts {
   readonly runtime: ShortcutRuntime
   readonly platform: ShortcutPlatform
+  /** Application-scope commands and their focused bindings; system commands stay in {@link systemCatalog}. */
   readonly catalog: ObservableSnapshot<readonly ShortcutCatalogEntry[]>
+  /** System-scope commands and their OS-global bindings, including registration conflicts. */
+  readonly systemCatalog: ObservableSnapshot<readonly ShortcutCatalogEntry[]>
+  /** OS-global registration state reported by the carrier; unavailable until a carrier reports. */
+  readonly global: ObservableSnapshot<SystemShortcutState>
   readonly config: ObservableSnapshot<ShortcutConfigSnapshot>
   readonly fixedCatalog: ObservableSnapshot<readonly ShortcutFixedCatalogEntry[]>
   readonly stopSequenceMs: number
@@ -100,11 +109,12 @@ export interface Shortcuts {
    */
   observeFixedInput(listener: (input: ShortcutFixedInput) => void): () => void
   /**
-   * Describe a candidate using the device's physical-key and reservation rules; invalid codes throw.
+   * Describe a candidate using one scope's validation and the device's physical-key rules; invalid codes throw.
    * @param binding - candidate combination, or null for an unbound command.
-   * @returns canonical binding, visible keys, rejection reason, and overlapping editable/fixed command IDs.
+   * @param scope - input channel whose acceptance rules apply; absent means an application command.
+   * @returns canonical binding, visible keys, rejection reason, and overlapping catalog command IDs.
    */
-  describeBinding(binding: ShortcutBinding | null): {
+  describeBinding(binding: ShortcutBinding | null, scope?: ShortcutScope): {
     binding: NormalizedBinding | null
     keys: readonly string[]
     issue: BindingIssue | null
@@ -130,7 +140,7 @@ export interface Shortcuts {
    */
   closeWindow(): Promise<void>
   /**
-   * Register a command; duplicate ids and overlapping default bindings throw.
+   * Register a command; duplicate ids, overlapping default bindings, and invalid scope defaults throw.
    * @param command - feature-owned labels, defaults, and target resolver.
    * @returns disposer removing the binding and catalog entry.
    */

@@ -1,7 +1,7 @@
 /** Command registration, normalized default bindings, and synchronous dispatch. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { bindingIssue, bindingKey, effectiveShortcuts, initialShortcutConfig, isWebBindingAllowed, normalizeBinding, overlappingBindings, presentBinding, resolveShortcutDefault } from '../protocol.ts'
-import type { ShortcutCommandId, ShortcutConfigSnapshot, ShortcutDefinition, ShortcutPlatform, ShortcutRuntime } from '../protocol.ts'
+import { bindingIssue, bindingKey, effectiveShortcuts, effectiveSystemShortcuts, initialShortcutConfig, isSystemCommand, isWebBindingAllowed, normalizeBinding, overlappingBindings, presentBinding, resolveShortcutDefault, systemShortcutIssue } from '../protocol.ts'
+import type { EffectiveShortcut, NormalizedBinding, ShortcutCommandId, ShortcutConfigSnapshot, ShortcutDefinition, ShortcutPlatform, ShortcutRuntime } from '../protocol.ts'
 import type { ShortcutCatalogEntry, ShortcutCommand, ShortcutContext, ShortcutGesture,
   ShortcutFixedCommand, ShortcutFixedCatalogEntry } from './types.ts'
 
@@ -10,15 +10,17 @@ type ShortcutDispatch = { status: 'handled'; commandId: ShortcutCommandId }
   | { status: 'blocked'; commandId: ShortcutCommandId; reason: string }
   | { status: 'pass' }
 
-/** Application command registry; adapters own event listeners, feature plugins own actions. */
+/** Window command registry for application and OS-global system commands; adapters own listeners, feature plugins own actions. */
 export class ShortcutRegistry {
   private readonly commands = new Map<ShortcutCommandId, ShortcutCommand>()
   private readonly fixedCommands = new Map<ShortcutCommandId, ShortcutFixedCommand>()
   private readonly conflicts = new Map<string, ShortcutCommand>()
   private readonly bindings = new Map<string, ShortcutCommand>()
   private readonly state
-  /** Effective localized rows derived from the accepted configuration. */
+  /** Effective localized rows for application commands; OS-global system rows are published separately. */
   readonly catalog
+  /** Effective localized rows for system-scope commands and their OS-global bindings. */
+  readonly systemCatalog
   /** Accepted preferences and visible read diagnostics. */
   readonly config
   /** Fixed local operations whose owning plugins are mounted. */
@@ -26,8 +28,12 @@ export class ShortcutRegistry {
 
   constructor(readonly runtime: ShortcutRuntime, readonly platform: ShortcutPlatform,
     config: ShortcutConfigSnapshot = { ...initialShortcutConfig(), status: 'ready' }) {
-    this.state = createSnapshotStore<{ catalog: readonly ShortcutCatalogEntry[]; config: ShortcutConfigSnapshot }>({ catalog: [], config })
+    this.state = createSnapshotStore<{ catalog: readonly ShortcutCatalogEntry[]
+      systemCatalog: readonly ShortcutCatalogEntry[]
+      config: ShortcutConfigSnapshot }>({ catalog: [], systemCatalog: [], config })
     this.catalog = { getSnapshot: () => this.state.getSnapshot().catalog,
+      subscribe: (listener: () => void) => this.state.subscribe(listener) }
+    this.systemCatalog = { getSnapshot: () => this.state.getSnapshot().systemCatalog,
       subscribe: (listener: () => void) => this.state.subscribe(listener) }
     this.config = { getSnapshot: () => this.state.getSnapshot().config,
       subscribe: (listener: () => void) => this.state.subscribe(listener) }
@@ -35,11 +41,13 @@ export class ShortcutRegistry {
 
   /**
    * Return the serializable active catalog for storage validation.
-   * @returns definitions without callbacks or localized labels.
+   * @returns definitions without callbacks or localized labels; system commands keep their scope.
    */
   definitions(): readonly ShortcutDefinition[] {
-    return [...[...this.commands.values()].map(({ id, defaults }) => ({ id, defaults })),
-      ...[...this.fixedCommands.values()].map(({ id, bindings }) => ({ id, defaults: {}, fixed: bindings }))]
+    const commands = [...this.commands.values()].map(({ id, defaults, scope }) => ({ id, defaults,
+      ...(scope === 'system' ? { scope } : {}) }))
+    const fixed = [...this.fixedCommands.values()].map(({ id, bindings }) => ({ id, defaults: {}, fixed: bindings }))
+    return [...commands, ...fixed]
   }
 
   /**
@@ -83,23 +91,8 @@ export class ShortcutRegistry {
    */
   register(command: ShortcutCommand): () => void {
     if (this.commands.has(command.id) || this.fixedCommands.has(command.id)) throw new Error(`Duplicate shortcut command: ${command.id}`)
-    for (const runtime of ['desktop', 'web'] as const) {
-      for (const platform of ['macos', 'windows', 'linux'] as const) {
-        const candidate = resolveShortcutDefault(command, runtime, platform)
-        if (candidate === undefined) continue
-        const binding = normalizeBinding(candidate, platform)
-        if (runtime === 'web' && !isWebBindingAllowed(binding, platform)) {
-          throw new Error(`Unsupported Web shortcut: ${command.id}`)
-        }
-        if (bindingIssue(binding, runtime, platform) !== null) throw new Error(`Reserved shortcut default: ${command.id}`)
-        for (const existing of this.commands.values()) {
-          const other = resolveShortcutDefault(existing, runtime, platform)
-          if (other !== undefined && overlappingBindings(binding, normalizeBinding(other, platform))) {
-            throw new Error(`Conflicting shortcut defaults: ${command.id} and ${existing.id} (${runtime}:${platform})`)
-          }
-        }
-      }
-    }
+    if (isSystemCommand(command)) this.validateSystemDefaults(command)
+    else this.validateApplicationDefaults(command)
     this.commands.set(command.id, command)
     this.refreshLabels()
     return () => {
@@ -109,27 +102,78 @@ export class ShortcutRegistry {
     }
   }
 
+  /** Application defaults must be available on every declared profile and cannot duplicate any other default. */
+  private validateApplicationDefaults(command: ShortcutCommand): void {
+    for (const runtime of ['desktop', 'web'] as const) {
+      for (const platform of ['macos', 'windows', 'linux'] as const) {
+        const candidate = resolveShortcutDefault(command, runtime, platform)
+        if (candidate === undefined) continue
+        const binding = normalizeBinding(candidate, platform)
+        if (runtime === 'web' && !isWebBindingAllowed(binding, platform)) {
+          throw new Error(`Unsupported Web shortcut: ${command.id}`)
+        }
+        if (bindingIssue(binding, runtime, platform) !== null) throw new Error(`Reserved shortcut default: ${command.id}`)
+        this.assertNoDefaultOverlap(command.id, binding, runtime, platform)
+      }
+    }
+  }
+
+  /** System defaults are Desktop-only OS-global keys, and cannot duplicate any other default. */
+  private validateSystemDefaults(command: ShortcutCommand): void {
+    for (const profile of Object.keys(command.defaults)) {
+      if (!profile.startsWith('desktop:')) throw new Error(`System shortcuts are Desktop-only: ${command.id}`)
+    }
+    for (const platform of ['macos', 'windows', 'linux'] as const) {
+      const candidate = resolveShortcutDefault(command, 'desktop', platform)
+      if (candidate === undefined) continue
+      const binding = normalizeBinding(candidate, platform)
+      if (systemShortcutIssue(binding, 'desktop', platform) !== null) {
+        throw new Error(`Unsupported system shortcut default: ${command.id}`)
+      }
+      this.assertNoDefaultOverlap(command.id, binding, 'desktop', platform)
+    }
+  }
+
+  /** @throws when a registered command already declares an overlapping default for this profile. */
+  private assertNoDefaultOverlap(id: ShortcutCommandId, binding: NormalizedBinding,
+    runtime: ShortcutRuntime, platform: ShortcutPlatform): void {
+    for (const existing of this.commands.values()) {
+      const other = resolveShortcutDefault(existing, runtime, platform)
+      if (other !== undefined && overlappingBindings(binding, normalizeBinding(other, platform))) {
+        throw new Error(`Conflicting shortcut defaults: ${id} and ${existing.id} (${runtime}:${platform})`)
+      }
+    }
+  }
+
   /**
-   * Recompute effective bindings when preferences, commands, or locale change.
+   * Recompute effective application and system bindings when preferences, commands, or locale change.
    * @param config - accepted configuration, defaulting to the current snapshot.
    */
   refreshLabels(config: ShortcutConfigSnapshot = this.config.getSnapshot()): void {
     this.bindings.clear()
     this.conflicts.clear()
-    const rows = effectiveShortcuts(this.definitions(), config.document, this.runtime, this.platform)
-    const catalog = rows.map((row) => {
+    const definitions = this.definitions()
+    const catalog = effectiveShortcuts(definitions, config.document, this.runtime, this.platform).map((row) => {
       const command = this.commands.get(row.id) as ShortcutCommand
       const enabled = config.status !== 'loading' && row.issue === null && row.conflicts.length === 0
       if (enabled && row.binding !== null) this.bindings.set(bindingKey(row.binding), command)
       if (config.status !== 'loading' && row.issue === null && row.conflicts.length > 0 && row.binding !== null) {
         this.conflicts.set(bindingKey(row.binding), command)
       }
-      return { ...row, label: command.label(), aliases: command.aliases,
-        ...presentBinding(row.binding, this.platform),
-        aria: enabled ? presentBinding(row.binding, this.platform).aria : undefined }
+      return this.entry(row, command, enabled)
     })
-    this.state.set({ config, catalog })
+    const systemCatalog = effectiveSystemShortcuts(definitions, config.document, this.platform).map(row =>
+      this.entry(row, this.commands.get(row.id) as ShortcutCommand,
+        config.status !== 'loading' && row.issue === null && row.conflicts.length === 0))
+    this.state.set({ config, catalog, systemCatalog })
     this.refreshFixedLabels()
+  }
+
+  /** Localized catalog row; system rows never enter the focused binding or conflict maps. */
+  private entry(row: EffectiveShortcut, command: ShortcutCommand, enabled: boolean): ShortcutCatalogEntry {
+    const keys = presentBinding(row.binding, this.platform)
+    return { ...row, scope: command.scope ?? 'application', label: command.label(), aliases: command.aliases,
+      ...keys, aria: enabled ? keys.aria : undefined }
   }
 
   /**

@@ -4,6 +4,7 @@ import { bindingKey, effectiveShortcuts, presentBinding, parseShortcutDefinition
 import type { NormalizedBinding, ShortcutConfigSnapshot, ShortcutDefinition, ShortcutPlatform, ShortcutRevision } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import type { DesktopBrowserLeaseId } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { desktopKeybindings } from './keybindings.ts'
+import { DesktopGlobalShortcuts } from './global-shortcuts.ts'
 import { DESKTOP_IPC, assertDesktopSender } from './ipc.ts'
 
 /**
@@ -42,6 +43,24 @@ export function installDesktopShortcuts(
   let revision: ShortcutRevision | undefined
   let closeBinding: NormalizedBinding | null = null
   let editingInput: BrowserWindow['webContents'] | undefined
+  // OS-global accelerators are owned by this installer beside the focused-window
+  // interception, so suspension, release, and revision tagging have one owner.
+  const globals = new DesktopGlobalShortcuts({
+    platform,
+    revision: () => revision,
+    recording: () => recording,
+    send: (commandId, accepted) => {
+      const window = getWindow()
+      if (window === undefined || window.isDestroyed()) return
+      window.webContents.send(DESKTOP_IPC.shortcutsInput, { kind: 'global', commandId, revision: accepted })
+    },
+    publish: (state) => {
+      const window = getWindow()
+      if (window === undefined || window.isDestroyed()
+        || !window.webContents.mainFrame.url.startsWith('dsh-app://app/')) return
+      window.webContents.send(DESKTOP_IPC.shortcutsGlobalChanged, state)
+    },
+  })
   const scopedDesktop = platform === 'windows' || platform === 'macos'
   const disposers = new Set<() => void>()
   const guestInputs = new Map<WebContents, { window: BrowserWindow; reset(): void }>()
@@ -63,6 +82,7 @@ export function installDesktopShortcuts(
       ? [bindingKey(row.binding)] : []))
     const close = rows.find(row => row.id === 'page.close')
     closeBinding = close?.issue === null && close.conflicts.length === 0 ? close.binding : null
+    globals.sync(definitions, snapshot.document)
     if (wasEnabled !== (revision !== undefined) || previousAccelerator !== closeAccelerator()) updateMenu()
     const window = getWindow()
     if (window !== undefined && !window.isDestroyed() && window.webContents.mainFrame.url.startsWith('dsh-app://app/')) {
@@ -93,6 +113,11 @@ export function installDesktopShortcuts(
     if (typeof active !== 'boolean') throw new Error('desktop shortcuts: invalid recording state')
     recording = active
     window.webContents.setIgnoreMenuShortcuts(active)
+    globals.recording(active)
+  })
+  ipcMain.handle(DESKTOP_IPC.shortcutsGlobal, (event) => {
+    assertSender(event)
+    return globals.state()
   })
   ipcMain.handle(DESKTOP_IPC.shortcutsCloseWindow, (event, expected: unknown) => {
     const window = assertSender(event)
@@ -120,6 +145,7 @@ export function installDesktopShortcuts(
       resetInput()
       if (guestName !== undefined) return
       definitions = []; keys.clear(); recording = false
+      globals.reset()
       persistence.setDefinitions(null)
     }
     const navigation = (event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>): void => {
@@ -251,9 +277,11 @@ export function installDesktopShortcuts(
     attachGuest: attachInput,
     dispose() {
       for (const dispose of disposers) dispose()
+      globals.dispose()
       persistence.dispose()
       for (const channel of [DESKTOP_IPC.shortcutsGet,
-        DESKTOP_IPC.shortcutsEdit, DESKTOP_IPC.shortcutsRecording, DESKTOP_IPC.shortcutsCloseWindow]) {
+        DESKTOP_IPC.shortcutsEdit, DESKTOP_IPC.shortcutsRecording, DESKTOP_IPC.shortcutsGlobal,
+        DESKTOP_IPC.shortcutsCloseWindow]) {
         ipcMain.removeHandler(channel)
       }
     },

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
-import { webShortcutStorage, SHORTCUT_STORAGE_KEY } from '../src/client/storage.ts'
-import type { ShortcutCommandId, ShortcutConfigSnapshot } from '../src/protocol.ts'
+import { desktopShortcutStorage, webShortcutStorage, SHORTCUT_STORAGE_KEY } from '../src/client/storage.ts'
+import { initialShortcutConfig } from '../src/protocol.ts'
+import type { ShortcutCommandId, ShortcutConfigSnapshot, SystemShortcutState } from '../src/protocol.ts'
 
-afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
+afterEach(() => { localStorage.clear(); Reflect.deleteProperty(window, 'dshDesktop'); vi.restoreAllMocks() })
 const id = 'shortcuts.open' as ShortcutCommandId
 const definitions = [{ id, defaults: {
   'web:macos': { code: 'Slash', modifiers: ['primary'] as const },
@@ -53,5 +54,48 @@ it('retains drafts after quota failure and refuses to replace future data', asyn
     expect((await adapter.edit({ type: 'reset-all' }, latest.revision)).status).toBe('unreadable')
     expect(localStorage.getItem(SHORTCUT_STORAGE_KEY)).toBe(raw)
 
+  } finally { adapter.dispose() }
+})
+
+function defineDesktop(bridge: Record<string, unknown>): void {
+  Object.defineProperty(window, 'dshDesktop', { configurable: true, value: { shortcuts: bridge } })
+}
+
+it('forwards the preload OS-global carrier methods', async () => {
+  const state: SystemShortcutState = { registrations: [{ id, accelerator: 'F13', status: 'registered' }], suspended: false }
+  const release = vi.fn()
+  const bridge = { get: vi.fn(), edit: vi.fn(), subscribe: vi.fn(() => () => {}), recording: vi.fn(),
+    global: vi.fn(async () => state), subscribeGlobal: vi.fn(() => release) }
+  defineDesktop(bridge)
+  const adapter = desktopShortcutStorage(window)!
+  await expect(adapter.global()).resolves.toBe(state)
+  const listener = vi.fn()
+  const off = adapter.subscribeGlobal(listener)
+  expect(bridge.subscribeGlobal).toHaveBeenCalledWith(listener)
+  expect(off).toBe(release)
+})
+
+it('completes a preload that predates OS-global registration', async () => {
+  const read = vi.fn(async () => ({ ...initialShortcutConfig() }))
+  const bridge = { get: read, edit: vi.fn(), subscribe: vi.fn(() => () => {}), recording: vi.fn() }
+  defineDesktop(bridge)
+  const adapter = desktopShortcutStorage(window)!
+  await expect(adapter.global()).resolves.toEqual({ registrations: [], suspended: false, unavailable: 'carrier' })
+  const off = adapter.subscribeGlobal(vi.fn())
+  expect(() => { off() }).not.toThrow()
+  await adapter.get([])
+  expect(read).toHaveBeenCalledWith([])
+})
+
+it('reports a missing preload capability as undefined', () => {
+  expect(desktopShortcutStorage(window)).toBeUndefined()
+})
+
+it('reports Web OS-global state as carrier-unavailable with a no-op subscription', async () => {
+  const adapter = webShortcutStorage(window, 'macos', vi.fn())
+  try {
+    await expect(adapter.global()).resolves.toEqual({ registrations: [], suspended: false, unavailable: 'carrier' })
+    const off = adapter.subscribeGlobal(vi.fn())
+    expect(() => { off() }).not.toThrow()
   } finally { adapter.dispose() }
 })

@@ -1,0 +1,82 @@
+---
+description: "Enable the experimental orb form on Desktop from the plugin manager."
+kind: "package-bundle"
+---
+
+# @deepseek-ai/dsh-better-bundle
+
+English | [中文](README.zh.md)
+
+## Summary
+
+This optional bundle composes the orb form for Desktop: the surface service, the orb and panel chrome, shared microphone capture, official speech recognition and synthesis seams, the authenticated speech Remotes, and the speech playback consumer. A Desktop-owned profile that declares the orb form mounts it; shipped profiles keep the classic window and leave it disabled.
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+The bundle is Desktop-only. In Plugins it appears switched off; enabling it makes the packages available but does not change the classic profile. Create a profile whose manifest requests the orb form, as documented in the Desktop shell forms section, then launch Desktop with `--profile <name>`. The window opens as a collapsed orb, click expands the panel with the existing conversation and composer, and Escape or collapse returns to the orb; pinning keeps the panel open, and the orb or panel can be dragged. The orb context menu selects the synthesis voice, mutes playback, and cycles the auto-speak policy. A microphone button on the orb and the `voice.pushToTalk` system command start a capture while the panel is collapsed; finishing expands the panel and fills the draft, and hands-free submission sends it immediately. The orb toggle is a system-scope command with no default binding: set it under Settings, Shortcuts, Global, and it then works while another application is focused. Speech recognition and synthesis require the external DeepSeek suite to register the `deepseek-cloud` and `deepseek-tts` providers in the same profile; both are billed cloud requests.
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Maintainer details — click to expand</summary>
+
+The static `cordis.patch.yml` inserts the surface row, the orb plugin, the capture service, the recognition and synthesis seams with their DeepSeek provider ids, both authenticated Remotes, the composer microphone control, and the playback consumer. The form itself is not declared here: window options are read synchronously from the profile manifest before the Host starts, so the profile manifest is the runtime authority and the bundle only composes the plugins that form needs. The classic window, its focused-window shortcuts, and Web behavior stay unchanged because none of these rows mount without the profile selection.
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [Client surface](../../../docs/subsystems/client-surface.md)
+- [Voice input](../../../docs/subsystems/voice-input.md)
+- [Speech synthesis](../../../docs/subsystems/text-to-speech.md)
+- [Desktop shell forms](../../../apps/desktop/README.md)
+
+-----
+
+<a id="model-experience"></a>
+## Model Experience
+
+None, as the form composes presentation, capture, and playback plugins without adding model requests; ordinary user submission owns model-visible text.
+
+#### KV Cache effect
+
+No direct effect; the composed plugins change no prompt content, so cached prefixes stay unchanged.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- Desktop only. Web keeps the classic presentation and has no page-level orb fallback; the form profile is created from the documented recipe because Settings does not yet create form profiles.
+- Both speech seams expect the out-of-tree `@dsh-external/dsh-deepseek-suite` to register `deepseek-cloud` and `deepseek-tts` in the same profile. A missing provider fails at first use rather than at load.
+- The orb has no attention badge, the context menu does not offer new session or quit, and a collapsed panel does not focus the composer automatically.
+- Push-to-talk is press-to-start, press-to-stop: Electron global shortcuts expose no key-up event, and playback is not streaming.
+
+-----
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Maintainer details — click to expand</summary>
+
+None.
+
+</details>

@@ -13,7 +13,60 @@ import { apply, inject, LayoutController } from '@deepseek-ai/dsh-client-ui-layo
 import { apply as nodeApply } from '@deepseek-ai/dsh-client-ui-layout'
 import type { MainPanelId } from '../src/client/service.ts'
 import type { createLayoutStore } from '../src/client/stores.ts'
+import type { SurfaceAdapter } from '../../surface/src/client/adapters.ts'
+import type { SurfaceSnapshot } from '../../surface/src/protocol.ts'
+import { SurfaceRuntime } from '../../surface/src/client/service.ts'
+import type {} from '../../surface/src/client/index.ts'
 import { ShortcutRegistry } from '../../shortcuts/src/client/registry.ts'
+
+/** Root entry inject face readable from the type-erased stored registration. */
+type InjectedFace = {
+  hooks: { foldedLandscape: HostObservable<boolean>; surface: HostObservable<SurfaceSnapshot> }
+  dismissModal: () => void
+}
+
+/** Presentation without a carrier: the classic profile. */
+const CLASSIC_SURFACE: SurfaceSnapshot = {
+  form: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+}
+
+/** Orb presentation the carrier publishes once a form profile is active. */
+const ORB_SURFACE: SurfaceSnapshot = {
+  form: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+}
+
+interface FakeSurface {
+  readonly adapter: SurfaceAdapter
+  /** Publish one carrier snapshot to the connected runtime. */
+  push(snapshot: SurfaceSnapshot): void
+}
+
+/** Carrier whose dismissal outcome the caller can change between calls. */
+function fakeSurface(dismissModal: () => Promise<void> = async () => {}): FakeSurface {
+  let current = CLASSIC_SURFACE
+  const listeners = new Set<(snapshot: SurfaceSnapshot) => void>()
+  return {
+    adapter: {
+      initial: () => current,
+      read: async () => current,
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+      expand: async () => {},
+      collapse: async () => {},
+      presentModal: async () => {},
+      dismissModal,
+      setPinned: async () => {},
+      dragBy: async () => {},
+      pointerInside: () => {},
+    },
+    push: (snapshot) => {
+      current = snapshot
+      for (const listener of [...listeners]) listener(snapshot)
+    },
+  }
+}
 
 const owners = new Set<Fiber>()
 let originalRootStyle: string | null
@@ -91,6 +144,7 @@ describe('ui-layout client apply', () => {
     expect(slots.spec('rightbar')).toEqual({ kind: 'single', scope: 'root' })
     expect(slots.spec('shell.bottom')).toEqual({ kind: 'single', scope: 'root' })
     expect(slots.spec('shell.overlay')).toEqual({ kind: 'list', scope: 'root' })
+    expect(slots.spec('shell.modal')).toEqual({ kind: 'list', scope: 'root' })
     expect(slots.spec('shell.leading')).toEqual({ kind: 'single', scope: 'root' })
   })
 
@@ -182,10 +236,12 @@ describe('ui-layout client apply', () => {
     await fiber.await()
     const entry = slots.entries('root')[0]
     if (entry?.inject === undefined) throw new Error('the root entry must inject its media source')
-    const first = entry.inject() as { hooks: { foldedLandscape: HostObservable<boolean> } }
+    const first = entry.inject() as InjectedFace
     const second = entry.inject() as typeof first
     const source = first.hooks.foldedLandscape
     expect(second.hooks.foldedLandscape).toBe(source)
+    expect(first.hooks.surface.getSnapshot()).toEqual(CLASSIC_SURFACE)
+    first.dismissModal()
     expect(source.getSnapshot()).toBe(true)
     const listener = vi.fn()
     const unsubscribe = source.subscribe(listener)
@@ -228,10 +284,64 @@ describe('ui-layout client apply', () => {
     expect(slots.spec('rightbar')).toBeUndefined()
     expect(slots.spec('shell.bottom')).toBeUndefined()
     expect(slots.spec('shell.overlay')).toBeUndefined()
+    expect(slots.spec('shell.modal')).toBeUndefined()
     expect(slots.spec('shell.leading')).toBeUndefined()
     expect(host.root.getSnapshot().hooks.panelInfo).toBeUndefined()
     // The built-in root declaration survives entry teardown (renderer-owned).
     expect(slots.spec('root')).toEqual({ kind: 'single', scope: 'root' })
+  })
+
+  it('follows an optional surface service and restores the classic presentation when it unloads', async () => {
+    const fake = fakeSurface()
+    const runtime = new SurfaceRuntime(fake.adapter)
+    const { ctx, slots } = await bench()
+    const provider = ctx.plugin((child: Context) => {
+      child.effect(() => runtime.connect(), 'spec: surface carrier')
+      child.reflect.provide('surface', runtime)
+    })
+    await provider.await()
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const entry = slots.entries('root')[0]
+    if (entry?.inject === undefined) throw new Error('the root entry must inject its presentation source')
+    const injected = entry.inject() as InjectedFace
+    expect(injected.hooks.surface.getSnapshot()).toBe(CLASSIC_SURFACE)
+    fake.push(ORB_SURFACE)
+    await vi.waitFor(() => { expect(injected.hooks.surface.getSnapshot()).toBe(ORB_SURFACE) })
+    expect(document.documentElement.dataset.surface).toBe('orb')
+    fake.push({ ...ORB_SURFACE, presentation: 'panel' })
+    await vi.waitFor(() => { expect(document.documentElement.dataset.surface).toBeUndefined() })
+    expect(injected.hooks.surface.getSnapshot().presentation).toBe('panel')
+    // Withdrawing the service unloads its consumer and restores the classic frame.
+    await provider.dispose()
+    await vi.waitFor(() => { expect(injected.hooks.surface.getSnapshot()).toEqual(CLASSIC_SURFACE) })
+    expect(document.documentElement.dataset.surface).toBeUndefined()
+  })
+
+  it('routes a frame modal dismissal to the carrier and reports carrier failures', async () => {
+    const state: { failure: Error | undefined } = { failure: undefined }
+    const dismissModal = vi.fn(async () => { if (state.failure !== undefined) throw state.failure })
+    const fake = fakeSurface(() => dismissModal())
+    const runtime = new SurfaceRuntime(fake.adapter)
+    const { ctx, slots } = await bench()
+    const provider = ctx.plugin((child: Context) => {
+      child.effect(() => runtime.connect(), 'spec: surface carrier')
+      child.reflect.provide('surface', runtime)
+    })
+    await provider.await()
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const entry = slots.entries('root')[0]
+    if (entry?.inject === undefined) throw new Error('the root entry must inject its presentation source')
+    const injected = entry.inject() as InjectedFace
+    injected.dismissModal()
+    await vi.waitFor(() => { expect(dismissModal).toHaveBeenCalledOnce() })
+    state.failure = new Error('window is gone')
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      injected.dismissModal()
+      await vi.waitFor(() => { expect(report).toHaveBeenCalledWith('ui-layout: surface modal dismissal failed', state.failure) })
+    } finally { report.mockRestore() }
   })
 })
 

@@ -58,7 +58,7 @@ function bench(over: {
 describe('OpenInAppAction visibility', () => {
   it('advertises the configured workspace accelerator', () => {
     render(<OpenInAppAction {...bench({ apps: ['finder'], absolutePath: '/w', shortcuts: [{
-      id: 'workspace.openLocal' as ShortcutCommandId, label: 'Open', aliases: [], binding: null,
+      scope: 'application', id: 'workspace.openLocal' as ShortcutCommandId, label: 'Open', aliases: [], binding: null,
       keys: ['Ctrl', 'O'], aria: 'Control+O', modified: true, conflicts: [], issue: null,
     }] }).props} />)
     expect(screen.getByRole('button', { name: t('open.title', { app: zh['app.finder'] }) }).getAttribute('aria-keyshortcuts')).toBe('Control+O')

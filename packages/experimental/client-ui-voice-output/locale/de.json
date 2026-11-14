@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sprachausgabe",
+    "description": "Liest abgeschlossene Assistentenantworten gemäß Vorlese-Richtlinie, Stimmauswahl und Stummschaltung vor."
+  }
+}

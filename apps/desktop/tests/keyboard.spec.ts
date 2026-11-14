@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { BrowserWindow, WebContents, WebFrameMain } from 'electron'
 import type { DesktopShortcutInput, ShortcutBinding, ShortcutCommandId, ShortcutConfigSnapshot,
-  ShortcutDefinition, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
+  ShortcutDefinition, ShortcutSaveResult, SystemShortcutState } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { ShortcutRegistry } from '@deepseek-ai/dsh-client-shortcuts/src/client/registry.ts'
 import { installKeyboard } from '@deepseek-ai/dsh-client-shortcuts/src/client/dom.ts'
 import { installNativeKeyboard } from '@deepseek-ai/dsh-client-shortcuts/src/client/native.ts'
@@ -32,14 +32,36 @@ const overlays = await vi.hoisted(async () => {
   }
   return { Window }
 })
-vi.mock('electron', () => ({ ipcMain: ipc, BrowserWindow: overlays.Window, WebContentsView: overlays.Window, app: { isPackaged: true }, session: { fromPartition: () => ({
+vi.mock('electron', () => ({ ipcMain: ipc, globalShortcut: globals, BrowserWindow: overlays.Window, WebContentsView: overlays.Window, app: { isPackaged: true }, session: { fromPartition: () => ({
   setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), setDevicePermissionHandler: vi.fn(),
   setDisplayMediaRequestHandler: vi.fn(), on: vi.fn(), webRequest: { onBeforeRequest: vi.fn() },
 }) } }))
+const globals = vi.hoisted(() => {
+  const callbacks = new Map<string, () => void>()
+  const registered = new Set<string>()
+  const control = { deny: false }
+  return {
+    callbacks, registered, control,
+    register: vi.fn((accelerator: string, callback: () => void) => {
+      if (control.deny) return false
+      registered.add(accelerator)
+      callbacks.set(accelerator, callback)
+      return true
+    }),
+    unregister: vi.fn((accelerator: string) => { registered.delete(accelerator); callbacks.delete(accelerator) }),
+    unregisterAll: vi.fn(() => { registered.clear(); callbacks.clear() }),
+    isRegistered: vi.fn((accelerator: string) => registered.has(accelerator)),
+  }
+})
 const { installDesktopShortcuts } = await import('../src/keyboard.ts')
 const { DesktopBrowserGuests } = await import('../src/browser-guests.ts')
 const { DesktopUpdateOverlays } = await import('../src/update-overlay.ts')
-afterEach(() => { vi.clearAllMocks() })
+afterEach(() => {
+  vi.clearAllMocks()
+  globals.registered.clear()
+  globals.callbacks.clear()
+  globals.control.deny = false
+})
 
 type FrameFixture = { url: WebFrameMain['url']; name: WebFrameMain['name']; parent: FrameFixture | null }
 type ContentsFixture = EventEmitter & Pick<WebContents,
@@ -827,4 +849,36 @@ it('delivers Windows Edit actions to the focused browser guest without invoking 
   dispose()
   f.keyboard.sendEditingKey('C', ['control'])
   expect(f.contents.sendInputEvent).toHaveBeenCalledTimes(2)
+})
+it('registers system-scope commands as OS-global accelerators and forwards tagged activations', async () => {
+  const f = await fixture('macos')
+  const system: ShortcutDefinition = { id: 'orb.toggle' as ShortcutCommandId, scope: 'system',
+    defaults: desktopDefaults({ code: 'KeyK', modifiers: ['primary'] }) }
+  const snapshot = await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet, [system])
+  expect(globals.registered.has('Command+K')).toBe(true)
+  expect(await f.call<SystemShortcutState>(DESKTOP_IPC.shortcutsGlobal)).toEqual({
+    registrations: [{ id: 'orb.toggle', accelerator: 'Command+K', status: 'registered' }], suspended: false,
+  })
+  f.contents.send.mockClear()
+  globals.callbacks.get('Command+K')!()
+  expect(f.contents.send).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.shortcutsInput,
+    { kind: 'global', commandId: 'orb.toggle', revision: snapshot.revision })
+  await f.call(DESKTOP_IPC.shortcutsRecording, true)
+  expect(globals.registered.size).toBe(0)
+  expect(await f.call<SystemShortcutState>(DESKTOP_IPC.shortcutsGlobal)).toMatchObject({ registrations: [], suspended: true })
+  await f.call(DESKTOP_IPC.shortcutsRecording, false)
+  expect(globals.registered.has('Command+K')).toBe(true)
+})
+
+it('reports an accelerator the operating system already owns as a failed registration', async () => {
+  globals.control.deny = true
+  const f = await fixture('windows')
+  const system: ShortcutDefinition = { id: 'orb.toggle' as ShortcutCommandId, scope: 'system',
+    defaults: desktopDefaults({ code: 'KeyJ', modifiers: ['control', 'alt'] }) }
+  await f.call(DESKTOP_IPC.shortcutsGet, [system])
+  expect(await f.call<SystemShortcutState>(DESKTOP_IPC.shortcutsGlobal)).toEqual({
+    registrations: [{ id: 'orb.toggle', accelerator: 'Control+Alt+J', status: 'failed' }], suspended: false,
+  })
+  expect(f.contents.send.mock.calls.some(([channel, state]) =>
+    channel === DESKTOP_IPC.shortcutsGlobalChanged && (state as SystemShortcutState).registrations[0]?.status === 'failed')).toBe(true)
 })

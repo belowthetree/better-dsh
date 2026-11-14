@@ -4,6 +4,7 @@ import type { DesktopFileActions } from '@deepseek-ai/dsh-client-ui-file-actions
 export type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopChannelBridge, DesktopChannelState } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopKeyboardApi, DesktopShortcutsApi } from '@deepseek-ai/dsh-client-shortcuts/protocol'
+import type { DesktopSurfaceApi, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
@@ -18,7 +19,13 @@ export const DESKTOP_IPC = {
   shortcutsEdit: 'dsh-desktop:shortcuts-edit',
   shortcutsChanged: 'dsh-desktop:shortcuts-changed',
   shortcutsRecording: 'dsh-desktop:shortcuts-recording',
+  shortcutsGlobal: 'dsh-desktop:shortcuts-global',
+  shortcutsGlobalChanged: 'dsh-desktop:shortcuts-global-changed',
   boot: 'dsh-desktop:boot',
+  surfaceSnapshot: 'dsh-desktop:surface-snapshot',
+  surfaceCommand: 'dsh-desktop:surface-command',
+  surfacePointer: 'dsh-desktop:surface-pointer',
+  surfaceChanged: 'dsh-desktop:surface-changed',
   enterWorkspace: 'dsh-desktop:enter-workspace',
   onboardingActive: 'dsh-desktop:onboarding-active',
   onboardingApiKey: 'dsh-desktop:onboarding-api-key',
@@ -97,6 +104,8 @@ export interface DshDesktopProductApi {
   readonly fileDrag: DesktopFileDrag
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi
+  /** Form presentation state and commands, absent from carriers without a form. */
+  readonly surface: DesktopSurfaceApi
   /**
    * Local machine description for the feedback questionnaire.
    * @returns `name=value` fields separated by `; `, with no hostname, user name, or serial number.
@@ -108,6 +117,14 @@ export interface DshDesktopProductApi {
     open(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
   }
+}
+
+/** Host injections plus the presentation descriptor one product renderer boots with. */
+export interface DesktopBootPayload {
+  readonly injections: readonly unknown[]
+  readonly streamBaseUrl: string
+  /** Shell presentation this renderer presents; a classic profile reports the classic presentation as unavailable. */
+  readonly surface: SurfaceSnapshot
 }
 
 /** Scheme of Desktop-owned application documents. */

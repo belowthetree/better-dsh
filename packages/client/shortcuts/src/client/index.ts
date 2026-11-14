@@ -2,11 +2,12 @@
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ShortcutRegistry } from './registry.ts'
 import { detectEnvironment, installKeyboard } from './dom.ts'
-import { bindingIssue, initialShortcutConfig, normalizeBinding, overlappingBindings, presentBinding } from '../protocol.ts'
-import type { DesktopKeyboardApi, DesktopShortcutsApi, ShortcutSaveResult } from '../protocol.ts'
-import { desktopShortcutStorage, webShortcutStorage } from './storage.ts'
+import { bindingIssue, initialShortcutConfig, normalizeBinding, overlappingBindings, presentBinding, systemShortcutIssue } from '../protocol.ts'
+import type { DesktopKeyboardApi, DesktopShortcutsApi, ShortcutBinding, ShortcutConfigSnapshot, ShortcutSaveResult, ShortcutScope, SystemShortcutState } from '../protocol.ts'
+import { desktopShortcutStorage, unavailableSystemShortcutState, webShortcutStorage } from './storage.ts'
 import type { Shortcuts } from './types.ts'
 import type { ShortcutFixedInput } from './types.ts'
 import { installNativeKeyboard } from './native.ts'
@@ -14,7 +15,7 @@ import { Config } from '../config.ts'
 
 export type { ShortcutCatalogEntry, ShortcutCommand, ShortcutContext, ShortcutGesture, Shortcuts } from './types.ts'
 export type { ShortcutFixedInput, ShortcutFixedCommand, ShortcutFixedCatalogEntry } from './types.ts'
-export type { ShortcutBinding, ShortcutCommandId, ShortcutPlatform, ShortcutRuntime } from '../protocol.ts'
+export type { ShortcutBinding, ShortcutCommandId, ShortcutPlatform, ShortcutRuntime, ShortcutScope, SystemShortcutRegistration, SystemShortcutState } from '../protocol.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -29,12 +30,15 @@ export default class ShortcutsService extends Service implements Shortcuts {
   readonly runtime: Shortcuts['runtime']
   readonly platform: Shortcuts['platform']
   readonly catalog: Shortcuts['catalog']
+  readonly systemCatalog: Shortcuts['systemCatalog']
+  readonly global: Shortcuts['global']
   readonly config: Shortcuts['config']
   readonly fixedCatalog: Shortcuts['fixedCatalog']
   readonly stopSequenceMs: number
   private readonly fixedListeners = new Set<(input: ShortcutFixedInput) => void>()
   private readonly adapter: DesktopShortcutsApi | undefined
   private readonly keyboard: DesktopKeyboardApi | undefined
+  private readonly globalState
   private active = true
   private connected = false
   private readonly registry: ShortcutRegistry
@@ -52,18 +56,22 @@ export default class ShortcutsService extends Service implements Shortcuts {
     this.stopSequenceMs = config.stopSequenceMs
     this.registry = new ShortcutRegistry(this.runtime, this.platform, initialShortcutConfig())
     this.catalog = this.registry.catalog
+    this.systemCatalog = this.registry.systemCatalog
     this.config = this.registry.config
     this.fixedCatalog = this.registry.fixedCatalog
-    const publish = (snapshot: ReturnType<Shortcuts['config']['getSnapshot']>): void => {
-      if (this.active && this.connected && snapshot.sequence >= this.config.getSnapshot().sequence) this.registry.configure(snapshot)
-    }
+    this.globalState = createSnapshotStore<SystemShortcutState>(unavailableSystemShortcutState())
+    this.global = { getSnapshot: () => this.globalState.getSnapshot(),
+      subscribe: (listener: () => void) => this.globalState.subscribe(listener) }
+    const publish = (snapshot: ShortcutConfigSnapshot): void => { if (this.connected) this.accept(snapshot) }
     const web = this.runtime === 'web' ? webShortcutStorage(window, this.platform, publish) : undefined
     this.adapter = web ?? desktopShortcutStorage(window)
+    this.syncGlobal()
     if (keyboard !== undefined) ctx.effect(() => installNativeKeyboard(window, keyboard, this.registry,
       () => this.config.getSnapshot(), () => { this.fixedInput({ type: 'reset' }) }), 'shortcuts: native keyboard')
     ctx.effect(() => {
       const off = this.adapter?.subscribe(publish)
-      return () => { this.active = false; off?.(); web?.dispose() }
+      const offGlobal = this.adapter?.subscribeGlobal((state) => { this.adoptGlobal(state) })
+      return () => { this.active = false; off?.(); offGlobal?.(); web?.dispose() }
     }, 'shortcuts: preferences')
     this.syncDefinitions()
     ctx.effect(() => {
@@ -105,15 +113,31 @@ export default class ShortcutsService extends Service implements Shortcuts {
     }
   }
 
-  describeBinding(binding: Parameters<Shortcuts['describeBinding']>[0]): ReturnType<Shortcuts['describeBinding']> {
+  describeBinding(binding: ShortcutBinding | null, scope?: ShortcutScope): ReturnType<Shortcuts['describeBinding']> {
     const normalized = binding === null ? null : normalizeBinding(binding, this.platform)
     return { binding: normalized,
       keys: presentBinding(normalized, this.platform).keys,
-      issue: normalized === null ? null : bindingIssue(normalized, this.runtime, this.platform),
+      issue: normalized === null ? null
+        : scope === 'system' ? systemShortcutIssue(normalized, this.runtime, this.platform)
+          : bindingIssue(normalized, this.runtime, this.platform),
       conflicts: normalized === null ? [] : [...this.catalog.getSnapshot().filter(row => row.binding !== null
+        && overlappingBindings(row.binding, normalized)).map(row => row.id),
+      ...this.systemCatalog.getSnapshot().filter(row => row.binding !== null
         && overlappingBindings(row.binding, normalized)).map(row => row.id),
       ...this.fixedCatalog.getSnapshot().filter(row => row.bindings.some(binding => overlappingBindings(binding, normalized)))
         .map(row => row.id)] }
+  }
+
+  /** Adopt one accepted configuration snapshot, then refresh the carrier's OS-global registration state. */
+  private accept(snapshot: ShortcutConfigSnapshot): void {
+    if (!this.active || snapshot.sequence < this.config.getSnapshot().sequence) return
+    this.registry.configure(snapshot)
+    this.syncGlobal()
+  }
+
+  /** Publish carrier state only while this service still owns the subscription. */
+  private adoptGlobal(state: SystemShortcutState): void {
+    if (this.active) this.globalState.set(state)
   }
 
   private syncDefinitions(): void {
@@ -121,8 +145,17 @@ export default class ShortcutsService extends Service implements Shortcuts {
     if (this.adapter === undefined) { this.failRead(); return }
     void this.adapter.get(this.registry.definitions()).then((snapshot) => {
       this.connected = true
-      if (this.active && snapshot.sequence >= this.config.getSnapshot().sequence) this.registry.configure(snapshot)
+      this.accept(snapshot)
     }, () => { this.failRead() })
+  }
+
+  /** Adopt the carrier's current OS-global registration state; a missing capability stays unavailable. */
+  private syncGlobal(): void {
+    const adapter = this.adapter
+    if (adapter === undefined) return
+    void adapter.global().then((state) => { this.adoptGlobal(state) }, () => {
+      // A rejected read keeps the last accepted registration state; the carrier owns its diagnostics.
+    })
   }
 
   private failRead(): void {
@@ -143,7 +176,7 @@ export default class ShortcutsService extends Service implements Shortcuts {
       if (this.active) console.error('Shortcut preference save failed', error)
       return { status: 'write-failed', snapshot: this.config.getSnapshot() }
     }
-    if (this.active && result.snapshot.sequence >= this.config.getSnapshot().sequence) this.registry.configure(result.snapshot)
+    this.accept(result.snapshot)
     return result
   }
 

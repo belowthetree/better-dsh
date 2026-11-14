@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ShortcutPersistence } from '../src/protocol.ts'
-import type { ShortcutCommandId, ShortcutConfigSnapshot, ShortcutDefinition, ShortcutEdit } from '../src/protocol.ts'
+import type { ShortcutBinding, ShortcutCommandId, ShortcutConfigSnapshot, ShortcutDefinition, ShortcutEdit } from '../src/protocol.ts'
 
 const one = 'test.one' as ShortcutCommandId
 it('rejects an unsupported Web binding without writing preferences', async () => {
@@ -13,6 +13,8 @@ it('rejects an unsupported Web binding without writing preferences', async () =>
   expect(storage.write).not.toHaveBeenCalled()
 })
 const two = 'test.two' as ShortcutCommandId
+const systemToggle = 'orb.toggle' as ShortcutCommandId
+const systemCapture = 'orb.capture' as ShortcutCommandId
 const binding = { code: 'KeyJ', modifiers: ['primary'] as const }
 const definitions: readonly ShortcutDefinition[] = [{ id: one, defaults: {
   'desktop:macos': { ...binding, code: 'KeyB' },
@@ -23,6 +25,16 @@ const definitions: readonly ShortcutDefinition[] = [{ id: one, defaults: {
   'desktop:macos': { ...binding, code: 'Comma' },
   'desktop:windows': { ...binding, code: 'Comma' },
   'desktop:linux': { ...binding, code: 'Comma' },
+} },
+{ id: systemToggle, scope: 'system', defaults: {
+  'desktop:macos': { code: 'KeyK', modifiers: ['control', 'shift'] },
+  'desktop:windows': { code: 'KeyK', modifiers: ['control', 'shift'] },
+  'desktop:linux': { code: 'KeyK', modifiers: ['control', 'shift'] },
+} },
+{ id: systemCapture, scope: 'system', defaults: {
+  'desktop:macos': { code: 'F13', modifiers: [] },
+  'desktop:windows': { code: 'F13', modifiers: [] },
+  'desktop:linux': { code: 'F13', modifiers: [] },
 } }]
 const edit: ShortcutEdit = { type: 'set', id: one, binding }
 
@@ -71,7 +83,7 @@ describe('serialized preference persistence', () => {
     expect((await restarted.store.readCurrent()).document).toEqual(f.state().document)
   })
 
-  it.each(['{broken', '{"schemaVersion":3,"profiles":{}}'])('retains accepted bindings and original bytes after reading %s', async (raw) => {
+  it.each(['{broken', '{"schemaVersion":4,"profiles":{}}'])('retains accepted bindings and original bytes after reading %s', async (raw) => {
     const f = fixture(); await f.store.readCurrent(); await f.store.edit(edit, f.state().revision)
     const accepted = f.state().document
     f.external(raw)
@@ -141,4 +153,87 @@ it('continues transactions after a rejected unsupported code and contains subscr
     expect(error).toHaveBeenCalledWith('Shortcut configuration subscriber failed:', expect.any(Error))
     expect((await f.store.readCurrent()).document).toEqual(result.snapshot.document)
   } finally { error.mockRestore() }
+})
+describe('system-scope preference transactions', () => {
+  const systemBinding: ShortcutBinding = { code: 'KeyJ', modifiers: ['alt'] }
+  const setSystem = (next: ShortcutBinding | null, scope: 'application' | 'system' = 'system'): ShortcutEdit =>
+    ({ type: 'set', id: systemToggle, binding: next, scope })
+
+  it('persists a system override in version 3 and keeps profiles and unrelated system entries', async () => {
+    const f = fixture(); await f.store.readCurrent()
+    await f.store.edit(edit, f.state().revision)
+    expect((await f.store.edit(setSystem(systemBinding), f.state().revision)).status).toBe('saved')
+    expect(f.state().document.schemaVersion).toBe(3)
+    expect(f.state().document.system).toEqual({ [systemToggle]: systemBinding })
+    expect(f.state().document.profiles['desktop:windows']).toEqual({ [one]: binding })
+    const stored: unknown = JSON.parse(f.raw()!)
+    expect(stored).toMatchObject({ schemaVersion: 3, system: { [systemToggle]: systemBinding } })
+    expect((await f.store.edit(setSystem(null), f.state().revision)).status).toBe('saved')
+    expect(f.state().document.system).toEqual({ [systemToggle]: null })
+    expect((await f.store.edit({ type: 'reset', id: systemToggle }, f.state().revision)).status).toBe('saved')
+    expect(f.state().document.system).toEqual({})
+  })
+
+  it('derives the edit scope from the definition and requires it to match an explicit scope', async () => {
+    const f = fixture(); await f.store.readCurrent()
+    expect((await f.store.edit({ type: 'set', id: systemToggle, binding: systemBinding }, f.state().revision)).status)
+      .toBe('saved')
+    expect(f.state().document.system).toEqual({ [systemToggle]: systemBinding })
+    expect((await f.store.edit({ type: 'reset', id: systemToggle }, f.state().revision)).status).toBe('saved')
+    expect(f.state().document.system).toEqual({})
+    expect((await f.store.edit(setSystem(systemBinding, 'application'), f.state().revision)).status).toBe('not-ready')
+    expect((await f.store.edit({ type: 'set', id: one, binding, scope: 'system' }, f.state().revision)).status)
+      .toBe('not-ready')
+    expect((await f.store.edit({ type: 'reset', id: one, scope: 'system' }, f.state().revision)).status).toBe('not-ready')
+  })
+
+  it('rejects cross-scope and system-to-system conflicts without writing', async () => {
+    const f = fixture(); await f.store.readCurrent()
+    expect(await f.store.edit(setSystem({ code: 'KeyB', modifiers: ['control'] }), f.state().revision))
+      .toMatchObject({ status: 'conflict', conflicts: [one] })
+    expect(await f.store.edit({ type: 'set', id: one, binding: { code: 'KeyK', modifiers: ['control', 'shift'] } },
+      f.state().revision)).toMatchObject({ status: 'conflict', conflicts: [systemToggle] })
+    expect(await f.store.edit(setSystem({ code: 'F13', modifiers: [] }), f.state().revision))
+      .toMatchObject({ status: 'conflict', conflicts: [systemCapture] })
+    expect(await f.store.edit(setSystem({ code: 'KeyA', modifiers: [] }), f.state().revision))
+      .toMatchObject({ status: 'conflict', issue: 'modifier-required', conflicts: [] })
+    expect(f.storage.write).not.toHaveBeenCalled()
+  })
+
+  it('resets one scope without touching the other', async () => {
+    const f = fixture(); await f.store.readCurrent()
+    await f.store.edit(setSystem(systemBinding), f.state().revision)
+    await f.store.edit(edit, f.state().revision)
+    expect((await f.store.edit({ type: 'reset-all' }, f.state().revision)).status).toBe('saved')
+    expect(f.state().document.profiles['desktop:windows']).toEqual({})
+    expect(f.state().document.system).toEqual({ [systemToggle]: systemBinding })
+    expect((await f.store.edit({ type: 'reset-all', scope: 'system' }, f.state().revision)).status).toBe('saved')
+    expect(f.state().document.system).toEqual({})
+    expect(f.state().document.schemaVersion).toBe(3)
+  })
+
+  it('scopes a reset-all conflict scan to the channel it resets', async () => {
+    const conflictingApplication = fixture()
+    conflictingApplication.external(JSON.stringify({ schemaVersion: 2, profiles: { 'desktop:windows': {
+      [one]: { code: 'KeyB', modifiers: ['control'] }, [two]: { code: 'KeyB', modifiers: ['control'] } } } }))
+    await conflictingApplication.store.readCurrent()
+    expect((await conflictingApplication.store.edit({ type: 'reset-all', scope: 'system' },
+      conflictingApplication.state().revision)).status).toBe('saved')
+    const conflictingSystem = fixture()
+    conflictingSystem.external(JSON.stringify({ schemaVersion: 3, profiles: {}, system: {
+      [systemToggle]: { code: 'KeyK', modifiers: ['control'] },
+      [systemCapture]: { code: 'KeyK', modifiers: ['control'] } } }))
+    await conflictingSystem.store.readCurrent()
+    expect((await conflictingSystem.store.edit({ type: 'reset-all' }, conflictingSystem.state().revision)).status)
+      .toBe('saved')
+  })
+
+  it('reads a persisted system document after restart', async () => {
+    const f = fixture(); await f.store.readCurrent()
+    await f.store.edit(setSystem(systemBinding), f.state().revision)
+    const restarted = fixture(); restarted.external(f.raw()!)
+    const read = await restarted.store.readCurrent()
+    expect(read.document).toEqual(f.state().document)
+    expect(read.document.system).toEqual({ [systemToggle]: systemBinding })
+  })
 })

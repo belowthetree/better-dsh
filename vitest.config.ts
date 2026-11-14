@@ -357,6 +357,9 @@ export default defineConfig({
         // The speech entry also imports generated Remote definitions; voice-input.e2e.ts
         // exercises the built entry, while source tests cover mountVoiceInput.
         'packages/experimental/client-ui-voice-input/src/client/index.ts',
+    'packages/experimental/client-voice-capture/src/client/index.ts',
+    'packages/experimental/client-ui-voice-output/src/client/index.ts',
+    'packages/experimental/client-voice-capture/src/index.ts',
         // Built Web replays cover the generated Remote wiring of the card entries; their mount modules are source-covered.
         'packages/experimental/client-ui-action-cards/src/client/index.ts',
         'packages/experimental/client-ui-plugin-recommendations/src/client/index.ts',

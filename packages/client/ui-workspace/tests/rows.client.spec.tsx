@@ -348,7 +348,7 @@ describe('workspace browser rows', () => {
       sessionCount: 1, expanded: true, containsCurrent: true, sessions: [],
     }
     render(<ProjectRowItem group={group} onToggle={onToggle} onCreate={onCreate} t={t}
-      newShortcut={{ id: 'session.new' as never, label: 'New', aliases: [], binding: null,
+      newShortcut={{ scope: 'application', id: 'session.new' as never, label: 'New', aliases: [], binding: null,
         keys: ['Ctrl', 'N'], aria: 'Control+N', modified: true, conflicts: [], issue: null }} />)
 
     expect(screen.getByRole('treeitem').getAttribute('aria-expanded')).toBe('true')

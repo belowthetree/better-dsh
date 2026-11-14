@@ -2,7 +2,7 @@
 
 English | [中文](voice-input.zh.md)
 
-Experimental speech recognition has three roles: the [Service Definition](../../packages/experimental/speech-to-text/README.md) routes named providers, the [SenseVoice provider](../../packages/experimental/speech-to-text-sensevoice/README.md) owns local inference, and the [Remote consumer](../../packages/experimental/api-speech-to-text/README.md) serves the browser. The [optional bundle](../../packages/experimental/voice-input-bundle/README.md) composes them with the microphone UI.
+Experimental speech recognition has four roles: the [Service Definition](../../packages/experimental/speech-to-text/README.md) routes named providers, the [SenseVoice provider](../../packages/experimental/speech-to-text-sensevoice/README.md) owns local inference, the [Remote consumer](../../packages/experimental/api-speech-to-text/README.md) serves the browser, and `ctx.voiceCapture` in the [capture service](../../packages/experimental/client-voice-capture/README.md) owns the browser recorder and the Remote mount every voice control shares. The [optional bundle](../../packages/experimental/voice-input-bundle/README.md) composes them with the microphone UI.
 
 ## Provider selection
 
@@ -12,9 +12,9 @@ Experimental speech recognition has three roles: the [Service Definition](../../
 
 ## Browser and Host ownership
 
-The browser owns microphone tracks and the unsent draft. `TranscriptionRequest` sends canonical base64 PCM16 WAV through the authenticated Remote. `SpeechCatalog` advertises available providers, the default selection and recording byte/duration limits. The API validates this process input before recognition.
+The browser-owned capture service acquires the selected microphone, encodes canonical base64 PCM16 WAV, and sends one `TranscriptionRequest` through the authenticated Remote. `SpeechCatalog` advertises available providers, the default selection and recording byte and duration limits; the service keeps its last accepted catalog across transport reconnections. Capture state is one identity-stable `VoiceCaptureSnapshot` of phase, device, measured level, last failure and the recording cap; `follow()` publishes changes and `finish()` resolves the transcript. Failures use the closed `VoiceCaptureFailure` union so each consumer localizes its own copy, and `preview()` measures one microphone without recording or uploading. The API validates this process input before recognition.
 
-The input facade captures a revision-bearing selection before recording. `InputActions.insertText()` inserts one undoable plain-text edit only while the selection revision is current and submission permits editing. A rejected insertion leaves the transcript available for explicit insertion. Switching Sessions or disposing the plugin invalidates late results. Recognition itself writes no Session event; ordinary user submission owns the final model-visible text.
+Draft insertion stays separate from recognition. The composer control reads the active Session's revision-bearing selection before capture and calls `InputActions.insertText()` after `finish()`, which inserts one undoable plain-text edit only while the revision is current and submission permits editing. Unmounting the control no longer cancels an active capture because the service owns the recorder; explicit cancel, Escape, or hiding the page still discards it. A capture the collapsed orb finishes publishes its transcript as `VoiceCaptureSnapshot.pendingTranscript`, and the composer takes it once on mount, so expanding the panel after dictating inserts the text instead of dropping it. A rejected insertion leaves the transcript available for explicit insertion. Switching Sessions or disposing the owning plugin invalidates late results. Recognition itself writes no Session event; ordinary user submission owns the final model-visible text.
 
 ## Preparation and settings
 
@@ -24,7 +24,7 @@ The Host provider owns one preparation task across page and Session changes. The
 
 Failed preparation can include `SpeechDownloadFailure` with the asset, source origin, classified reason and optional diagnostic code or HTTP status. The Client localizes recovery advice; raw download causes remain on the Host.
 
-The microphone occupies `conversation.input.activity`, between the model selector and Send. Clicking starts capture and expands the toolbar; Stop transcribes and inserts into the draft. The activity preserves the editor and submit action, owns local feedback, and releases expansion on unmount. Cancel, Escape or hiding the page discards capture. Waveform history displays measured microphone amplitude. Bundle details contain recognition preferences, preparation state and progress. Explicit enablement uses `plugins.bundle.activation` to guide users with missing models to setup; the list shows only the bundle description and switch.
+The microphone occupies `conversation.input.activity`, between the model selector and Send. Clicking starts capture through `ctx.voiceCapture` and expands the toolbar; Stop transcribes and inserts into the draft. The activity preserves the editor and submit action, owns local feedback, and releases expansion on unmount. Waveform history displays measured microphone amplitude from the service snapshot, and the device picker previews a candidate without recording or uploading. Bundle details contain recognition preferences, preparation state and progress. Explicit enablement uses `plugins.bundle.activation` to guide users with missing models to setup; the list shows only the bundle description and switch.
 
 ## Design rationale
 

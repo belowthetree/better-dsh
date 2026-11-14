@@ -2,7 +2,7 @@
 
 [English](voice-input.md) | 中文
 
-实验性语音识别包含三个角色：[服务定义](../../packages/experimental/speech-to-text/README.zh.md)路由具名 Provider，[SenseVoice Provider](../../packages/experimental/speech-to-text-sensevoice/README.zh.md)拥有本地推理，[Remote 消费者](../../packages/experimental/api-speech-to-text/README.zh.md)服务浏览器。[可选 Bundle](../../packages/experimental/voice-input-bundle/README.zh.md)将它们与麦克风 UI 组合。
+实验性语音识别包含四个角色：[服务定义](../../packages/experimental/speech-to-text/README.zh.md)路由具名 Provider，[SenseVoice Provider](../../packages/experimental/speech-to-text-sensevoice/README.zh.md)拥有本地推理，[Remote 消费者](../../packages/experimental/api-speech-to-text/README.zh.md)服务浏览器，而[捕获服务](../../packages/experimental/client-voice-capture/README.zh.md)中的 `ctx.voiceCapture` 拥有浏览器录音器与所有语音控件共享的 Remote 挂载。[可选 Bundle](../../packages/experimental/voice-input-bundle/README.zh.md)将它们与麦克风 UI 组合。
 
 ## Provider 选择
 
@@ -12,9 +12,9 @@
 
 ## 浏览器与 Host 所有权
 
-浏览器拥有麦克风轨道与未发送的草稿。`TranscriptionRequest` 通过带认证的 Remote 发送规范 base64 PCM16 WAV。`SpeechCatalog` 公布可用 Provider、默认选择及录音字节和时长限制。API 在识别前校验这些进程输入。
+浏览器侧捕获服务获取所选麦克风，编码规范 base64 PCM16 WAV，并通过带认证的 Remote 发送一次 `TranscriptionRequest`。`SpeechCatalog` 公布可用 Provider、默认选择及录音字节和时长限制；服务在传输重连期间保留上次接受的目录。捕获状态是相位、设备、实测音量、最近失败与录音上限组成的身份稳定 `VoiceCaptureSnapshot`；`follow()` 发布变化，`finish()` 解析出转写文字。失败使用封闭的 `VoiceCaptureFailure` 联合类型，使各消费者本地化自己的文案；`preview()` 在不录音、不上传的情况下测量单个麦克风。 API 在识别前校验这些进程输入。
 
-输入门面在录音前捕获带版本的选区。`InputActions.insertText()` 仅在选区版本仍有效且提交状态允许编辑时，插入一次可撤销的纯文本编辑。插入被拒绝时，转写文字保留以供显式插入。切换 Session 或释放插件使迟到结果失效。识别本身不写入 Session 事件；普通用户提交拥有最终的模型可见文字。
+草稿插入与识别保持分离。输入区控件在录音前读取当前 Session 带版本的选区，并在 `finish()` 后调用 `InputActions.insertText()`；仅当选区版本仍有效且提交状态允许编辑时，才插入一次可撤销的纯文本编辑。卸载控件不再取消进行中的捕获，因为录音器归服务所有；显式取消、Escape 或隐藏页面仍会丢弃录音。球体收起时完成的采集会把转写发布为 `VoiceCaptureSnapshot.pendingTranscript`，输入区在挂载时取走一次，因此听写后展开面板会插入文字而不是丢弃它。插入被拒绝时，转写文字保留以供显式插入。切换 Session 或释放所属插件使迟到结果失效。识别本身不写入 Session 事件；普通用户提交拥有最终的模型可见文字。
 
 ## 准备与设置
 
@@ -24,7 +24,7 @@ Host Provider 在页面和 Session 变化期间拥有同一个准备任务。Cli
 
 准备失败时可包含 `SpeechDownloadFailure`，提供文件、下载源、原因分类以及可选错误码或 HTTP 状态。Client 将恢复建议本地化；原始下载错误留在 Host。
 
-麦克风占用模型选择器与发送按钮之间的 `conversation.input.activity`。点击开始录音并展开工具栏；停止后转写并插入草稿。活动栏保留编辑器与提交按钮，拥有局部反馈，并在卸载时释放展开状态。取消、Escape 或隐藏页面会丢弃录音。波形历史展示实测麦克风音量。Bundle 详情包含识别偏好、准备状态和进度。显式启用时通过 `plugins.bundle.activation` 引导缺少模型的用户前往安装；列表只显示 Bundle 描述和开关。
+麦克风占用模型选择器与发送按钮之间的 `conversation.input.activity`。点击通过 `ctx.voiceCapture` 开始录音并展开工具栏；停止后转写并插入草稿。活动栏保留编辑器与提交按钮，拥有局部反馈，并在卸载时释放展开状态。波形历史根据服务快照展示实测麦克风音量，设备选择器在不录音、不上传的情况下预览候选设备。Bundle 详情包含识别偏好、准备状态和进度。显式启用时通过 `plugins.bundle.activation` 引导缺少模型的用户前往安装；列表只显示 Bundle 描述和开关。
 
 ## 设计依据
 

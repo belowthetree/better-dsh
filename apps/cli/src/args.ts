@@ -15,7 +15,10 @@
  * @module @deepseek-ai/dsh/args
  */
 
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { Command, CommanderError, InvalidArgumentError } from 'commander'
+import { readProfileManifest, resolveProfileDir } from '@deepseek-ai/dsh-app-boot'
 
 /** Boot a named profile and hand it the invocation's inner arguments. */
 interface ProfileInvocation {
@@ -84,6 +87,19 @@ function rejectElectronProfile(program: Command, profile: string): void {
   if (profile.toLowerCase() === 'desktop') {
     program.error('error: profile "desktop" is managed exclusively by the Electron application')
   }
+}
+
+/**
+ * Refuse plugin management of an existing profile whose manifest declares the Desktop application as its owner.
+ * A profile initialized on first use has no manifest yet and is therefore unowned; other read failures propagate.
+ * @param program - the plugin command that prints the refusal.
+ * @param profile - the requested profile name.
+ */
+function rejectDesktopOwnedProfile(program: Command, profile: string): void {
+  const dir = resolveProfileDir(profile)
+  if (!existsSync(join(dir, 'package.json'))) return
+  if (readProfileManifest('dsh', dir).dsh?.profile?.owner !== 'desktop') return
+  program.error(`error: profile ${JSON.stringify(profile)} is managed exclusively by the Electron application`)
 }
 
 /** The launcher's own help text; each app prints its own. */
@@ -196,7 +212,10 @@ export function parseDshArgs(argv: readonly string[], version: string, manageDes
       .argument('[args...]', 'pnpm arguments, forwarded verbatim (add <pkg>, remove <pkg>, why <pkg>, ...)')
       .action((args: string[], options: { profile: string }) => {
         if (options.profile === '') program.error('error: --profile needs a name')
-        if (!manageDesktopProfile) rejectElectronProfile(plugin, options.profile)
+        if (!manageDesktopProfile) {
+          rejectElectronProfile(plugin, options.profile)
+          rejectDesktopOwnedProfile(plugin, options.profile)
+        }
         if (args.length === 0) program.error('error: plugin needs pnpm arguments to forward (e.g. add <package>)')
         resolved = { mode: 'plugin', profile: options.profile.toLowerCase() === 'desktop' ? 'desktop' : options.profile, args }
       })

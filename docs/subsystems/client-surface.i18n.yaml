@@ -1,0 +1,13 @@
+# Bilingual-pair consistency record for client-surface.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/client-surface.md
+/client-surface:
+  en: e9cbdcf3667d4d97
+  zh: 6e6721691f5799ba
+/client-surface/presentation-state:
+  en: c5911fca4d06875d
+  zh: 1a203a8f812f7346
+/client-surface/carrier-ownership:
+  en: 53e0d7498ac9342e
+  zh: 303f212b7a566336

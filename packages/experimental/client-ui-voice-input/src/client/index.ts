@@ -1,15 +1,13 @@
-/** Browser entry for the optional speech Remote contribution and composer control. */
+/** Browser entry for the composer control over the shared capture service. */
 import type { Context } from '@deepseek-ai/cordis'
-import speechRemote from '@deepseek-ai/dsh-experimental-api-speech-to-text/remote'
 import { mountVoiceInput } from './mount.ts'
 
 export { inject } from './mount.ts'
 
 /**
- * Activate the experimental microphone contribution.
- * @param ctx - Client runtime.
- * @returns complete UI and Remote disposer.
+ * Activate the experimental microphone control.
+ * @param ctx - client runtime.
  */
-export async function apply(ctx: Context): Promise<() => Promise<void>> {
-  return await mountVoiceInput(ctx, speechRemote)
+export function apply(ctx: Context): void {
+  mountVoiceInput(ctx)
 }

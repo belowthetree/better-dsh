@@ -694,7 +694,7 @@ describe('TextPreview — header controls', () => {
     const h = harness({ 0: page(0, ['hello'], true) })
     const props = h.props(), info = props.useTabInfo()
     const view = render(<TextPreview {...props} useTabInfo={() => ({ ...info, tab: { ...info.tab,
-      refreshShortcut: { id: 'page.refresh' as never, label: 'Refresh', aliases: [], binding: null,
+      refreshShortcut: { scope: 'application', id: 'page.refresh' as never, label: 'Refresh', aliases: [], binding: null,
         keys: ['Ctrl', 'R'], aria: 'Control+R', modified: true, conflicts: [], issue: null },
     } })} />)
     await settle()

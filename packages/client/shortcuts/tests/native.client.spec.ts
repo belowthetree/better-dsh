@@ -165,3 +165,31 @@ it('checks the focused browser guest lease before dispatch and retains its embed
     off()
   }
 })
+
+it('runs an OS-global activation with live focus and modal state, ignoring stale revisions', () => {
+  const registry = new ShortcutRegistry('desktop', 'macos')
+  const run = vi.fn()
+  const resolve = vi.fn(() => ({ status: 'handled' as const, run }))
+  const offCommand = registry.register({ id: 'orb.toggle' as ShortcutCommandId, label: () => 'Orb', aliases: [],
+    scope: 'system', defaults: {}, regions: ['page'], modals: [], resolve })
+  let deliver: (input: DesktopShortcutInput) => void = () => {}
+  const off = installNativeKeyboard(window, { subscribe: (listener) => { deliver = listener; return () => {} },
+    closeWindow: vi.fn() }, registry, () => registry.config.getSnapshot())
+  try {
+    const revision = registry.config.getSnapshot().revision
+    const field = document.createElement('textarea')
+    document.body.append(field)
+    field.focus()
+    deliver({ kind: 'global', revision, commandId: 'orb.toggle' as ShortcutCommandId })
+    expect(run).toHaveBeenCalledOnce()
+    expect(resolve).toHaveBeenCalledWith({ source: 'menu', region: 'editable', modal: null, target: field })
+    deliver({ kind: 'global', revision: 'stale' as typeof revision, commandId: 'orb.toggle' as ShortcutCommandId })
+    expect(run).toHaveBeenCalledOnce()
+    const modal = document.createElement('div')
+    modal.setAttribute('role', 'dialog')
+    modal.setAttribute('aria-modal', 'true')
+    document.body.append(modal)
+    deliver({ kind: 'global', revision, commandId: 'orb.toggle' as ShortcutCommandId })
+    expect(run).toHaveBeenCalledOnce()
+  } finally { off(); offCommand() }
+})

@@ -4224,6 +4224,86 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'textToSpeech',
+    summary: 'Registry shared by all speech-synthesis consumers in one Host composition.',
+    description: 'Registry shared by all speech-synthesis consumers in one Host composition.',
+    methods: [
+      {
+        signature: 'register(provider: TextToSpeechProvider): () => Promise<void>',
+        description: 'Register one synthesizer; duplicate ids fail without replacing the original.',
+        parameters: [{ name: 'provider', description: 'synthesizer owned by the contributing fiber.' }],
+        returns: 'idempotent disposer which rejects admission, cancels, and joins accepted work.',
+      },
+      {
+        signature: 'listProviders(): readonly TextToSpeechProviderInfo[]',
+        description: 'Read the current synthesizer roster.',
+        parameters: [],
+        returns: 'available provider facts in registration order.',
+      },
+      {
+        signature: 'async *follow(caller: AbortSignal): AsyncIterable<TextToSpeechSnapshot>',
+        description: 'Observe complete selection snapshots; a slow reader coalesces intermediate progress.',
+        parameters: [{ name: 'caller', description: 'observer lifetime, independent of any synthesis call.' }],
+        returns: 'an initial snapshot followed by the latest provider states.',
+      },
+      {
+        signature: 'snapshot(): TextToSpeechSnapshot',
+        description: 'Read the provider roster and current user preferences together.',
+        parameters: [],
+        returns: 'one detached complete observation.',
+      },
+      {
+        signature: 'async configure(patch: TextToSpeechSelectionPatch): Promise<void>',
+        description: 'Persist changed selection fields into this plugin\'s profile entry; the selected provider must accept the resulting voice and format.',
+        parameters: [{ name: 'patch', description: 'explicit provider, voice, or format changes.' }],
+        returns: 'after the profile write and the live update it applies.',
+      },
+      {
+        signature: 'resolve(request: TextToSpeechRequest): TextToSpeechSpec',
+        description: 'Apply composition defaults and capture the selected provider. Missing providers and undeliverable text fail explicitly.',
+        parameters: [{ name: 'request', description: 'accepted text and optional selection.' }],
+        returns: 'provider-pinned input for synthesize().',
+      },
+      {
+        signature: 'async synthesize(spec: TextToSpeechSpec, signal: AbortSignal): Promise<SynthesizedSpeech>',
+        description: 'Execute exactly the resolved provider; no fallback sends text elsewhere.',
+        parameters: [{ name: 'spec', description: 'resolved input; a withdrawn or replaced registration is rejected.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'encoded audio and the accepted text length after provider settlement.',
+      },
+    ],
+  },
+  {
+    key: 'textToSpeechController',
+    summary: 'Speech output calls never activate or submit to an Agent.',
+    description: 'Speech output calls never activate or submit to an Agent.',
+    methods: [
+      {
+        signature: '@Remote catalog(): SpeechOutputCatalog',
+        description: 'Read voice and format choices without synthesizing audio.',
+        parameters: [],
+        returns: 'available providers, the resolved selection, and request limits.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *follow(signal: AbortSignal): AsyncIterable<SpeechOutputCatalog>',
+        description: 'Follow provider readiness and preference changes.',
+        parameters: [{ name: 'signal', description: 'Client observation lifetime.' }],
+        returns: 'initial and subsequent complete catalogs.',
+      },
+      {
+        signature: '@Remote configure(patch: TextToSpeechSelectionPatch): Promise<void>',
+        description: 'Persist the user\'s voice and format preferences.',
+        parameters: [{ name: 'patch', description: 'changed preference fields.' }],
+        returns: 'after preferences are saved.',
+      },
+      {
+        signature: '@Remote async synthesize(request: SynthesisRequest, signal: AbortSignal): Promise<SynthesizedAudio>',
+        description: 'Validate text and synthesize one transient audio result.',
+        parameters: [{ name: 'request', description: 'text to speak and explicit voice selection.' }, { name: 'signal', description: 'Client cancellation or Remote contribution disposal.' }],
+        returns: 'canonical base64 audio without a Session event, attachment, or log entry.',
+      },
+    ],
+  },
+  {
     key: 'timer',
     summary: 'Disposable timer helpers mixed into Cordis contexts.',
     description: 'Disposable timer helpers mixed into Cordis contexts.',
@@ -9610,6 +9690,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SpeechInput {\n    readonly audio: Uint8Array;\n    readonly language: string;\n}',
   },
   {
+    name: 'SpeechOutputCatalog',
+    declaration: 'export interface SpeechOutputCatalog extends TextToSpeechSnapshot {\n    readonly maxTextChars: number;\n    readonly maxAudioBytes: number;\n    readonly timeoutMs: number;\n}',
+  },
+  {
     name: 'SpeechPreparation',
     declaration: 'export interface SpeechPreparation {\n    snapshot(): SpeechPreparationState;\n    subscribe(listener: () => void): () => void;\n    prepare(options?: SpeechPreparationOptions): void;\n    cancel(): Promise<void>;\n}',
   },
@@ -9668,6 +9752,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SpeechSpec',
     declaration: 'export interface SpeechSpec extends SpeechInput {\n    readonly provider: SpeechProvider;\n}',
+  },
+  {
+    name: 'SpeechSynthesisInput',
+    declaration: 'export interface SpeechSynthesisInput {\n    readonly text: string;\n    readonly voiceId: string;\n    readonly format: TextToSpeechFormat;\n}',
   },
   {
     name: 'SpillLocator',
@@ -9898,6 +9986,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SurfaceSnapshot {\n    readonly generation: number;\n    readonly tree: readonly SerializedNode[] | null;\n}',
   },
   {
+    name: 'SynthesisRequest',
+    declaration: 'export interface SynthesisRequest {\n    readonly text: string;\n    readonly providerId?: TextToSpeechProviderId;\n    readonly voiceId?: string;\n    readonly format?: TextToSpeechFormat;\n}',
+  },
+  {
+    name: 'SynthesizedAudio',
+    declaration: 'export interface SynthesizedAudio {\n    readonly audioBase64: string;\n    readonly format: TextToSpeechFormat;\n    readonly characters: number;\n}',
+  },
+  {
+    name: 'SynthesizedSpeech',
+    declaration: 'export interface SynthesizedSpeech {\n    readonly audio: Uint8Array;\n    readonly format: TextToSpeechFormat;\n    readonly characters: number;\n}',
+  },
+  {
     name: 'SystemMessage',
     declaration: 'export interface SystemMessage extends MessageBase {\n    readonly role: \'system\';\n    readonly source: MessageSourceMap[\'system-prompt\'];\n}',
   },
@@ -10068,6 +10168,50 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TextProps',
     declaration: 'export interface TextProps {\n    readonly color?: string | undefined;\n    readonly bold?: boolean | undefined;\n    readonly dimColor?: boolean | undefined;\n    readonly italic?: boolean | undefined;\n    readonly underline?: boolean | undefined;\n    readonly children?: UiNode | undefined;\n}',
+  },
+  {
+    name: 'TextToSpeechFormat',
+    declaration: 'export type TextToSpeechFormat = \'wav\';',
+  },
+  {
+    name: 'TextToSpeechProvider',
+    declaration: 'export interface TextToSpeechProvider {\n    readonly info: TextToSpeechProviderInfo;\n    synthesize(input: SpeechSynthesisInput, signal: AbortSignal): Promise<Uint8Array>;\n}',
+  },
+  {
+    name: 'TextToSpeechProviderId',
+    declaration: 'export type TextToSpeechProviderId = Branded<\'TextToSpeechProviderId\'>;',
+  },
+  {
+    name: 'TextToSpeechProviderInfo',
+    declaration: 'export interface TextToSpeechProviderInfo {\n    readonly id: TextToSpeechProviderId;\n    readonly name: string;\n    readonly location: \'host-local\' | \'cloud\';\n    readonly voices: readonly TextToSpeechVoice[];\n    readonly formats: readonly TextToSpeechFormat[];\n    readonly maxTextChars: number;\n}',
+  },
+  {
+    name: 'TextToSpeechProviderView',
+    declaration: 'export interface TextToSpeechProviderView extends TextToSpeechProviderInfo {\n}',
+  },
+  {
+    name: 'TextToSpeechRequest',
+    declaration: 'export interface TextToSpeechRequest {\n    readonly text: string;\n    readonly providerId?: TextToSpeechProviderId;\n    readonly voiceId?: string;\n    readonly format?: TextToSpeechFormat;\n}',
+  },
+  {
+    name: 'TextToSpeechSelection',
+    declaration: 'export interface TextToSpeechSelection {\n    readonly providerId: TextToSpeechProviderId;\n    readonly voiceId: string;\n    readonly format: TextToSpeechFormat;\n}',
+  },
+  {
+    name: 'TextToSpeechSelectionPatch',
+    declaration: 'export interface TextToSpeechSelectionPatch {\n    readonly providerId?: TextToSpeechProviderId;\n    readonly voiceId?: string;\n    readonly format?: TextToSpeechFormat;\n}',
+  },
+  {
+    name: 'TextToSpeechSnapshot',
+    declaration: 'export interface TextToSpeechSnapshot {\n    readonly providers: readonly TextToSpeechProviderView[];\n    readonly selection: TextToSpeechSelection;\n}',
+  },
+  {
+    name: 'TextToSpeechSpec',
+    declaration: 'export interface TextToSpeechSpec extends SpeechSynthesisInput {\n    readonly provider: TextToSpeechProvider;\n}',
+  },
+  {
+    name: 'TextToSpeechVoice',
+    declaration: 'export interface TextToSpeechVoice {\n    readonly id: string;\n    readonly name: string;\n}',
   },
   {
     name: 'TimedUserQuestionResult',

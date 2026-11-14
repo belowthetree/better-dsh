@@ -1,5 +1,24 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { parseDshArgs } from '../src/args.ts'
+
+// A private Harness home keeps the plugin-ownership read away from the developer's real profiles.
+const home = mkdtempSync(join(tmpdir(), 'dsh-args-'))
+vi.stubEnv('DSH_HOME', home)
+
+afterAll(() => {
+  vi.unstubAllEnvs()
+  rmSync(home, { recursive: true, force: true })
+})
+
+/** Write one profile manifest under the private Harness home. */
+function profileManifest(name: string, manifest: unknown): void {
+  const dir = join(home, 'profiles', name)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+}
 
 const parse = (argv: string[], manageDesktopProfile = false) => parseDshArgs(argv, '1.2.3', manageDesktopProfile)
 
@@ -139,6 +158,46 @@ describe('parseDshArgs', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
     expect(exitCode(argv)).toBe(0)
     expect(stdout.mock.calls.map(([chunk]) => String(chunk)).join('')).toContain('Usage: dsh plugin [options] [args...]')
+  })
+
+  it('refuses plugin management of an existing Desktop-owned profile', () => {
+    profileManifest('better', { name: 'dsh-profile-better', private: true, dsh: { profile: { bundles: [], owner: 'desktop' } } })
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(exitCode(['plugin', '--profile', 'better', 'add', 'x'])).toBe(1)
+    expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join('')).toContain(
+      'error: profile "better" is managed exclusively by the Electron application',
+    )
+  })
+
+  it('keeps first-use initialization and unowned or forward-compatible profiles manageable', () => {
+    expect(parse(['plugin', '--profile', 'fresh', 'add', 'x']))
+      .toEqual({ mode: 'plugin', profile: 'fresh', args: ['add', 'x'] })
+    profileManifest('plain', { name: 'dsh-profile-plain', dsh: { profile: { bundles: ['a'] } } })
+    expect(parse(['plugin', '--profile', 'plain', 'add', 'x']))
+      .toEqual({ mode: 'plugin', profile: 'plain', args: ['add', 'x'] })
+    profileManifest('future', { name: 'dsh-profile-future', dsh: { profile: { owner: 'somewhere-else' } } })
+    expect(parse(['plugin', '--profile', 'future', 'list']))
+      .toEqual({ mode: 'plugin', profile: 'future', args: ['list'] })
+  })
+
+  it('lets the installed Desktop carrier manage an owned profile', () => {
+    profileManifest('carried', { name: 'dsh-profile-carried', dsh: { profile: { owner: 'desktop' } } })
+    expect(parse(['plugin', '--profile', 'carried', 'add', 'x'], true))
+      .toEqual({ mode: 'plugin', profile: 'carried', args: ['add', 'x'] })
+  })
+
+  it('keeps boot and dump modes unchanged for an owned profile', () => {
+    profileManifest('booted', { name: 'dsh-profile-booted', dsh: { profile: { owner: 'desktop' } } })
+    expect(parse(['--profile', 'booted', '--dump-config']))
+      .toEqual({ mode: 'dump-config', profile: 'booted', defaultOnly: false, patches: [] })
+    expect(parse(['booted', 'task'])).toEqual({ mode: 'profile', profile: 'booted', patches: [], args: ['task'] })
+  })
+
+  it('fails instead of permitting an unreadable profile manifest', () => {
+    const dir = join(home, 'profiles', 'broken')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'package.json'), '{broken')
+    expect(exitCode(['plugin', '--profile', 'broken', 'add', 'x'])).toBe(1)
   })
 
   it.each(['desktop', 'Desktop', 'DESKTOP'])('permits installed Desktop plugin commands for %s', (profile) => {

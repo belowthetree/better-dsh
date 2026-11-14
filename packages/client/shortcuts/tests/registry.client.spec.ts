@@ -212,3 +212,82 @@ it.each(['macos', 'windows'] as const)('keeps %s priority identical before savin
   }
   expect(run).toHaveBeenCalledTimes(18)
 })
+
+function systemCommand(overrides: Partial<ShortcutCommand> = {}): ShortcutCommand {
+  return { id: 'orb.toggle' as ShortcutCommandId, label: () => 'Toggle orb', aliases: ['orb'], scope: 'system',
+    defaults: { 'desktop:macos': { code: 'F13', modifiers: [] }, 'desktop:windows': { code: 'F13', modifiers: [] } },
+    regions: ['page'], modals: [], resolve: () => ({ status: 'handled', run: () => {} }), ...overrides }
+}
+
+describe('system-scope commands', () => {
+  it('rejects chained, unmodified ordinary, and Web-only system defaults', () => {
+    const registry = new ShortcutRegistry('desktop', 'macos')
+    expect(() => registry.register(systemCommand({ defaults: {
+      'desktop:macos': { code: 'KeyK', secondCode: 'KeyJ', modifiers: ['primary'] } } }))).toThrow('Unsupported system shortcut')
+    expect(() => registry.register(systemCommand({ defaults: {
+      'desktop:macos': { code: 'KeyK', modifiers: [] } } }))).toThrow('Unsupported system shortcut')
+    expect(() => registry.register(systemCommand({ defaults: {
+      'web:macos': { code: 'F13', modifiers: [] } } }))).toThrow('Desktop-only')
+    expect(registry.systemCatalog.getSnapshot()).toEqual([])
+    expect(registry.register(systemCommand())).toBeTypeOf('function')
+  })
+
+  it('rejects system and application defaults that overlap in either registration order', () => {
+    const applicationFirst = new ShortcutRegistry('desktop', 'macos')
+    applicationFirst.register(command())
+    expect(() => applicationFirst.register(systemCommand({ defaults: {
+      'desktop:macos': { code: 'KeyB', modifiers: ['primary'] } } }))).toThrow('Conflicting shortcut defaults')
+    const systemFirst = new ShortcutRegistry('desktop', 'macos')
+    systemFirst.register(systemCommand())
+    expect(() => systemFirst.register(command({ defaults: { 'desktop:macos': { code: 'F13', modifiers: [] } } })))
+      .toThrow('Conflicting shortcut defaults')
+    expect(() => systemFirst.register(systemCommand())).toThrow('Duplicate shortcut command')
+  })
+
+  it('publishes system rows outside the focused catalog without dispatching their keys', () => {
+    const registry = new ShortcutRegistry('desktop', 'macos')
+    registry.register(command())
+    registry.register(systemCommand())
+    expect(registry.catalog.getSnapshot()).toHaveLength(1)
+    expect(registry.catalog.getSnapshot()[0]).toMatchObject({ id: 'test.toggle', scope: 'application' })
+    expect(registry.systemCatalog.getSnapshot()).toEqual([expect.objectContaining({ id: 'orb.toggle', scope: 'system',
+      label: 'Toggle orb', aliases: ['orb'], keys: ['F13'], binding: { code: 'F13', modifiers: [] },
+      modified: false, conflicts: [], issue: null })])
+    expect(registry.dispatch({ ...gesture, code: 'F13', control: false, meta: false }, context, vi.fn()))
+      .toEqual({ status: 'pass' })
+    expect(registry.definitions()[0]).not.toHaveProperty('scope')
+    expect(registry.definitions()[1]).toMatchObject({ id: 'orb.toggle', scope: 'system' })
+  })
+
+  it('reports cross-scope conflicts in both catalogs and blocks the focused command', () => {
+    const registry = new ShortcutRegistry('desktop', 'macos')
+    registry.register(command())
+    registry.register(systemCommand())
+    registry.configure({ ...initialShortcutConfig(), status: 'ready', document: { schemaVersion: 3, profiles: {
+      'desktop:macos': { 'test.toggle': { code: 'F13', modifiers: [] } },
+    } } })
+    expect(registry.catalog.getSnapshot()[0]).toMatchObject({ binding: { code: 'F13', modifiers: [] }, conflicts: ['orb.toggle'] })
+    expect(registry.systemCatalog.getSnapshot()[0]).toMatchObject({ conflicts: ['test.toggle'] })
+    const consumed = vi.fn()
+    expect(registry.dispatch({ ...gesture, code: 'F13', control: false, meta: false }, context, consumed))
+      .toEqual({ status: 'blocked', commandId: 'test.toggle', reason: 'conflict' })
+    expect(consumed).toHaveBeenCalledOnce()
+  })
+
+  it('disables a loading configuration system row while keeping its binding visible', () => {
+    const registry = new ShortcutRegistry('desktop', 'macos', initialShortcutConfig())
+    registry.register(systemCommand())
+    expect(registry.config.getSnapshot().status).toBe('loading')
+    expect(registry.systemCatalog.getSnapshot()[0]).toMatchObject({ keys: ['F13'], aria: undefined })
+  })
+})
+
+it('notifies system catalog and config subscribers from the shared snapshot', () => {
+  const registry = new ShortcutRegistry('desktop', 'macos')
+  const system = vi.fn(), config = vi.fn()
+  registry.systemCatalog.subscribe(system)
+  registry.config.subscribe(config)
+  registry.register(systemCommand())
+  expect(system).toHaveBeenCalledOnce()
+  expect(config).toHaveBeenCalledOnce()
+})

@@ -15,6 +15,7 @@ Desktop 在原生应用中运行 Harness 工作区。本参考文档说明应用
 - [应用概览](#application-overview)
 - [终端命令](#terminal-command)
 - [关闭窗口与退出](#closing-the-window-and-quitting)
+- [桌面形态](#shell-forms)
 - [关键技术决策](#key-technical-decisions)
 - [内置命令运行时](#bundled-command-runtime)
 - [安装归属](#installation-ownership)
@@ -82,6 +83,20 @@ Windows 在整个运行期间常驻托盘图标。悬停提示为产品名，单
 以下情况跳过确认：安装更新的重启已确认过任务中断、致命错误恢复对话框中的退出或重启、开发版"重启应用与 Host"命令，以及操作系统关机、重启或注销：Windows 在确定性的会话结束消息上设置该状态；macOS 在关机通知上设置，而其他应用仍可能取消这次关机，因此主窗口下一次获得焦点或显示时会清除它。安装器接管退出时会取消尚未结束的普通退出决策；晚到的查询结果和弹框答复不会再次打开确认框或重复清理。窗口隐藏期间完成的用户主动发起的更新下载，把"安装并重启"确认推迟到窗口再次显示时；强制更新流程沿用其任务栏和 Dock 提醒。Windows 安装程序和卸载程序在应用仍在运行时提示用户先在系统托盘中退出。Desktop 默认未开启定时任务，定时任务的说明只在该功能开启后出现；提醒只在已加载的会话中触发，未加载的会话既不计入，也要等到打开后才会继续。
 
 托盘渲染器以底板中心为基准将鲸鱼放大 20%，保留背景和宽高比；应用和安装器图标保持原有比例。
+
+<a id="shell-forms"></a>
+
+## 桌面形态
+
+profile 清单可以声明 Desktop 呈现的桌面形态：`dsh.profile.form.kind` 为 `classic`（字段缺省时的默认值）或 `orb`；`dsh.profile.owner: 'desktop'` 标记其可执行包只由 Desktop 管理的 profile，CLI 会拒绝管理该 profile。`form` 不受支持或格式错误时，启动会失败并显示可见错误，指明该 profile 与支持的形态，绝不会静默回退到其他形态。当前没有随包分发的 profile 模板声明形态。
+
+启动选择是显式的：打包启动接受 `--profile <name>` 和 `dsh://open?profile=<name>`，省略选择时启动 `desktop` profile。一个运行实例只拥有一个 profile；Desktop 运行期间，指向其他 profile 的深链接只会记录日志，运行实例保持不变。
+
+`orb` profile 将产品窗口构造为无边框、透明、始终置顶且不在任务栏显示的窗口，初始置于 112 像素的 orb 边界。一个产品窗口呈现 orb、420×720 面板和铺满显示器的模态层；渲染进程通过同源 preload surface API 请求切换，主进程按封闭命令联合校验并钳制到显示工作区。渲染进程上报指针是否在交互区域内，使 orb 之外的点击穿透到桌面；orb 位置与固定状态保存在 `userData/form-layout.json`，不可读、格式错误或版本号更高的文件回退到默认值。显示器变化会重新钳制已保存的位置。classic profile 保留其 1280×820 工作区窗口。
+
+实验性 `@deepseek-ai/dsh-better-bundle` 组合了球体形态：Surface 服务、球体外观、共享麦克风捕获、带 `deepseek-cloud` 与 `deepseek-tts` Provider id 的两个语音 seam、两个带认证的语音 Remote，以及播放消费者。在插件管理页启用它只会让这些包可用，并不会声明形态。创建 Desktop 自有的形态 profile：写入 `$DSH_HOME/profiles/<名称>/package.json`，在 `dsh.profile.bundles` 中列出 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-experimental-voice-input-bundle` 与 `@deepseek-ai/dsh-better-bundle`，并在 `dsh.profile` 下写入 `"form": { "kind": "orb" }` 与 `"owner": "desktop"`；从已初始化的 profile 复制 `cordis.patch.yml` 与 hoisted `pnpm-workspace.yaml`，通过插件管理页把外部套件安装到该 profile，然后用 `--profile <名称>` 启动。better bundle 已自带识别行时无需再列出语音输入 Bundle，只列出该 profile 真正需要的 Bundle。
+
+系统级快捷键命令会在聚焦窗口拦截之外注册为操作系统全局加速器。主进程从每个已接受系统绑定推导加速器，在每次目录或偏好变化后重新注册，并按命令报告结果，因此已被其他应用占用的组合会连同原有绑定一起保持可见。快捷键录制界面捕获按键期间暂停注册，退出时全部释放；激活以带 revision 的命令事件到达渲染进程，客户端按与聚焦窗口绑定完全相同的方式执行。Windows 与 macOS 会注册；Linux 保留其聚焦窗口模型并将系统命令报告为不可用。Electron 的全局加速器没有按键抬起回调，因此系统命令每次按下触发一次，不支持按住手势。
 
 <a id="key-technical-decisions"></a>
 
@@ -385,6 +400,7 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 - 依赖的生命周期脚本遵循 pnpm 的构建权限；Desktop 不提供单独的审批对话框。
 - 桌面壳与 CLI dsh 共享 `$DSH_HOME` 下的会话、设置、凭据、工作区和存储，但可执行包、插件激活和锁文件彼此隔离。
 - 在 Electron win32-arm64 宿主上，未打包启动现在可以成功，但载荷仍为 x64：`packages/skill/tool-workspace-dependencies/src/index.ts` 的架构校验会把载荷记录的架构与宿主 `process.arch` 比较，因此 `load_workspace_dependencies` 工具仍可能拒绝 primary runtime。
+- 声明 `orb` 形态的 profile 在安装渲染该形态的 Client bundle 之前，会在形态窗口中显示 classic 框架；本次变更未随包分发这类 bundle，因此该 profile 目前只是清单与窗口构建约定。
 
 仅向应用提供的 `dshOnboarding.hasApiKey()` preload 方法返回欢迎后端当前的 API Key 存在状态布尔值；原生登录与引导共用凭证发现逻辑，且只有受管理的应用主 frame 可以调用。
 

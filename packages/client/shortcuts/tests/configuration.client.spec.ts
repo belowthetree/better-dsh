@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { bindingIssue, editShortcutDocument, effectiveShortcuts, normalizeBinding, overlappingBindings, parseBinding,
-  parseShortcutDefinitions, parseShortcutDocument, parseShortcutEdit } from '../src/protocol.ts'
-import type { ShortcutCommandId, ShortcutDefinition, ShortcutDocument } from '../src/protocol.ts'
+import { bindingIssue, editShortcutDocument, effectiveShortcuts, effectiveSystemShortcuts, isSystemCommand, normalizeBinding,
+  overlappingBindings, parseBinding, parseShortcutDefinitions, parseShortcutDocument, parseShortcutEdit, systemShortcutIssue } from '../src/protocol.ts'
+import type { ShortcutBinding, ShortcutCommandId, ShortcutDefinition, ShortcutDocument, ShortcutPlatform } from '../src/protocol.ts'
 
 const id = (value: string) => value as ShortcutCommandId
 it('distinguishes identical two-key chords from pairs sharing only one key', () => {
@@ -54,7 +54,7 @@ describe('preference document validation and conflict resolution', () => {
     expect(parseShortcutDocument(raw)).toBe('invalid')
   })
   it('refuses future versions without interpreting their fields', () => {
-    expect(parseShortcutDocument('{"schemaVersion":3,"profiles":17}')).toBe('future')
+    expect(parseShortcutDocument('{"schemaVersion":4,"profiles":17}')).toBe('future')
     expect(parseShortcutDocument(null)).toEqual({ schemaVersion: 1, profiles: {} })
     expect(() => parseBinding({ code: 'KeyB', modifiers: ['primary'], extra: true })).toThrow()
     expect(() => parseBinding({ code: 'Unknown', modifiers: [] })).toThrow()
@@ -182,5 +182,185 @@ describe('preference document validation and conflict resolution', () => {
       'desktop:windows': primary('KeyC'),
       'desktop:linux': primary('KeyC'),
     } }]]) expect(() => parseShortcutDefinitions(value)).toThrow()
+  })
+})
+
+const systemToggle = id('orb.toggle')
+const systemCapture = id('orb.capture')
+const systemDefaults = (code: string, modifiers: ShortcutBinding['modifiers']) => ({
+  'desktop:macos': { code, modifiers }, 'desktop:windows': { code, modifiers }, 'desktop:linux': { code, modifiers },
+})
+const systemDefinitions: readonly ShortcutDefinition[] = [
+  { id: systemToggle, scope: 'system', defaults: systemDefaults('KeyK', ['control', 'shift']) },
+  { id: systemCapture, scope: 'system', defaults: systemDefaults('F13', []) },
+]
+const catalog: readonly ShortcutDefinition[] = [...definitions, ...systemDefinitions]
+const systemDocument = (system: Readonly<Record<string, ShortcutBinding | null>>): ShortcutDocument =>
+  ({ schemaVersion: 3, profiles: {}, system })
+
+describe('system-scope commands', () => {
+  it('distinguishes system commands from application commands', () => {
+    expect(isSystemCommand(systemDefinitions[0]!)).toBe(true)
+    expect(isSystemCommand(definitions[0]!)).toBe(false)
+    expect(isSystemCommand({ ...definitions[0]!, scope: 'application' })).toBe(false)
+  })
+
+  it('admits Desktop system bindings and rejects browser, chord, unknown, and bare ordinary keys', () => {
+    const check = (code: string, modifiers: readonly ('control' | 'alt' | 'shift' | 'meta')[],
+      runtime: 'desktop' | 'web' = 'desktop', platform: ShortcutPlatform = 'windows') =>
+      systemShortcutIssue(normalizeBinding({ code, modifiers }, platform), runtime, platform)
+    expect(check('KeyK', ['control'])).toBeNull()
+    expect(check('F12', [])).toBeNull()
+    expect(check('F1', [], 'desktop', 'macos')).toBeNull()
+    expect(check('F24', [], 'desktop', 'linux')).toBeNull()
+    expect(check('KeyK', [], 'web')).toBe('unsupported-browser')
+    expect(check('KeyK', ['control'], 'web')).toBe('unsupported-browser')
+    expect(systemShortcutIssue({ code: 'KeyA', secondCode: 'KeyB', modifiers: ['control'] }, 'desktop'))
+      .toBe('unsupported-key')
+    expect(check('Tab', ['control'])).toBe('unsupported-key')
+    expect(check('KeyK', [])).toBe('modifier-required')
+    expect(check('Digit5', [])).toBe('modifier-required')
+    expect(check('Space', [])).toBe('modifier-required')
+  })
+
+  it('resolves system defaults, overrides, clears, and unavailable overrides for one device', () => {
+    const rows = (document: ShortcutDocument, platform: ShortcutPlatform = 'windows') =>
+      effectiveSystemShortcuts(catalog, document, platform)
+    expect(rows({ schemaVersion: 3, profiles: {} }).map(row => row.id)).toEqual([systemToggle, systemCapture])
+    expect(rows({ schemaVersion: 3, profiles: {} })[0]).toEqual({ id: systemToggle,
+      binding: { code: 'KeyK', modifiers: ['control', 'shift'] }, modified: false, issue: null, conflicts: [] })
+    expect(rows({ schemaVersion: 3, profiles: {} })[1]?.binding).toEqual({ code: 'F13', modifiers: [] })
+    expect(rows({ schemaVersion: 3, profiles: {} }, 'macos')[0]?.binding)
+      .toEqual({ code: 'KeyK', modifiers: ['control', 'shift'] })
+    expect(rows(systemDocument({ [systemToggle]: { code: 'KeyK', modifiers: ['primary'] } }), 'macos')[0]?.binding)
+      .toEqual({ code: 'KeyK', modifiers: ['meta'] })
+    expect(rows(systemDocument({ [systemToggle]: { code: 'KeyJ', modifiers: ['alt'] } }))[0]).toEqual({ id: systemToggle,
+      binding: { code: 'KeyJ', modifiers: ['alt'] }, modified: true, issue: null, conflicts: [] })
+    expect(rows(systemDocument({ [systemToggle]: null }))[0])
+      .toEqual({ id: systemToggle, binding: null, modified: true, issue: null, conflicts: [] })
+    expect(rows(systemDocument({ [systemToggle]: { code: 'KeyA', modifiers: [] } }))[0])
+      .toMatchObject({ issue: 'modifier-required' })
+    expect(rows(systemDocument({ [systemToggle]: { code: 'Tab', modifiers: ['control'] } }))[0])
+      .toMatchObject({ issue: 'unsupported-key' })
+  })
+
+  it('displaces a system default for an explicit override and ignores unavailable system rows', () => {
+    expect(effectiveSystemShortcuts(catalog, systemDocument({ [systemToggle]: { code: 'F13', modifiers: [] } }), 'windows')
+      .map(row => row.conflicts)).toEqual([[], [systemToggle]])
+    const both = systemDocument({ [systemToggle]: { code: 'KeyJ', modifiers: ['alt'] },
+      [systemCapture]: { code: 'KeyJ', modifiers: ['alt'] } })
+    expect(effectiveSystemShortcuts(catalog, both, 'windows').map(row => row.conflicts))
+      .toEqual([[systemCapture], [systemToggle]])
+    const unavailable = systemDocument({ [systemToggle]: { code: 'KeyA', modifiers: [] },
+      [systemCapture]: { code: 'KeyA', modifiers: [] } })
+    expect(effectiveSystemShortcuts(catalog, unavailable, 'windows').map(row => [row.issue, row.conflicts]))
+      .toEqual([['modifier-required', []], ['modifier-required', []]])
+  })
+
+  it('reports cross-scope conflicts in both directions and keeps system rows out of application rows', () => {
+    const systemOverride = systemDocument({ [systemToggle]: { code: 'KeyB', modifiers: ['control'] } })
+    expect(effectiveSystemShortcuts(catalog, systemOverride, 'windows').map(row => row.conflicts))
+      .toEqual([[id('test.one')], []])
+    const applicationRows = effectiveShortcuts(catalog, systemOverride, 'desktop', 'windows')
+    expect(applicationRows.map(row => row.id)).toEqual([id('test.one'), id('test.two')])
+    expect(applicationRows.map(row => row.conflicts)).toEqual([[systemToggle], []])
+    const applicationOverride: ShortcutDocument = { schemaVersion: 3, profiles: {
+      'desktop:windows': { 'test.one': { code: 'KeyK', modifiers: ['control', 'shift'] } } } }
+    expect(effectiveSystemShortcuts(catalog, applicationOverride, 'windows').map(row => row.conflicts))
+      .toEqual([[id('test.one')], []])
+    expect(effectiveShortcuts(catalog, applicationOverride, 'desktop', 'windows').map(row => row.conflicts))
+      .toEqual([[systemToggle], []])
+  })
+
+  it('does not count unavailable application rows as system conflicts on Linux', () => {
+    const withReserved: readonly ShortcutDefinition[] = [...catalog,
+      { id: id('app.reserved'), defaults: { 'desktop:linux': { code: 'KeyC', modifiers: ['control'] } } }]
+    const reserved = systemDocument({ [systemToggle]: { code: 'KeyC', modifiers: ['control'] } })
+    expect(effectiveSystemShortcuts(withReserved, reserved, 'linux')[0]).toEqual({ id: systemToggle,
+      binding: { code: 'KeyC', modifiers: ['control'] }, modified: true, issue: null, conflicts: [] })
+  })
+
+  it('writes system overrides into a version 3 document without touching profiles', () => {
+    const profileDocument: ShortcutDocument = { schemaVersion: 2, profiles: {
+      'web:macos': { 'test.one': primary('Slash') } } }
+    const set = editShortcutDocument(profileDocument, { type: 'set', id: systemToggle,
+      binding: { code: 'KeyJ', modifiers: ['alt'] }, scope: 'system' }, 'desktop', 'windows', 'system')
+    expect(set).toEqual({ schemaVersion: 3, profiles: profileDocument.profiles,
+      system: { [systemToggle]: { code: 'KeyJ', modifiers: ['alt'] } } })
+    const both = editShortcutDocument(set, { type: 'set', id: systemCapture, binding: { code: 'F14', modifiers: [] },
+      scope: 'system' }, 'desktop', 'macos', 'system')
+    expect(both.system).toEqual({ [systemToggle]: { code: 'KeyJ', modifiers: ['alt'] },
+      [systemCapture]: { code: 'F14', modifiers: [] } })
+    expect(editShortcutDocument(both, { type: 'reset', id: systemToggle, scope: 'system' },
+      'desktop', 'macos', 'system').system).toEqual({ [systemCapture]: { code: 'F14', modifiers: [] } })
+    expect(editShortcutDocument(both, { type: 'reset-all', scope: 'system' }, 'desktop', 'macos', 'system'))
+      .toEqual({ schemaVersion: 3, profiles: profileDocument.profiles, system: {} })
+    const application = editShortcutDocument(profileDocument,
+      { type: 'set', id: id('test.one'), binding: primary('KeyB') }, 'desktop', 'windows')
+    expect(application.profiles['desktop:windows']).toEqual({ 'test.one': primary('KeyB') })
+    expect(application.schemaVersion).toBe(2)
+  })
+
+  it('keeps version 3 and system overrides through application edits', () => {
+    const document: ShortcutDocument = { schemaVersion: 3, profiles: {}, system: { [systemToggle]: null } }
+    const edited = editShortcutDocument(document, { type: 'set', id: id('test.one'), binding: primary('KeyB') },
+      'desktop', 'windows')
+    expect(edited).toMatchObject({ schemaVersion: 3, system: { [systemToggle]: null },
+      profiles: { 'desktop:windows': { 'test.one': primary('KeyB') } } })
+    expect(editShortcutDocument(edited, { type: 'reset-all' }, 'desktop', 'windows'))
+      .toMatchObject({ schemaVersion: 3, system: { [systemToggle]: null }, profiles: { 'desktop:windows': {} } })
+    expect(editShortcutDocument({ schemaVersion: 1, profiles: {} }, { type: 'reset-all' }, 'web', 'linux').schemaVersion).toBe(1)
+    expect(editShortcutDocument({ schemaVersion: 1, profiles: {} }, { type: 'reset-all' }, 'desktop', 'macos').schemaVersion).toBe(2)
+  })
+
+  it('reads version 3 documents with a system override map and rejects invalid system fields', () => {
+    const document: ShortcutDocument = { schemaVersion: 3, profiles: { 'desktop:windows': { 'test.one': null } },
+      system: { [systemToggle]: { code: 'KeyK', modifiers: ['control', 'shift'] }, [systemCapture]: null } }
+    expect(parseShortcutDocument(JSON.stringify(document))).toEqual(document)
+    expect(parseShortcutDocument('{"schemaVersion":3,"profiles":{}}')).toEqual({ schemaVersion: 3, profiles: {} })
+    for (const raw of [
+      '{"schemaVersion":2,"profiles":{},"system":{}}',
+      '{"schemaVersion":1,"profiles":{},"system":{}}',
+      '{"schemaVersion":3,"profiles":{},"system":17}',
+      '{"schemaVersion":3,"profiles":{},"system":{"bad":null}}',
+      '{"schemaVersion":3,"profiles":{},"system":{"orb.toggle":{"code":"KeyA","modifiers":["bogus"]}}}',
+      '{"schemaVersion":3,"profiles":{},"extra":1}',
+      '{"schemaVersion":1,"profiles":{"web:macos":{"test.one":{"code":"KeyA","secondCode":"KeyB","modifiers":["primary"]}}}}',
+    ]) expect(parseShortcutDocument(raw)).toBe('invalid')
+    expect(parseShortcutDocument('{"schemaVersion":4,"profiles":{}}')).toBe('future')
+  })
+
+  it('accepts an optional edit scope and rejects other values', () => {
+    expect(parseShortcutEdit({ type: 'set', id: 'test.one', binding: null, scope: 'system' }))
+      .toEqual({ type: 'set', id: 'test.one', binding: null, scope: 'system' })
+    expect(parseShortcutEdit({ type: 'reset', id: 'test.one', scope: 'application' }))
+      .toEqual({ type: 'reset', id: 'test.one', scope: 'application' })
+    expect(parseShortcutEdit({ type: 'reset-all', scope: 'system' })).toEqual({ type: 'reset-all', scope: 'system' })
+    for (const value of [
+      { type: 'reset-all', scope: 'carrier' },
+      { type: 'set', id: 'test.one', binding: null, scope: 'system', extra: true },
+      { type: 'reset', scope: 'system' },
+    ]) expect(() => parseShortcutEdit(value)).toThrow()
+  })
+
+  it('accepts Desktop-only system catalogs and rejects invalid system defaults', () => {
+    expect(parseShortcutDefinitions(catalog)).toEqual(catalog)
+    const entry = { id: 'orb.toggle', scope: 'system', defaults: {
+      'desktop:macos': { code: 'KeyK', modifiers: ['control', 'shift'] },
+      'desktop:linux': { code: 'KeyK', modifiers: ['control', 'shift'] },
+    } }
+    expect(parseShortcutDefinitions([entry])).toEqual([entry])
+    expect(parseShortcutDefinitions([{ ...entry, scope: 'application' }])).toHaveLength(1)
+    for (const value of [
+      [{ ...entry, scope: 'carrier' }],
+      [{ ...entry, defaults: { 'web:macos': { code: 'KeyK', modifiers: ['control'] } } }],
+      [{ ...entry, defaults: { 'desktop:macos': { code: 'KeyA', modifiers: [] } } }],
+      [{ ...entry, defaults: { 'desktop:macos': { code: 'Tab', modifiers: ['control'] } } }],
+      [{ ...entry, defaults: { 'desktop:macos': { code: 'KeyA', secondCode: 'KeyB', modifiers: ['control'] } } }],
+      [entry, { id: 'orb.capture', scope: 'system', defaults: { 'desktop:macos': {
+        code: 'KeyK', modifiers: ['control', 'shift'] } } }],
+      [entry, { id: 'page.refresh', defaults: { 'desktop:macos': { code: 'KeyK', modifiers: ['control', 'shift'] } } }],
+      [{ id: 'orb.fixed', scope: 'system', defaults: {}, fixed: [{ code: 'KeyL', modifiers: ['control'] }] }],
+    ]) expect(() => parseShortcutDefinitions(value)).toThrow()
   })
 })

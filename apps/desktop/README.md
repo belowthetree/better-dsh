@@ -15,6 +15,7 @@ Desktop runs the Harness workspace in a native application. This reference cover
 - [Application overview](#application-overview)
 - [Terminal command](#terminal-command)
 - [Closing the window and quitting](#closing-the-window-and-quitting)
+- [Shell forms](#shell-forms)
 - [Key technical decisions](#key-technical-decisions)
 - [Bundled command runtime](#bundled-command-runtime)
 - [Installation ownership](#installation-ownership)
@@ -82,6 +83,20 @@ The mandatory update confirmation includes the installation wait notice on Windo
 The confirmation is skipped when the installer restart already confirmed task interruption, when the fatal-recovery dialog exits or restarts, when the development Restart App and Host command runs, and during operating-system shutdown, restart, or log-off: Windows sets this on the definitive session-end message; macOS sets it on the power-off notification, and because another application can still cancel that shutdown, the next focus or show of the main window clears it. Installer-owned quit cancels any pending ordinary quit decision; late inspection results and dialog answers cannot open another confirmation or repeat cleanup. A user-initiated update download that finishes while the window is hidden defers its Install and Restart confirmation until the window is shown again; the mandatory flow keeps its taskbar and Dock attention. The Windows installer and uninstaller tell a user whose application is still running to quit it from the system tray. Desktop does not enable scheduled tasks by default, so the scheduled-task explanations appear only once that feature is on; reminders fire only in loaded sessions, and unloaded sessions are neither counted nor resumed until they are opened.
 
 The tray renderer enlarges the whale by 20% around the tile center while preserving the background and aspect ratio; application and installer icons retain their original proportions.
+
+<a id="shell-forms"></a>
+
+## Shell forms
+
+A profile manifest may declare the shell form Desktop presents: `dsh.profile.form.kind` is `classic`, the default when the field is absent, or `orb`; `dsh.profile.owner: 'desktop'` marks a profile whose executable packages only Desktop manages, and the CLI refuses to manage that profile. An unsupported or malformed `form` fails the launch with a visible error that names the profile and the supported kinds, never a silent fallback to another form. No shipped profile template declares a form.
+
+Launch selection is explicit: a packaged launch accepts `--profile <name>` and `dsh://open?profile=<name>`, and an omitted selection boots the `desktop` profile. One running instance owns one profile; a deep link that names a different profile while Desktop runs is logged and leaves the running instance unchanged.
+
+An `orb` profile constructs the product window as a frameless, transparent, always-on-top window skipped from the taskbar and placed at the 112-pixel orb bounds. One product window presents the orb, a 420×720 panel, and a display-sized modal; the renderer requests transitions through the same-origin preload surface API, which the main process validates against a closed command union and clamps to the display work area. The renderer reports pointer presence so clicks pass through outside the orb, the orb position and pinning persist in `userData/form-layout.json`, and an unreadable, malformed, or future-version file falls back to defaults. A display change re-clamps the persisted position. The classic profile keeps its 1280×820 workspace window.
+
+The experimental `@deepseek-ai/dsh-better-bundle` composes the orb form: the surface service, orb chrome, shared microphone capture, both speech seams with the `deepseek-cloud` and `deepseek-tts` provider ids, both authenticated speech Remotes, and the playback consumer. Enabling it from Plugins makes those packages available but declares no form. Create a Desktop-owned form profile by writing `$DSH_HOME/profiles/<name>/package.json` with `dsh.profile.bundles` listing `@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, `@deepseek-ai/dsh-experimental-voice-input-bundle`, and `@deepseek-ai/dsh-better-bundle`, plus `"form": { "kind": "orb" }` and `"owner": "desktop"` under `dsh.profile`; copy `cordis.patch.yml` and the hoisted `pnpm-workspace.yaml` from an initialized profile, install the out-of-tree suite into the profile through the plugin manager, then launch with `--profile <name>`. The voice-input bundle is not required when the better bundle already mounts its own recognition rows, so list only the bundles whose plugins the profile needs.
+
+System-scope shortcut commands register as OS-global accelerators beside the focused-window interception. The main process derives an accelerator from each accepted system binding, registers it after every catalog or preference change, and reports a per-command result, so a combination another application already owns stays visible with its previous binding. Registration is suspended while the shortcut recorder captures keys, released on quit, and an activation reaches the renderer as a revision-tagged command event that the client executes exactly like a focused-window binding. Windows and macOS register; Linux keeps its focused-window model and reports system commands as unavailable. Electron exposes no key-up for global accelerators, so a system command fires once per press and never holds a gesture.
 
 <a id="key-technical-decisions"></a>
 
@@ -385,6 +400,7 @@ An unpackaged Electron process uses `.desktop-build/development/project` under i
 - Dependency lifecycle scripts follow pnpm’s build permissions; Desktop provides no separate approval dialog.
 - The desktop shell shares sessions, settings, credentials, workspaces, and storage under `$DSH_HOME` with CLI dsh, while executable packages, plugin activation, and lockfiles remain separate.
 - Unpackaged startup on an Electron win32-arm64 host now succeeds, but the payload remains x64: the architecture check in `packages/skill/tool-workspace-dependencies/src/index.ts` compares the recorded payload architecture against the host `process.arch`, so the `load_workspace_dependencies` tool can still reject the primary runtime.
+- A profile that declares the `orb` form shows the classic frame inside the form window until a Client bundle that renders that form is installed; this repository ships no such bundle in this change, so the form profile remains a manifest and window-building contract only.
 
 The app-only `dshOnboarding.hasApiKey()` preload method returns the welcome backend’s current API-key presence boolean; native login and onboarding share credential discovery, and only the owned application main frame may invoke it.
 

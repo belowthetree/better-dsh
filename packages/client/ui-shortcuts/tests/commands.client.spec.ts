@@ -24,6 +24,8 @@ describe('assembled shortcut command owners', () => {
       throw new Error('expected the shortcut reference actions')
     }
     expect(injected.hooks.catalog).toBe(shortcuts.catalog)
+    expect(injected.hooks.systemCatalog).toBe(shortcuts.systemCatalog)
+    expect(injected.hooks.global).toBe(shortcuts.global)
     await vi.waitFor(() => { expect(shortcuts.config.getSnapshot().status).toBe('ready') })
     expect(injected.describeBinding(null).keys).toEqual([])
     await injected.recording(false)

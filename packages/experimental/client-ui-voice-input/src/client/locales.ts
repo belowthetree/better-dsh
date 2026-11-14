@@ -6,6 +6,8 @@ export const NS = 'voice-input'
 /** Chinese dictionary and key source. */
 export const zh = {
   dictate: '听写',
+  'handsFree': '停录后直接发送',
+  'handsFreeHelp': '录音停止后把转写作为普通消息发送；关闭时只填入草稿。',
   'setupPrompt.title': '使用语音输入前需要安装',
   'setupPrompt.body': '语音输入插件已开启。首次使用需要在本机下载并准备识别模型，请前往插件详情页查看空间、内存和时间说明，再开始安装。',
   'setupPrompt.later': '稍后',
@@ -101,7 +103,6 @@ export const zh = {
   failed: '语音识别失败：{message}',
   unavailable: '当前浏览器不支持录音，请使用支持麦克风的浏览器。',
   permission: '麦克风权限未开启，请在浏览器和系统设置中允许访问。',
-  tooLarge: '录音超过服务限制，请缩短录音后重试。',
 } as const
 
 /** Keys accepted by the voice input translator. */
@@ -110,6 +111,8 @@ export type VoiceKey = keyof typeof zh
 /** English dictionary with the same complete key set. */
 export const en: Record<VoiceKey, string> = {
   dictate: 'Dictate',
+  'handsFree': 'Send after dictating',
+  'handsFreeHelp': 'Submits the transcript as an ordinary message when recording stops; off fills the draft instead.',
   'setupPrompt.title': 'Set up voice input before recording',
   'setupPrompt.body': 'Voice input is enabled. First use requires downloading and preparing local recognition models. Open the plugin details to review disk space, memory and time estimates before starting setup.',
   'setupPrompt.later': 'Later',
@@ -205,7 +208,6 @@ export const en: Record<VoiceKey, string> = {
   failed: 'Speech recognition failed: {message}',
   unavailable: 'This browser cannot record audio. Use a browser with microphone support.',
   permission: 'Microphone access is disabled. Allow it in browser and system settings.',
-  tooLarge: 'The recording exceeds the service limit. Try a shorter recording.',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -218,6 +220,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Japanese copy, checked against the English keys. */
 export const ja = {
   'dictate': 'ディクテーション',
+  'handsFree': '録音後に送信',
+  'handsFreeHelp': '録音停止後に文字起こしを通常のメッセージとして送信します。オフでは下書きに入力します。',
   'setupPrompt.title': '録音前に音声入力を設定してください',
   'setupPrompt.body': '音声入力が有効です。初回利用時はローカル認識モデルのダウンロードと準備が必要です。プラグインの詳細を開き、セットアップを開始する前にディスク容量、メモリ、所要時間の目安を確認してください。',
   'setupPrompt.later': '後で',
@@ -325,12 +329,13 @@ export const ja = {
   'failed': '音声認識に失敗しました: {message}',
   'unavailable': 'このブラウザは音声を録音できません。マイクに対応したブラウザを使用してください。',
   'permission': 'マイクへのアクセスが無効になっています。ブラウザとシステムの設定で許可してください。',
-  'tooLarge': '録音がサービスの上限を超えています。短い録音をお試しください。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
   dictate: 'Dictar',
+  'handsFree': 'Enviar al dictar',
+  'handsFreeHelp': 'Envía la transcripción como mensaje normal al detener la grabación; desactivado la inserta en el borrador.',
   'setupPrompt.title': 'Configurar la entrada de voz antes de grabar',
   'setupPrompt.body': 'La entrada de voz está habilitada. El primer uso requiere descargar y preparar modelos de reconocimiento local. Abra los detalles del complemento para revisar las estimaciones de espacio en disco, memoria y tiempo antes de comenzar la configuración.',
   'setupPrompt.later': 'Más tarde',
@@ -426,12 +431,13 @@ export const es = {
   failed: 'Error en el reconocimiento de voz: {message}',
   unavailable: 'Este navegador no puede grabar audio. Utilice un navegador compatible con micrófono.',
   permission: 'El acceso al micrófono está deshabilitado. Permitirlo en la configuración del navegador y del sistema.',
-  tooLarge: 'La grabación excede el límite del servicio. Pruebe con una grabación más corta.',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
   dictate: 'Dicter',
+  'handsFree': 'Envoyer après dictée',
+  'handsFreeHelp': 'Envoie la transcription comme message normal à l’arrêt de l’enregistrement ; désactivé, elle remplit le brouillon.',
   'setupPrompt.title': "Configurer la saisie vocale avant l'enregistrement",
   'setupPrompt.body': "La saisie vocale est activée. La première utilisation nécessite le téléchargement et la préparation de modèles de reconnaissance locaux. Ouvrez les détails du plugin pour consulter les estimations d'espace disque, de mémoire et de temps avant de démarrer l'installation.",
   'setupPrompt.later': 'Plus tard',
@@ -527,12 +533,13 @@ export const fr = {
   failed: 'Échec de la reconnaissance vocale : {message}',
   unavailable: 'Ce navigateur ne peut pas enregistrer de son. Utilisez un navigateur prenant en charge le microphone.',
   permission: "L'accès au microphone est désactivé. Autorisez-le dans les paramètres du navigateur et du système.",
-  tooLarge: "L'enregistrement dépasse la limite du service. Essayez un enregistrement plus court.",
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
 export const de = {
   dictate: 'Diktieren',
+  'handsFree': 'Nach dem Diktieren senden',
+  'handsFreeHelp': 'Sendet die Transkription beim Stoppen als normale Nachricht; deaktiviert füllt sie den Entwurf.',
   'setupPrompt.title': 'Richten Sie vor der Aufnahme die Spracheingabe ein',
   'setupPrompt.body': 'Die Spracheingabe ist aktiviert. Für die erste Verwendung müssen lokale Erkennungsmodelle heruntergeladen und vorbereitet werden. Öffnen Sie die Plugin-Details, um die Schätzungen zu Speicherplatz, Speicher und Zeit zu überprüfen, bevor Sie mit der Einrichtung beginnen.',
   'setupPrompt.later': 'Später',
@@ -628,12 +635,13 @@ export const de = {
   failed: 'Spracherkennung fehlgeschlagen: {message}',
   unavailable: 'Dieser Browser kann keine Audiodaten aufzeichnen. Verwenden Sie einen Browser mit Mikrofonunterstützung.',
   permission: 'Der Mikrofonzugriff ist deaktiviert. Erlauben Sie es in den Browser- und Systemeinstellungen.',
-  tooLarge: 'Die Aufnahme überschreitet das Dienstlimit. Versuchen Sie es mit einer kürzeren Aufnahme.',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
   dictate: 'Диктовать',
+  'handsFree': 'Отправлять после диктовки',
+  'handsFreeHelp': 'Отправляет расшифровку обычным сообщением после остановки записи; выключено — вставляет в черновик.',
   'setupPrompt.title': 'Настройте голосовой ввод перед записью',
   'setupPrompt.body': 'Голосовой ввод включен. Для первого использования требуется загрузка и подготовка моделей локального распознавания. Откройте сведения о плагине, чтобы просмотреть оценки дискового пространства, памяти и времени перед началом установки.',
   'setupPrompt.later': 'Позже',
@@ -729,12 +737,13 @@ export const ru = {
   failed: 'Не удалось распознать речь: {message}.',
   unavailable: 'Этот браузер не может записывать звук. Используйте браузер с поддержкой микрофона.',
   permission: 'Доступ к микрофону отключен. Разрешите это в настройках браузера и системы.',
-  tooLarge: 'Запись превышает лимит обслуживания. Попробуйте более короткую запись.',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
   dictate: 'Ditar',
+  'handsFree': 'Enviar após ditar',
+  'handsFreeHelp': 'Envia a transcrição como mensagem normal ao parar a gravação; desativado, preenche o rascunho.',
   'setupPrompt.title': 'Configure a entrada de voz antes de gravar',
   'setupPrompt.body': 'A entrada de voz está habilitada. A primeira utilização requer o download e a preparação de modelos de reconhecimento local. Abra os detalhes do plug-in para revisar as estimativas de espaço em disco, memória e tempo antes de iniciar a configuração.',
   'setupPrompt.later': 'Mais tarde',
@@ -830,5 +839,4 @@ export const pt = {
   failed: 'Falha no reconhecimento de fala: {message}',
   unavailable: 'Este navegador não pode gravar áudio. Use um navegador com suporte para microfone.',
   permission: 'O acesso ao microfone está desativado. Permita nas configurações do navegador e do sistema.',
-  tooLarge: 'A gravação excede o limite de serviço. Experimente uma gravação mais curta.',
 } satisfies Record<keyof typeof en, string>

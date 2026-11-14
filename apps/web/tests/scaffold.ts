@@ -783,6 +783,8 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       layers: extraLayers,
       patchPath: join(profileDir, 'cordis.patch.yml'),
       patches: [],
+      form: { kind: 'classic' },
+      owner: undefined,
     }
     const resolutionOptions = { installAnchor: INSTALL_ANCHOR, home: harnessHome, profile }
     await mkdir(profileDir, { recursive: true })

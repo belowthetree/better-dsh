@@ -5,6 +5,17 @@ import { randomUUID } from 'node:crypto'
 import type { PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
 import { formatFatalDiagnostic } from './fatal-diagnostic.ts'
 import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
+
+/**
+ * Read the profile name the Electron shell launched, so model requests, plugin
+ * records, and management operations name the same profile the shell selected.
+ * @param environment - Host process environment supplied by the shell.
+ * @returns the selected profile name; the reserved desktop profile when the shell names none.
+ */
+function launchedProfileName(environment: NodeJS.ProcessEnv): string {
+  const name = environment.DSH_DESKTOP_PROFILE_NAME
+  return name === undefined || name === '' ? 'desktop' : name
+}
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -28,7 +39,7 @@ async function main(): Promise<void> {
   reportSkippedBundles('dsh', profile)
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
-    profile: 'desktop',
+    profile: launchedProfileName(process.env),
     resolvedProfile: { profile, installAnchor },
     patchFiles: [],
     args: ['--no-open', '--host', '127.0.0.1', '--port', '0'],

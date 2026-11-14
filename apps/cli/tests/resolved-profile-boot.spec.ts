@@ -63,7 +63,8 @@ describe('runProfile with an application-owned profile', () => {
     })
     if (stage === 'composition') vi.mocked(createRuntimeResolution).mockRejectedValueOnce(failure)
     const profile: Profile = { skippedBundles: [],
-      name: 'desktop', dir: home, patchPath: join(home, 'cordis.patch.yml'),
+      name: 'desktop', dir: home, form: { kind: 'classic' }, owner: undefined,
+      patchPath: join(home, 'cordis.patch.yml'),
       patches: [], layers: [],
     }
     try {
@@ -124,7 +125,7 @@ describe('runProfile with an application-owned profile', () => {
     writeFileSync(overlay, '- id: target\n  config: { overlay: true, priority: overlay }\n')
     writeFileSync(join(home, 'cordis.yml'), '- id: stale\n')
     const profile: Profile = { skippedBundles: [],
-      name: 'desktop', dir: home, patchPath: profilePatch,
+      name: 'desktop', dir: home, form: { kind: 'classic' }, owner: undefined, patchPath: profilePatch,
       patches: [{ id: 'target', config: { profile: true, priority: 'profile' } }],
       layers: [{
         packageName: 'test-bundle', packageDir: home, patchPaths: [join(home, 'bundle.yml')],
@@ -203,7 +204,8 @@ describe('profile User-Agent suffix', () => {
       return Promise.reject(failure)
     })
     const profile: Profile = { skippedBundles: [],
-      name: 'my web', dir: home, patchPath: join(home, 'cordis.patch.yml'), patches: [], layers: [],
+      name: 'my web', dir: home, form: { kind: 'classic' }, owner: undefined,
+      patchPath: join(home, 'cordis.patch.yml'), patches: [], layers: [],
     }
     await expect(runProfile({
       environment: createLaunchEnvironmentSnapshot([]), profile: 'my web', patchFiles: [], args: [],

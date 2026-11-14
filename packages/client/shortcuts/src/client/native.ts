@@ -4,7 +4,7 @@ import type { DesktopKeyboardApi, ShortcutConfigSnapshot } from '../protocol.ts'
 import type { ShortcutRegistry } from './registry.ts'
 
 /**
- * Route native menu, main-frame, and embedded-frame input through the shared command registry.
+ * Route native menu, OS-global activation, main-frame, and embedded-frame input through the shared command registry.
  * @param window - trusted product document.
  * @param keyboard - top-frame preload capability.
  * @param registry - window-local command owner.
@@ -25,7 +25,7 @@ export function installNativeKeyboard(window: Window, keyboard: DesktopKeyboardA
     const region = target?.closest('.xterm') ? 'terminal' as const
       : target?.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]') ? 'editable' as const : 'page' as const
     const context = { target, region, modal: top?.dataset.shortcutModal ?? (top === undefined ? null : 'other') }
-    if (input.kind === 'menu') { registry.invoke(input.commandId, context); return }
+    if (input.kind === 'menu' || input.kind === 'global') { registry.invoke(input.commandId, context); return }
     if (input.kind === 'keyboard') {
       registry.dispatch({ ...input, composing: false, defaultPrevented: false }, context, () => {})
       return

@@ -9,7 +9,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { PreparationCard, VoicePreparation } from '../src/client/PreparationCard.tsx'
 import type { VoiceInputProps } from '../src/client/VoiceInput.tsx'
 import type { SpeechReadiness } from '../src/client/readiness.ts'
-import { Recording } from '../src/client/audio.ts'
 import { zh, en, ja, es, fr, de, ru, pt } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -110,6 +109,24 @@ it('explains download failures on the Host machine and retains an actionable ret
     preparation: { phase: 'failed', message: 'runtime missing' } }} />)
   expect(screen.getByRole('alert').textContent).toBe('准备失败：runtime missing')
 })
+it('persists the hands-free composer preference beside the recognition settings', () => {
+  const store = createSnapshotStore<SpeechReadiness>({ connected: true, error: null, catalog: {
+    selection: { providerId: id, language: 'auto' }, maxAudioBytes: 100, maxDurationSeconds: 120,
+    providers: [{ id, name: 'SenseVoiceSmall', location: 'host-local', languages: ['auto'], preparation: { phase: 'ready' } }],
+  } })
+  const setHandsFree = vi.fn()
+  render(<VoicePreparation useSpeechReadiness={bindSnapshotSelector(store)} configure={vi.fn(async () => {})}
+    useMicrophoneDevice={bindSnapshotSelector(createSnapshotStore({ id: '', label: '' }))}
+    useHandsFree={bindSnapshotSelector(createSnapshotStore(true))} setHandsFree={setHandsFree}
+    selectMicrophone={vi.fn()} previewMicrophone={vi.fn(async () => ({ level: () => 0, deviceInfo: () => undefined,
+      dispose: async () => {} }))} prepare={vi.fn(async () => {})} cancelPreparation={vi.fn(async () => {})} t={t} />)
+  const toggle = screen.getByLabelText(zh.handsFree) as HTMLInputElement
+  expect(toggle.checked).toBe(true)
+  expect(screen.getByText(zh.handsFreeHelp)).toBeTruthy()
+  fireEvent.click(toggle)
+  expect(setHandsFree).toHaveBeenCalledWith(false)
+})
+
 it('persists settings and reports disconnection in the detail card', async () => {
   const store = createSnapshotStore<SpeechReadiness>({ connected: true, error: null, catalog: {
     selection: { providerId: id, language: 'auto' }, maxAudioBytes: 100, maxDurationSeconds: 120,
@@ -119,7 +136,9 @@ it('persists settings and reports disconnection in the detail card', async () =>
   const configure = vi.fn<VoiceInputProps['configure']>(async () => {})
   const props = { useSpeechReadiness: bindSnapshotSelector(store), configure, t,
     useMicrophoneDevice: bindSnapshotSelector(createSnapshotStore({ id: '', label: '' })),
-    selectMicrophone: vi.fn(), createRecording: () => new Recording(() => {}),
+    useHandsFree: bindSnapshotSelector(createSnapshotStore(false)), setHandsFree: vi.fn(),
+    selectMicrophone: vi.fn(),
+    previewMicrophone: vi.fn(async () => ({ level: () => 0, deviceInfo: () => undefined, dispose: async () => {} })),
     prepare: vi.fn(async () => {}), cancelPreparation: vi.fn(async () => {}) }
   const view = render(<VoicePreparation {...props} />)
   fireEvent.change(screen.getByLabelText(zh.provider), { target: { value: 'cloud' } })

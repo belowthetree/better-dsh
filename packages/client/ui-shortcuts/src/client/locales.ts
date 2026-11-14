@@ -32,6 +32,14 @@ export const zh = {
   application: '应用操作', input: '消息输入', menus: '菜单与弹层', approval: '审批区域', unbound: '暂无快捷键',
   empty: '没有匹配的快捷键',
   move: '移动菜单选择', select: '选择菜单项', dismiss: '关闭菜单或顶层弹窗',
+  global: '全局', 'global-description': '这些快捷键在任意应用处于焦点时均可使用。',
+  'global-suspended': '录制快捷键期间已暂停注册。',
+  'global-web': '全局快捷键仅在桌面端可用。',
+  'global-platform': '此平台不支持全局快捷键。其他快捷键仍可在 Harness 处于焦点时使用。',
+  'global-carrier': '当前窗口无法注册全局快捷键。其他快捷键仍可在 Harness 处于焦点时使用。',
+  'global-failed': '该组合已被其他应用或系统占用。请选择其他快捷键。',
+  'global-reset-all': '恢复全部全局快捷键', 'global-reset-title': '恢复全部全局快捷键？',
+  'global-reset-description': '将恢复默认的全局快捷键。你修改或移除的快捷键都会恢复，窗口快捷键不受影响。',
 }
 /** Typed English counterpart. */
 export const en: Record<keyof typeof zh, string> = {
@@ -67,6 +75,14 @@ export const en: Record<keyof typeof zh, string> = {
   application: 'Application', input: 'Message input', menus: 'Menus and dialogs', approval: 'Approval area', unbound: 'No shortcut',
   empty: 'No matching shortcuts',
   move: 'Move menu selection', select: 'Select menu item', dismiss: 'Close menu or top dialog',
+  global: 'Global', 'global-description': 'These shortcuts work while any application is focused.',
+  'global-suspended': 'Registration is paused while you record a shortcut.',
+  'global-web': 'Global shortcuts are available in the Desktop app.',
+  'global-platform': 'Global shortcuts are not available on this platform. Other shortcuts still work while Harness is focused.',
+  'global-carrier': 'This window cannot register global shortcuts. Other shortcuts still work while Harness is focused.',
+  'global-failed': 'Another application or the system owns this combination. Choose a different shortcut.',
+  'global-reset-all': 'Restore all global shortcuts', 'global-reset-title': 'Restore all global shortcuts?',
+  'global-reset-description': 'Restores the default global shortcuts. Shortcuts you changed or removed are restored; window shortcuts are unaffected.',
 }
 
 /** Japanese copy, checked against the English keys. */
@@ -127,6 +143,16 @@ export const ja = {
   'move': 'メニュー選択を移動',
   'select': 'メニュー項目を選択',
   'dismiss': 'メニューまたは最上位ダイアログを閉じる',
+  'global': 'グローバル',
+  'global-description': 'これらのショートカットは、どのアプリケーションにフォーカスがあっても動作します。',
+  'global-suspended': 'ショートカットの録音中は登録を一時停止しています。',
+  'global-web': 'グローバルショートカットはデスクトップアプリでのみ利用できます。',
+  'global-platform': 'このプラットフォームではグローバルショートカットを利用できません。他のショートカットは Harness にフォーカスがある間は動作します。',
+  'global-carrier': 'このウィンドウではグローバルショートカットを登録できません。他のショートカットは Harness にフォーカスがある間は動作します。',
+  'global-failed': 'この組み合わせは別のアプリケーションまたはシステムが使用しています。別のショートカットを選択してください。',
+  'global-reset-all': 'すべてのグローバルショートカットをデフォルトに戻す',
+  'global-reset-title': 'すべてのグローバルショートカットをデフォルトに戻しますか？',
+  'global-reset-description': 'グローバルショートカットをデフォルトに戻します。変更または削除したショートカットは復元され、ウィンドウのショートカットには影響しません。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -163,6 +189,14 @@ export const es = {
   application: 'Solicitud', input: 'Entrada de mensaje', menus: 'Menús y cuadros de diálogo', approval: 'Área de aprobación', unbound: 'Sin atajos',
   empty: 'No hay atajos coincidentes',
   move: 'Mover selección de menú', select: 'Seleccionar elemento del menú', dismiss: 'Cerrar menú o cuadro de diálogo superior',
+  global: 'Globales', 'global-description': 'Estos atajos funcionan mientras cualquier aplicación tiene el foco.',
+  'global-suspended': 'El registro está en pausa mientras grabas un atajo.',
+  'global-web': 'Los atajos globales están disponibles en la aplicación de escritorio.',
+  'global-platform': 'Los atajos globales no están disponibles en esta plataforma. Los demás atajos siguen funcionando mientras Harness tiene el foco.',
+  'global-carrier': 'Esta ventana no puede registrar atajos globales. Los demás atajos siguen funcionando mientras Harness tiene el foco.',
+  'global-failed': 'Otra aplicación o el sistema utiliza esta combinación. Elija otro atajo.',
+  'global-reset-all': 'Restaurar todos los atajos globales', 'global-reset-title': '¿Restaurar todos los atajos globales?',
+  'global-reset-description': 'Restaura los atajos globales predeterminados. Se restauran los atajos modificados o eliminados; los atajos de ventana no se ven afectados.',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -199,6 +233,14 @@ export const fr = {
   application: 'Demande', input: 'Saisie des messages', menus: 'Menus et boîtes de dialogue', approval: "Zone d'approbation", unbound: 'Pas de raccourci',
   empty: 'Aucun raccourci correspondant',
   move: 'Déplacer la sélection du menu', select: 'Sélectionner un élément de menu', dismiss: 'Fermer le menu ou la boîte de dialogue supérieure',
+  global: 'Globaux', 'global-description': 'Ces raccourcis fonctionnent lorsque n’importe quelle application a le focus.',
+  'global-suspended': 'L’enregistrement est suspendu pendant que vous enregistrez un raccourci.',
+  'global-web': 'Les raccourcis globaux sont disponibles dans l’application de bureau.',
+  'global-platform': 'Les raccourcis globaux ne sont pas disponibles sur cette plateforme. Les autres raccourcis fonctionnent toujours lorsque Harness a le focus.',
+  'global-carrier': 'Cette fenêtre ne peut pas enregistrer de raccourcis globaux. Les autres raccourcis fonctionnent toujours lorsque Harness a le focus.',
+  'global-failed': 'Une autre application ou le système utilise cette combinaison. Choisissez un autre raccourci.',
+  'global-reset-all': 'Restaurer tous les raccourcis globaux', 'global-reset-title': 'Restaurer tous les raccourcis globaux ?',
+  'global-reset-description': 'Restaure les raccourcis globaux par défaut. Les raccourcis modifiés ou supprimés sont restaurés ; les raccourcis de fenêtre ne sont pas affectés.',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -235,6 +277,14 @@ export const de = {
   application: 'Anwendung', input: 'Nachrichteneingabe', menus: 'Menüs und Dialoge', approval: 'Genehmigungsbereich', unbound: 'Keine Abkürzung',
   empty: 'Keine passenden Verknüpfungen',
   move: 'Menüauswahl verschieben', select: 'Menüpunkt auswählen', dismiss: 'Menü oder oberen Dialog schließen',
+  global: 'Global', 'global-description': 'Diese Tastenkürzel funktionieren, während eine beliebige Anwendung fokussiert ist.',
+  'global-suspended': 'Die Registrierung ist pausiert, während Sie eine Verknüpfung aufnehmen.',
+  'global-web': 'Globale Tastenkürzel sind in der Desktop-App verfügbar.',
+  'global-platform': 'Globale Tastenkürzel sind auf dieser Plattform nicht verfügbar. Andere Verknüpfungen funktionieren weiterhin, während Harness fokussiert ist.',
+  'global-carrier': 'Dieses Fenster kann keine globalen Tastenkürzel registrieren. Andere Verknüpfungen funktionieren weiterhin, während Harness fokussiert ist.',
+  'global-failed': 'Eine andere Anwendung oder das System verwendet diese Kombination. Wählen Sie eine andere Verknüpfung.',
+  'global-reset-all': 'Alle globalen Tastenkürzel zurücksetzen', 'global-reset-title': 'Alle globalen Tastenkürzel zurücksetzen?',
+  'global-reset-description': 'Stellt die globalen Standardverknüpfungen wieder her. Geänderte oder entfernte Verknüpfungen werden wiederhergestellt; Fensterverknüpfungen sind nicht betroffen.',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -271,6 +321,14 @@ export const ru = {
   application: 'Приложение', input: 'Ввод сообщения', menus: 'Меню и диалоги', approval: 'Область утверждения', unbound: 'Нет ярлыка',
   empty: 'Нет подходящих ярлыков',
   move: 'Переместить выбор меню', select: 'Выберите пункт меню', dismiss: 'Закрыть меню или верхний диалог',
+  global: 'Глобальные', 'global-description': 'Эти ярлыки работают, пока активна любая программа.',
+  'global-suspended': 'Регистрация приостановлена, пока вы записываете ярлык.',
+  'global-web': 'Глобальные ярлыки доступны в приложении для компьютера.',
+  'global-platform': 'Глобальные ярлыки недоступны на этой платформе. Остальные ярлыки работают, пока окно Harness активно.',
+  'global-carrier': 'Это окно не может регистрировать глобальные ярлыки. Остальные ярлыки работают, пока окно Harness активно.',
+  'global-failed': 'Эта комбинация занята другой программой или системой. Выберите другой ярлык.',
+  'global-reset-all': 'Восстановить все глобальные ярлыки', 'global-reset-title': 'Восстановить все глобальные ярлыки?',
+  'global-reset-description': 'Восстанавливает глобальные ярлыки по умолчанию. Изменённые или удалённые ярлыки восстанавливаются; ярлыки окна не затрагиваются.',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -307,4 +365,12 @@ export const pt = {
   application: 'Aplicação', input: 'Entrada de mensagem', menus: 'Menus e caixas de diálogo', approval: 'Área de aprovação', unbound: 'Sem atalho',
   empty: 'Nenhum atalho correspondente',
   move: 'Mover seleção de menu', select: 'Selecione o item do menu', dismiss: 'Fechar menu ou caixa de diálogo superior',
+  global: 'Globais', 'global-description': 'Estes atalhos funcionam enquanto qualquer aplicação está em foco.',
+  'global-suspended': 'O registro está pausado enquanto você grava um atalho.',
+  'global-web': 'Os atalhos globais estão disponíveis no aplicativo para desktop.',
+  'global-platform': 'Os atalhos globais não estão disponíveis nesta plataforma. Os outros atalhos continuam funcionando enquanto o Harness está em foco.',
+  'global-carrier': 'Esta janela não pode registrar atalhos globais. Os outros atalhos continuam funcionando enquanto o Harness está em foco.',
+  'global-failed': 'Outro aplicativo ou o sistema usa esta combinação. Escolha outro atalho.',
+  'global-reset-all': 'Restaurar todos os atalhos globais', 'global-reset-title': 'Restaurar todos os atalhos globais?',
+  'global-reset-description': 'Restaura os atalhos globais padrão. Os atalhos alterados ou removidos são restaurados; os atalhos de janela não são afetados.',
 } satisfies Record<keyof typeof en, string>

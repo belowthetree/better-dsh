@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sortie vocale",
+    "description": "Lit les réponses terminées de l'assistant selon une politique de lecture automatique, avec choix de voix et mode muet."
+  }
+}
