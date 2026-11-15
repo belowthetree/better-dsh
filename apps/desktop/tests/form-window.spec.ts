@@ -64,7 +64,7 @@ describe('panel bounds', () => {
 })
 
 describe('bubble bounds', () => {
-  it('anchors the column to the orb, growing upward from its bottom edge', () => {
+  it('spans the column and the orb, growing upward from the orb bottom edge', () => {
     const bounds = bubblesBounds(
       { version: 1, orb: { x: 1800, y: 400 }, pinned: false },
       { x: 0, y: 0, width: 1920, height: 1080 },
@@ -75,7 +75,7 @@ describe('bubble bounds', () => {
   it('keeps the column inside a work area it would overflow', () => {
     const layout = { version: 1, orb: { x: 0, y: 0 }, pinned: false } as const
     expect(bubblesBounds(layout, { x: 0, y: 0, width: 320, height: 400 }))
-      .toEqual({ x: 0, y: SCREEN_MARGIN, width: 320, height: 240 })
+      .toEqual({ x: 0, y: 0, width: 320, height: 264 })
   })
 })
 

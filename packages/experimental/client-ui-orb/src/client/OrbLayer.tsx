@@ -152,10 +152,18 @@ export function OrbLayer(props: OrbLayerProps) {
   }
 
   // The chat modal and the frame's modal layer own every other presentation.
-  if (surface.presentation !== 'orb') return null
+  // The bubbles presentation keeps the orb on screen beside its column.
+  if (surface.presentation !== 'orb' && surface.presentation !== 'bubbles') return null
+  const anchor = surface.presentation === 'bubbles' ? surface.anchor : undefined
 
-  return <div className={css.orbRoot} data-orb data-state={state}
-    data-reduced-motion={reducedMotion || undefined} onKeyDown={onKeyDown}>
+  return <div
+    className={anchor === undefined ? css.orbRoot : css.orbAnchor}
+    style={anchor === undefined ? undefined : { left: anchor.x, top: anchor.y }}
+    data-orb
+    data-state={state}
+    data-reduced-motion={reducedMotion || undefined}
+    onKeyDown={onKeyDown}
+  >
     {capture !== null && <button type="button" className={css.mic} data-orb-mic
       data-capturing={capturing === true || undefined}
       aria-label={t(capturing === true ? 'orb.micStop' : 'orb.micStart')}

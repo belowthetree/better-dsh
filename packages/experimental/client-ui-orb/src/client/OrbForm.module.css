@@ -10,6 +10,18 @@
   pointer-events: none;
 }
 
+/* While the bubble column is presented, the same window carries the orb at the
+   offset the carrier reports, so neither surface replaces the other. */
+.orbAnchor {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 112px;
+  pointer-events: none;
+}
+
 .orb {
   position: relative;
   display: flex;

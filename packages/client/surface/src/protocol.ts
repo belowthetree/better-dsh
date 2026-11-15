@@ -39,6 +39,11 @@ export interface SurfaceSnapshot {
    * carries its id instead of rendering content itself.
    */
   readonly modal: string | null
+  /**
+   * Orb position inside the product window, in logical pixels, while the
+   * bubbles presentation keeps the orb beside the column; absent otherwise.
+   */
+  readonly anchor?: { readonly x: number; readonly y: number }
 }
 
 /** Boot descriptor the carrier publishes before Client plugins load. */

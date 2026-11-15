@@ -141,8 +141,23 @@ export class DesktopSurfaceController {
    * @returns the snapshot the service and the modal seat consume.
    */
   snapshot(): SurfaceSnapshot {
-    return { form: 'orb', presentation: this.#presentation, pinned: this.#layout.pinned,
-      available: true, modal: this.#modal }
+    const anchor = this.#presentation === 'bubbles' ? this.#anchor() : undefined
+    return {
+      form: 'orb', presentation: this.#presentation, pinned: this.#layout.pinned,
+      available: true, modal: this.#modal,
+      ...(anchor === undefined ? {} : { anchor }),
+    }
+  }
+
+  /**
+   * Position of the orb inside the window that shows the bubble column beside it.
+   * @returns orb offset in logical pixels from the window's top-left corner.
+   */
+  #anchor(): { x: number; y: number } {
+    const workArea = this.#effects.workArea()
+    const bounds = bubblesBounds(this.#layout, workArea)
+    const orb = orbBounds(this.#layout, workArea)
+    return { x: orb.x - bounds.x, y: orb.y - bounds.y }
   }
 
   /**

@@ -335,6 +335,15 @@ describe('DesktopSurfaceController', () => {
     expect(window.published.at(-1)).toMatchObject({ presentation: 'modal', modal: 'fatal-form' })
   })
 
+  it('reports the orb offset inside the bubble window', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' })
+    const bounds = bubblesBounds(LAYOUT, WORK_AREA)
+    expect(controller.snapshot().anchor).toEqual({ x: 1300 - bounds.x, y: 400 - bounds.y })
+    controller.dispatch({ kind: 'dismissBubbles' })
+    expect(controller.snapshot().anchor).toBeUndefined()
+  })
   it('presents the bubble column at the right edge without focus', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })

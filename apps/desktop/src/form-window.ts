@@ -84,21 +84,26 @@ export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {})
 
 /**
  * Anchor the bubble column to the orb, inset from the screen margin and growing upward from the orb's bottom edge.
- * The column overlaps the orb's right edge, so hovering the orb keeps the pointer inside the column it opens,
- * and its height never covers a whole display, so covered applications keep rendering.
+ * The window spans the column and the orb, so the orb stays on screen beside the column it belongs to;
+ * its height never covers a whole display, so covered applications keep rendering.
  * @param layout - current orb layout.
  * @param workArea - target display work area.
- * @returns bubble column bounds inside the work area.
+ * @returns bubble window bounds inside the work area, covering both the column and the orb.
  */
 export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea): FormPresentationBounds {
-  const { orb } = clampFormLayout(layout, workArea)
+  const orb = orbBounds(layout, workArea)
   const width = Math.min(BUBBLES_WIDTH, workArea.width)
   const height = Math.min(workArea.height - SCREEN_MARGIN * 2, Math.max(ORB_SIZE, Math.round(workArea.height * 0.6)))
+  const columnX = Math.min(Math.max(workArea.x, orb.x + ORB_SIZE - width), workArea.x + workArea.width - width)
+  const columnY = Math.min(Math.max(workArea.y + SCREEN_MARGIN, orb.y + ORB_SIZE - height), workArea.y + workArea.height - height)
+  // The window keeps the orb itself on screen beside the column.
+  const x = Math.min(columnX, orb.x)
+  const y = Math.min(columnY, orb.y)
   return {
-    x: Math.min(Math.max(workArea.x, orb.x + ORB_SIZE - width), workArea.x + workArea.width - width),
-    y: Math.min(Math.max(workArea.y + SCREEN_MARGIN, orb.y + ORB_SIZE - height), workArea.y + workArea.height - height),
-    width,
-    height,
+    x,
+    y,
+    width: Math.max(columnX + width, orb.x + ORB_SIZE) - x,
+    height: Math.max(columnY + height, orb.y + ORB_SIZE) - y,
   }
 }
 
