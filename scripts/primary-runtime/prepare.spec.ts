@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { zipSync } from 'fflate'
 import { expect, it } from 'vitest'
-import { downloadPrimaryRuntimeAsset, primaryRuntimePayloadDigest, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
+import { downloadPrimaryRuntimeAsset, expectedPrimaryRuntimeManifest, primaryRuntimePayloadDigest, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
 import lock from './lock.json' with { type: 'json' }
 
 it('covers every SDK wheel target with the shared interpreter lock', () => {
@@ -44,6 +45,29 @@ it('invalidates payload identity for shared wheels, package versions and package
   expect(primaryRuntimePayloadDigest('mac-arm64', wheel, '11.7.0')).not.toBe(original)
   expect(primaryRuntimePayloadDigest('mac-arm64', distribution, '11.7.0')).not.toBe(original)
   expect(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.1')).not.toBe(original)
+})
+
+const pnpmArchive = { name: 'pnpm', version: '11.7.0', url: 'https://registry.npmjs.org/pnpm/-/pnpm-11.7.0.tgz', integrity: `sha512-${'A'.repeat(86)}==` }
+
+it.each([
+  ['mac-arm64', 'darwin', 'arm64'],
+  ['mac-x64', 'darwin', 'x64'],
+  ['win-x64', 'win32', 'x64'],
+] as const)('describes the manifest %s publishes from the shared lock', (target, platform, arch) => {
+  expect(expectedPrimaryRuntimeManifest({ target, version: '9.9.9', pnpmArchive })).toEqual({
+    desktopVersion: '9.9.9', platform, arch,
+    payloadDigest: primaryRuntimePayloadDigest(target, lock, '11.7.0'),
+    python: lock.pythonVersion, node: lock.nodeVersion, pnpm: '11.7.0', pythonPackages: lock.pythonPackages,
+  })
+})
+
+it('records the installed pnpm version when a build host copies its own package', () => {
+  const installed = (JSON.parse(readFileSync(createRequire(import.meta.url).resolve('pnpm'), 'utf8')) as { version: string }).version
+  expect(expectedPrimaryRuntimeManifest({ target: 'mac-arm64', version: '1.0.0' })).toEqual({
+    desktopVersion: '1.0.0', platform: 'darwin', arch: 'arm64',
+    payloadDigest: primaryRuntimePayloadDigest('mac-arm64', lock, installed),
+    python: lock.pythonVersion, node: lock.nodeVersion, pnpm: installed, pythonPackages: lock.pythonPackages,
+  })
 })
 
 it('reports missing distribution metadata before trying to execute a stale native payload', async () => {

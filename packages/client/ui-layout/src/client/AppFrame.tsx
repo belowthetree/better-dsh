@@ -149,9 +149,9 @@ function modalFocusables(card: HTMLElement): HTMLElement[] {
 }
 
 /**
- * One modal presentation layer: a dimmed backdrop and a focus-trapped card
- * around the active `shell.modal` entry. Escape and backdrop activation dismiss
- * the presentation through the surface carrier; clicking the card does not.
+ * One modal presentation layer: a transparent dismissal area and a focus-trapped
+ * card around the active `shell.modal` entry. Escape and activation outside the
+ * card dismiss the presentation through the surface carrier; clicking the card does not.
  */
 function ModalLayer({ modal, renderSlot, dismissModal }: {
   modal: string

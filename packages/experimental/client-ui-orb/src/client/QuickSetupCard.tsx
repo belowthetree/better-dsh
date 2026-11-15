@@ -35,7 +35,7 @@ export interface OrbQuickSetupInjected {
   readonly setVoice: (voiceId: string) => void
 }
 
-/** Complete props of the quick setup card; the frame owns focus, Escape, and the backdrop. */
+/** Complete props of the quick setup card; the frame owns focus, Escape, and the dismissal area. */
 export type OrbQuickSetupProps =
   & PropsRuntime<'shell.modal'>
   & PropsLocale<typeof NS>

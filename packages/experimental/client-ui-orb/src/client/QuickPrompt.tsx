@@ -43,7 +43,7 @@ export interface OrbChatInjected {
   actions: OrbChatActions
 }
 
-/** Complete props of the chat box; the frame owns the backdrop, focus trap, and Escape. */
+/** Complete props of the chat box; the frame owns the dismissal area, focus trap, and Escape. */
 export type QuickPromptProps =
   & PropsRuntime<'shell.modal'>
   & PropsLocale<typeof NS>

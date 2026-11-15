@@ -238,7 +238,7 @@
   font: var(--dsw-font-xxs-12);
 }
 
-/* Chat modal content. The frame keeps the backdrop, focus trap, and Escape;
+/* Chat modal content. The frame keeps the dismissal layer, focus trap, and Escape;
    this entry owns its surface, so the box sits on a soft fill that fades from
    the box outward instead of a hard card. */
 .prompt {

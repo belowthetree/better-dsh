@@ -175,20 +175,57 @@ export function prunePnpmForeignNativePackages(pnpm: string, platform: NodeJS.Pl
 /** A locked interpreter and wheel target. */
 export type PrimaryRuntimeTarget = keyof typeof lock.targets
 
-/** Resource preparation inputs shared by builds and explicit SDK downloads. */
-export interface PreparePrimaryRuntimeOptions {
-  /** Target whose archives and wheels are downloaded. */
+/** Inputs identifying the payload one target installs, independent of where it is written. */
+export interface PrimaryRuntimeIdentityOptions {
+  /** Target whose archives and wheels are installed. */
   readonly target: PrimaryRuntimeTarget
-  /** Resource directory receiving primary-runtime/. */
-  readonly output: string
-  /** SHA-256-addressed archive cache. */
-  readonly cache: string
   /** Carrier release recorded in the legacy desktopVersion manifest field. */
   readonly version: string
   /** Locked npm pnpm tarball for installed carriers; build hosts otherwise copy their installed pnpm. */
   readonly pnpmArchive?: RuntimeNpmArchive
+}
+
+/** Resource preparation inputs shared by builds and explicit SDK downloads. */
+export interface PreparePrimaryRuntimeOptions extends PrimaryRuntimeIdentityOptions {
+  /** Resource directory receiving primary-runtime/. */
+  readonly output: string
+  /** SHA-256-addressed archive cache. */
+  readonly cache: string
   /** Omit Node.js and pnpm for carriers providing only Python. */
   readonly pythonOnly?: boolean
+}
+
+function primaryRuntimePlatform(target: PrimaryRuntimeTarget): { platform: 'win32' | 'linux' | 'darwin'; arch: 'x64' | 'arm64' } {
+  return { platform: target === 'win-x64' ? 'win32' : target.startsWith('linux-') ? 'linux' : 'darwin', arch: target.endsWith('-arm64') ? 'arm64' : 'x64' }
+}
+
+function installedPnpm(): { readonly directory: string; readonly version: string } {
+  const manifest = createRequire(import.meta.url).resolve('pnpm')
+  return { directory: dirname(manifest), version: (JSON.parse(readFileSync(manifest, 'utf8')) as { version: string }).version }
+}
+
+function pnpmVersionOf(options: PrimaryRuntimeIdentityOptions): string {
+  return options.pnpmArchive?.version ?? installedPnpm().version
+}
+
+function primaryRuntimeManifest(options: PrimaryRuntimeIdentityOptions, pnpmVersion: string | undefined): PrimaryRuntimeManifest {
+  return {
+    desktopVersion: options.version,
+    ...primaryRuntimePlatform(options.target),
+    payloadDigest: primaryRuntimePayloadDigest(options.target, lock, pnpmVersion),
+    python: lock.pythonVersion,
+    ...(pnpmVersion === undefined ? {} : { node: lock.nodeVersion, pnpm: pnpmVersion }),
+    pythonPackages: lock.pythonPackages,
+  }
+}
+
+/**
+ * Describe the manifest a completed preparation would publish for one target.
+ * @param options - Target, carrier release, and optional pinned pnpm tarball.
+ * @returns Metadata that identifies a prepared payload, including its input digest.
+ */
+export function expectedPrimaryRuntimeManifest(options: PrimaryRuntimeIdentityOptions): PrimaryRuntimeManifest {
+  return primaryRuntimeManifest(options, pnpmVersionOf(options))
 }
 
 /**
@@ -206,34 +243,21 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
     const output = join(staging, 'payload')
     const dependencies = join(output, 'dependencies')
     mkdirSync(dependencies, { recursive: true })
-    const platform = target === 'win-x64' ? 'win32' : target.startsWith('linux-') ? 'linux' : 'darwin'
-    const arch = target.endsWith('-arm64') ? 'arm64' : 'x64'
-    let pnpmVersion: string | undefined
+    const { platform, arch } = primaryRuntimePlatform(target)
     if (!options.pythonOnly) {
       const node = join(dependencies, 'node')
       await downloadNodeRuntime(target, node, paths.downloads)
       mkdirSync(join(node, 'node_modules'))
       writeFileSync(join(node, 'node_modules', 'README.txt'), 'Reserved for bundled Node packages. pnpm uses its default installation directories.\n')
       if (options.pnpmArchive !== undefined) {
-        pnpmVersion = options.pnpmArchive.version
         await downloadRuntimeNpmPackage(options.pnpmArchive, join(dependencies, 'pnpm'), paths.downloads)
       } else {
-        const pnpmManifest = createRequire(import.meta.url).resolve('pnpm')
-        pnpmVersion = (JSON.parse(readFileSync(pnpmManifest, 'utf8')) as { version: string }).version
-        await cp(dirname(pnpmManifest), join(dependencies, 'pnpm'), { recursive: true, dereference: true })
+        await cp(installedPnpm().directory, join(dependencies, 'pnpm'), { recursive: true, dereference: true })
       }
       prunePnpmForeignNativePackages(join(dependencies, 'pnpm'), platform, arch)
     }
     await extractTar({ file: await pythonArchive(target, paths.downloads), cwd: dependencies })
-    const manifest: PrimaryRuntimeManifest = {
-      desktopVersion: options.version,
-      platform,
-      arch,
-      payloadDigest: primaryRuntimePayloadDigest(target, lock, pnpmVersion),
-      python: lock.pythonVersion,
-      ...(pnpmVersion === undefined ? {} : { node: lock.nodeVersion, pnpm: pnpmVersion }),
-      pythonPackages: lock.pythonPackages,
-    }
+    const manifest = primaryRuntimeManifest(options, options.pythonOnly === true ? undefined : pnpmVersionOf(options))
     const entries = workspaceDependencyPaths(output, manifest)
     for (const wheel of [...lock.targets[target].wheels, ...lock.wheels]) {
       await unpackPrimaryRuntimeWheel(await downloadPrimaryRuntimeAsset(wheel.url, wheel.sha256, paths.downloads), entries.pythonPackages)

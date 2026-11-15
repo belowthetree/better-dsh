@@ -25,7 +25,7 @@
 - 支持的引擎上，圆角继承 ui-theme `corner-shape.css` 的全局超级椭圆平滑。每个正圆 `border-radius`（`50%`、`100%` 或胶囊半径）必须配对 `corner-shape: round`，使圆形与胶囊保持圆弧；ui-theme 的 corner-shape spec 强制这一配对。
 - 高层级表面（菜单、浮层、对话框、面板、悬浮按钮、输入框）设 `border: 0` 并使用 `box-shadow: var(--dsw-elevation-panel)`、`var(--dsw-elevation-prominent)` 或输入框专用的 `var(--dsw-elevation-soft)`（更大模糊、更低透明度）：0.5px 发丝描边是第一层投影，`--dsw-elevation-stroke-color` 可按表面或状态重绑或抑制描边。不得将 `--dsw-alias-border-*` border 与 lv/elevation 投影配对——ui-theme 的 elevation spec 会拒绝；状态色 border（warn 面板）保持真 border。
 - 存量和新增的下拉菜单、上下文菜单、子菜单及选择菜单使用 `Menu`，自定义内容用 `MenuSurface` 包裹。材质由主题的 `--dsw-menu-surface-fill` 和 `--dsw-menu-backdrop-filter` 组成；功能及平台 CSS 不得覆盖两者。ui-theme 菜单检查拒绝未使用共享容器的 menu/listbox 渲染、材质覆盖和 token 重定义。计划任务自有的 `TaskMenu` 与 `ClockPicker` 是明确例外，保留现有容器和材质（[所属包](../packages/client/ui-schedule/README.zh.md)）。
-- 设置、确认框等模态弹窗保留黑色半透明遮罩，不模糊背景。主题将 `--dsw-mask-blur` 设为 `none`；Desktop 自有模态浮层也不对父页面施加模糊。
+- 设置、确认框等模态弹窗保留黑色半透明遮罩，不模糊背景。主题将 `--dsw-mask-blur` 设为 `none`；Desktop 自有模态浮层也不对父页面施加模糊。形态的模态呈现是例外：其窗口浮在桌面之上，该层不绘制遮罩，只保留透明的关闭点击区域。
 - 浮层在上下两侧均放不下时，保留与锚点的横向对齐。先尝试窗口内的纵向范围，再尝试同时清除横向锚定的回退位置；每个候选位置均须保留窗口边距与顶栏间距。
 
 - 菜单背景模糊绘制在独立图层上，保证嵌套菜单和 fixed 浮层的定位及背景采样。macOS 上，`MenuSurface` 仅在各菜单范围内、页面内容后方添加实色底层，使 Chromium 能在原生透明材质上模糊页面内容；CSS 锚点跟随位置及尺寸，卸载时移除底层。没有该底层的浮层使用 `--dsw-specific-menu`，主题在 macOS 上将其设为 94% 不透明度，防止下方文字透出。其他使用该填充的浮起表面也须配套同一模糊；包含 fixed 浮层时，将两者绘制在独立背景层上。

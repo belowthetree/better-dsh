@@ -54,7 +54,7 @@ export function panelBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea
 }
 
 /**
- * Fill the display work area, because the modal presentation draws a display-sized dimmed backdrop.
+ * Fill the display work area, because the modal presentation centers a dialog of its own size within it.
  * @param workArea - target display work area.
  * @returns bounds equal to the work area.
  */
