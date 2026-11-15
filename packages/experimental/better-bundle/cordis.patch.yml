@@ -3,6 +3,8 @@
       name: '@deepseek-ai/dsh-client-surface'
     - id: client-ui-orb
       name: '@deepseek-ai/dsh-client-ui-orb'
+    - id: client-better-interact
+      name: '@deepseek-ai/dsh-better-interact'
     - id: client-voice-capture
       name: '@deepseek-ai/dsh-client-voice-capture'
     - id: speech-to-text

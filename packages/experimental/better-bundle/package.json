@@ -36,6 +36,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@deepseek-ai/dsh-better-interact": "workspace:*",
     "@deepseek-ai/dsh-client-surface": "workspace:*",
     "@deepseek-ai/dsh-client-ui-orb": "workspace:*",
     "@deepseek-ai/dsh-client-voice-capture": "workspace:*",
