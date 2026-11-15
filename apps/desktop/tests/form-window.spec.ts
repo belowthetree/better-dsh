@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MODAL_SIZE,
   ORB_SIZE,
   PANEL_MIN_SIZE,
   PANEL_SIZE,
@@ -16,10 +17,11 @@ const WORK_AREA: DesktopWorkArea = { x: 0, y: 0, width: 1920, height: 1080 }
 const LAYOUT: DesktopFormLayout = { version: 1, orb: { x: 300, y: 200 }, pinned: false }
 
 describe('form presentation constants', () => {
-  it('pins the orb, panel, margin, and minimum panel sizes', () => {
+  it('pins the orb, panel, modal, margin, and minimum panel sizes', () => {
     expect(ORB_SIZE).toBe(112)
     expect(PANEL_SIZE).toEqual({ width: 560, height: 160 })
     expect(PANEL_MIN_SIZE).toEqual({ width: 420, height: 120 })
+    expect(MODAL_SIZE).toEqual({ width: 768, height: 560 })
     expect(SCREEN_MARGIN).toBe(24)
   })
 })
@@ -60,9 +62,14 @@ describe('panel bounds', () => {
 })
 
 describe('modal bounds', () => {
-  it('covers the whole display work area', () => {
+  it('centers the dialog box inside the display work area', () => {
     expect(modalBounds({ x: -1920, y: -200, width: 1920, height: 1080 }))
-      .toEqual({ x: -1920, y: -200, width: 1920, height: 1080 })
+      .toEqual({ x: -1344, y: 60, width: MODAL_SIZE.width, height: MODAL_SIZE.height })
+  })
+
+  it('shrinks to a work area smaller than the dialog box', () => {
+    expect(modalBounds({ x: 0, y: 0, width: 640, height: 480 }))
+      .toEqual({ x: 0, y: 0, width: 640, height: 480 })
   })
 })
 

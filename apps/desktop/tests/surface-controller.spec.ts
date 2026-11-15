@@ -4,7 +4,7 @@ import {
   DesktopSurfaceController, MAX_MODAL_ID_CHARS, parseSurfaceCommand, type SurfaceWindowEffects,
 } from '../src/surface-controller.ts'
 import type { DesktopFormLayout } from '../src/form-layout.ts'
-import type { FormPresentationBounds } from '../src/form-window.ts'
+import { modalBounds, type FormPresentationBounds } from '../src/form-window.ts'
 
 const WORK_AREA = { x: 0, y: 0, width: 1440, height: 900 }
 const LAYOUT: DesktopFormLayout = { version: 1, orb: { x: 1300, y: 400 }, pinned: false }
@@ -155,7 +155,7 @@ describe('DesktopSurfaceController', () => {
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'presentModal', id: 'voice-setup' })
     expect(controller.snapshot()).toMatchObject({ presentation: 'modal', modal: 'voice-setup' })
-    expect(window.bounds.at(-1)).toEqual(WORK_AREA)
+    expect(window.bounds.at(-1)).toEqual(modalBounds(WORK_AREA))
     controller.dispatch({ kind: 'dismissModal' })
     expect(controller.snapshot()).toMatchObject({ presentation: 'orb', modal: null })
   })
@@ -204,14 +204,39 @@ describe('DesktopSurfaceController', () => {
     expect(controller.snapshot().presentation).toBe('orb')
   })
 
-  it('leaves the orb and modal presentations alone when the window loses focus', () => {
+  it('leaves the orb alone and dismisses the modal when the window loses focus', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.blurred()
     expect(controller.snapshot().presentation).toBe('orb')
     controller.dispatch({ kind: 'presentModal', id: 'settings-card' })
+    const focused = window.focused
     controller.blurred()
-    expect(controller.snapshot().presentation).toBe('modal')
+    expect(controller.snapshot()).toEqual({ form: 'orb', presentation: 'orb', pinned: false, available: true, modal: null })
+    expect(window.focused).toBe(focused)
+  })
+
+  it('dismisses a modal raised from an unpinned panel back to the orb', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'expand' })
+    controller.dispatch({ kind: 'presentModal', id: 'permission-repair' })
+    const focused = window.focused
+    controller.blurred()
+    expect(controller.snapshot()).toMatchObject({ presentation: 'orb', modal: null })
+    expect(window.focused).toBe(focused)
+  })
+
+  it('restores a pinned panel a modal was raised from when the window loses focus', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'expand' })
+    controller.dispatch({ kind: 'setPinned', pinned: true })
+    controller.dispatch({ kind: 'presentModal', id: 'permission-repair' })
+    const focused = window.focused
+    controller.blurred()
+    expect(controller.snapshot()).toMatchObject({ presentation: 'panel', modal: null, pinned: true })
+    expect(window.focused).toBe(focused)
   })
 
   it('moves the orb by a pointer delta and clamps it into the work area', () => {

@@ -380,7 +380,7 @@
   background: transparent;
 }
 
-/* Modal presentation: a display-sized dismissal layer with one centered card.
+/* Modal presentation: a dialog-sized dismissal layer with one centered card.
    The form window floats over the desktop, so this layer paints no mask of its
    own; the card traps focus and caps its own width, and the entry inside owns
    the content and its chrome. */

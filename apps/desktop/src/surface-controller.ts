@@ -145,7 +145,7 @@ export class DesktopSurfaceController {
 
   /**
    * Raise the panel presentation for a shell-owned document that needs a normal-sized owner.
-   * A form-owned modal already owns the whole display, so it is left in place.
+   * A form-owned modal is already the active presentation, so it is left in place.
    * @returns whether the panel is the current presentation after the request.
    */
   ensurePanel(): boolean {
@@ -154,9 +154,19 @@ export class DesktopSurfaceController {
     return true
   }
 
-  /** Collapse an unpinned panel when its window loses focus. */
+  /**
+   * Collapse an unpinned panel, and dismiss the modal, when the window loses focus.
+   * The modal window covers only the dialog, so leaving it is how the user dismisses
+   * the presentation by activating another application.
+   */
   blurred(): void {
-    if (this.#presentation === 'panel' && !this.#layout.pinned) this.#show('orb')
+    if (this.#presentation === 'modal') {
+      const restore = this.#restore
+      this.#modal = null
+      this.#show(restore === 'panel' && !this.#layout.pinned ? 'orb' : restore, false)
+      return
+    }
+    if (this.#presentation === 'panel' && !this.#layout.pinned) this.#show('orb', false)
   }
 
   /** Re-clamp the orb position and current bounds after a display change. */
@@ -174,12 +184,12 @@ export class DesktopSurfaceController {
     this.#publish()
   }
 
-  #show(presentation: 'orb' | 'panel' | 'modal'): void {
+  #show(presentation: 'orb' | 'panel' | 'modal', focus = true): void {
     this.#presentation = presentation
     this.#effects.setBounds(this.#bounds())
     this.#effects.setResizable(presentationResizable(presentation))
     this.#effects.setIgnoreMouseEvents(this.#ignoreMouse())
-    if (presentation !== 'orb') this.#effects.focus()
+    if (focus && presentation !== 'orb') this.#effects.focus()
     this.#publish()
   }
 
