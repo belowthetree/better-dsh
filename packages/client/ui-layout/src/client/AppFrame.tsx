@@ -15,9 +15,9 @@
  * shares — zero cordis or framework imports, zero self-made hooks.
  *
  * The optional surface service selects the frame's presentation: the classic
- * three-column frame for `classic` and `panel`, and a transparent root holding
- * the overlay and modal seats for `orb` and `modal`. Without that service the
- * frame stays classic and renders exactly as before.
+ * three-column frame for `classic`, and a transparent root holding the
+ * overlay and modal seats for `orb`, `panel`, and `modal`. Without that
+ * service the frame stays classic and renders exactly as before.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
@@ -136,9 +136,6 @@ function DragHandle(props: { side: 'sidebar' | 'rightbar'; left: number; onStart
   )
 }
 
-/** Presentation the three-column frame renders; the orb and modal presentations replace it. */
-type FramePresentation = 'classic' | 'panel'
-
 /** Descendants the modal card traps focus among, in document order. */
 const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
 
@@ -224,12 +221,12 @@ function ModalLayer({ modal, renderSlot, dismissModal }: {
 }
 
 /**
- * Transparent root of the orb and modal presentations: the frame columns are
- * absent, and only the overlay seat and, while a modal entry is active, the
- * modal layer render.
+ * Transparent root of the orb, panel, and modal presentations: the frame
+ * columns are absent, and only the overlay seat and, while a modal entry is
+ * active, the modal layer render.
  */
 function PresentationRoot({ presentation, modal, renderSlot, dismissModal }: {
-  presentation: 'orb' | 'modal'
+  presentation: 'orb' | 'panel' | 'modal'
   modal: string | null
   renderSlot: AppFrameProps['renderSlot']
   dismissModal: () => void
@@ -248,7 +245,7 @@ function PresentationRoot({ presentation, modal, renderSlot, dismissModal }: {
 /** The frame for the carrier's current presentation (see module doc). */
 export function AppFrame(props: AppFrameProps) {
   const surface = props.useSurface(snapshot => snapshot)
-  if (surface.presentation === 'orb' || surface.presentation === 'modal') {
+  if (surface.presentation !== 'classic') {
     return <PresentationRoot
       presentation={surface.presentation}
       modal={surface.modal}
@@ -256,7 +253,7 @@ export function AppFrame(props: AppFrameProps) {
       dismissModal={props.dismissModal}
     />
   }
-  return <ClassicFrame {...props} presentation={surface.presentation} />
+  return <ClassicFrame {...props} />
 }
 
 /** The three-column frame (see module doc). */
@@ -268,8 +265,7 @@ function ClassicFrame({
   actions,
   renderSlot,
   t,
-  presentation,
-}: AppFrameProps & { presentation: FramePresentation }) {
+}: AppFrameProps) {
   const layoutInfo = useStore(state => state.layoutInfo)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const viewport = layoutInfo.viewportWidth
@@ -424,7 +420,6 @@ function ClassicFrame({
     <div
       ref={frameRef}
       className={css.frame}
-      data-surface={presentation === 'panel' ? 'panel' : undefined}
       style={{
         ...(windowsTitlebar
           ? { '--dsh-windows-sidebar-width': `${cols.sidebar}px` } : {}),

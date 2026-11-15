@@ -1,16 +1,17 @@
 /** Window geometry and presentation options for the desktop form window. */
 
 import type { BrowserWindowConstructorOptions } from 'electron'
+import { FORM_WINDOW_ARGUMENT } from './ipc.ts'
 import { clampFormLayout, type DesktopFormLayout, type DesktopWorkArea } from './form-layout.ts'
 
 /** Orb width and height in logical pixels. */
 export const ORB_SIZE = 112
 
-/** Expanded panel size in logical pixels. */
-export const PANEL_SIZE = { width: 420, height: 720 } as const
+/** Expanded quick-prompt size in logical pixels. */
+export const PANEL_SIZE = { width: 560, height: 160 } as const
 
-/** Smallest panel size the user may resize to, in logical pixels. */
-export const PANEL_MIN_SIZE = { width: 320, height: 480 } as const
+/** Smallest quick-prompt size the user may resize to, in logical pixels. */
+export const PANEL_MIN_SIZE = { width: 420, height: 120 } as const
 
 /** Gap between a presentation and the work area edge, in logical pixels. */
 export const SCREEN_MARGIN = 24
@@ -93,6 +94,8 @@ export function formWindowOptions(input: {
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
     webPreferences: {
       preload: input.preload,
+      // The page skips titlebar chrome that only the classic workspace window owns.
+      additionalArguments: [FORM_WINDOW_ARGUMENT],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,

@@ -820,12 +820,14 @@ describe('AppFrame surface presentations', () => {
     expect(slotCalls.some(call => call.key === 'shell.modal')).toBe(false)
   })
 
-  it('marks the panel presentation while rendering the classic frame', () => {
+  it('renders the transparent panel root for the expanded chat box', () => {
     surfaceState = createSnapshotStore({ ...ORB, presentation: 'panel' })
-    const { frame, getByTestId } = mountFrame()
+    const { frame, slotCalls, getByTestId } = mountFrame()
     expect(frame.dataset.surface).toBe('panel')
-    expect(getByTestId('main-content')).toBeTruthy()
-    expect(getByTestId('sidebar-content')).toBeTruthy()
+    expect(getByTestId('shell.overlay-content')).toBeTruthy()
+    expect(slotCalls.map(call => call.key)).toEqual(['shell.overlay'])
+    expect(frame.querySelector('[data-testid="main-content"]')).toBeNull()
+    expect(frame.querySelector('[data-testid="sidebar-content"]')).toBeNull()
   })
 
   it('renders the transparent orb root with only the overlay seat', () => {

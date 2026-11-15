@@ -103,7 +103,7 @@ describe('DesktopSurfaceController', () => {
     expect(controller.snapshot().presentation).toBe('panel')
     expect(window.resizable).toEqual([true])
     expect(window.focused).toBe(1)
-    expect(window.bounds.at(-1)).toEqual({ x: 880, y: 180, width: 420, height: 720 })
+    expect(window.bounds.at(-1)).toEqual({ x: 740, y: 400, width: 560, height: 160 })
     expect(window.published.at(-1)).toMatchObject({ presentation: 'panel' })
   })
 

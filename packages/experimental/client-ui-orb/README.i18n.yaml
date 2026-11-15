@@ -3,35 +3,35 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/client-ui-orb/README.md
 /:
-  en: 293b458dc006e420
-  zh: 788d94e1ad7277d4
+  en: 29be602ab8670ca2
+  zh: d6e1ea76f112080a
 /deepseek-ai-dsh-client-ui-orb:
   en: 9955ac44ff2e3907
   zh: b884ffc12a3a6212
 /deepseek-ai-dsh-client-ui-orb/summary:
-  en: 59163aa700f9fa6c
-  zh: e3b0c387fa0f2067
+  en: 61a1479fcd5ea1d4
+  zh: bc89a3f9f001762c
 /deepseek-ai-dsh-client-ui-orb/table-of-contents:
   en: d152484eb41ac6b4
   zh: 364c80ee00a374ff
 /deepseek-ai-dsh-client-ui-orb/use-this-package:
-  en: 608d4c22b59bc558
-  zh: d96d2c62690463d0
+  en: 0f4331ef61ad18ec
+  zh: f733a3e0346f5206
 /deepseek-ai-dsh-client-ui-orb/understand-the-implementation:
-  en: 9d8eb285ac9d652c
-  zh: 79b9df2b88e1e15d
+  en: e0938362dd3ad85d
+  zh: fd843824d487d07c
 /deepseek-ai-dsh-client-ui-orb/further-exploration:
   en: 614aa44b42360acd
   zh: 3aa640605bc255ca
 /deepseek-ai-dsh-client-ui-orb/model-experience:
-  en: ac080bedfa9cbc32
-  zh: c997a945654d6728
+  en: 4f4ea64e729bd0d5
+  zh: 6bba675b97943481
 /deepseek-ai-dsh-client-ui-orb/model-experience/kv-cache-effect:
   en: 38067aef1904056d
   zh: 2f209956ee717a28
 /deepseek-ai-dsh-client-ui-orb/known-limitations-and-deferred-work:
-  en: 9e15a9c7835be3b1
-  zh: 817d7827f04dab14
+  en: 554ba919fbc737b6
+  zh: 01cf7fc00387ccac
 /deepseek-ai-dsh-client-ui-orb/known-limitations-and-deferred-work/dev-note:
   en: 0225ba087c5266f3
   zh: 4e706f1b2b984e63

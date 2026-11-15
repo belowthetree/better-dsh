@@ -18,8 +18,8 @@ const LAYOUT: DesktopFormLayout = { version: 1, orb: { x: 300, y: 200 }, pinned:
 describe('form presentation constants', () => {
   it('pins the orb, panel, margin, and minimum panel sizes', () => {
     expect(ORB_SIZE).toBe(112)
-    expect(PANEL_SIZE).toEqual({ width: 420, height: 720 })
-    expect(PANEL_MIN_SIZE).toEqual({ width: 320, height: 480 })
+    expect(PANEL_SIZE).toEqual({ width: 560, height: 160 })
+    expect(PANEL_MIN_SIZE).toEqual({ width: 420, height: 120 })
     expect(SCREEN_MARGIN).toBe(24)
   })
 })
@@ -38,7 +38,7 @@ describe('orb bounds', () => {
 describe('panel bounds', () => {
   it('opens left of the orb when that side fits', () => {
     expect(panelBounds({ version: 1, orb: { x: 1784, y: 484 }, pinned: false }, WORK_AREA))
-      .toEqual({ x: 1364, y: 360, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
+      .toEqual({ x: 1224, y: 484, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
   })
 
   it('opens right of the orb when the left side does not fit', () => {
@@ -49,13 +49,13 @@ describe('panel bounds', () => {
   it('clamps to the work area edge when neither side fits', () => {
     const small: DesktopWorkArea = { x: 0, y: 0, width: 800, height: 800 }
     expect(panelBounds({ version: 1, orb: { x: 300, y: 600 }, pinned: false }, small))
-      .toEqual({ x: 380, y: 80, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
+      .toEqual({ x: 240, y: 600, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
   })
 
   it('follows a work area that starts at a negative screen origin', () => {
     const display: DesktopWorkArea = { x: -1920, y: 0, width: 1920, height: 1080 }
     expect(panelBounds({ version: 1, orb: { x: -136, y: 484 }, pinned: false }, display))
-      .toEqual({ x: -556, y: 360, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
+      .toEqual({ x: -696, y: 484, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
   })
 })
 
@@ -91,6 +91,7 @@ describe('form window options', () => {
     })
     expect(options.webPreferences).toEqual({
       preload: '/app/preload-app.js',
+      additionalArguments: ['--dsh-desktop-form-window'],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,

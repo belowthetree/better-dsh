@@ -8,6 +8,7 @@
  * only.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -26,8 +27,15 @@ import type { OrbQuickSetupInjected } from './QuickSetupCard.tsx'
 import { nextPolicy } from './state.ts'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 
-/** Required services: the frame seats, the form carrier, and the command registry. */
-export const inject = ['surface', 'slots', 'locale', 'shortcuts']
+/** Required services: the frame seats, the form carrier, the command registry, and the conversation this form writes to. */
+export const inject = ['surface', 'slots', 'locale', 'shortcuts', 'sessions']
+
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap {
+    /** A quick prompt waiting for the target Session's history and its prompt receipt. */
+    orbPrompt: unknown
+  }
+}
 
 /** Diagnostic name of the surface observation, used when its stream fails. */
 const SURFACE_OBSERVATION = 'surface'
@@ -128,8 +136,27 @@ export function apply(ctx: ClientContext): void {
     console.error('orb: voice capture command failed', error)
   }
   /**
-   * Start a capture from the collapsed orb, or finish it into the next composer.
-   * A finished transcript is held by the capture service until the expanded panel's composer mounts.
+   * Send one prompt to the most recent conversation, creating a blank Session
+   * when the catalog is empty.
+   * @param text - trimmed prompt text.
+   * @returns after the Host accepted the prompt.
+   */
+  const submitPrompt = async (text: string): Promise<void> => {
+    const sessions = ctx.sessions
+    const target = sessions.list.getSnapshot().ids[0] ?? await sessions.create()
+    await sessions.using(target, { source: 'orbPrompt' }, async (reference) => {
+      const binding = await reference.ready
+      const result = await binding.session.prompt([{ type: 'text', text }], 'queue')
+      if (!result.ok) throw result.error
+    })
+  }
+
+  /** @returns the transcript a collapsed-panel capture held, consumed once. */
+  const takeTranscript = (): string | null => ctx.get('voiceCapture')?.takeTranscript() ?? null
+
+  /**
+   * Start a capture from the collapsed orb, or finish it into the expanded chat box.
+   * A finished transcript is held by the capture service until the box mounts and takes it.
    */
   const toggleVoice = (): void => {
     const service = ctx.get('voiceCapture')
@@ -156,6 +183,8 @@ export function apply(ctx: ClientContext): void {
       if (service !== undefined) service.setPolicy(nextPolicy(service.snapshot().policy))
     },
     toggleVoice,
+    submitPrompt,
+    takeTranscript,
   }
   const overlay: OrbOverlayInjected = { hooks: { surface, capture, voice, reducedMotion }, actions }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({

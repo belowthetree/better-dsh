@@ -1,8 +1,8 @@
 /**
  * Overlay entry of the orb form. The `orb` presentation renders the floating
- * orb with its drag gesture and context menu, `panel` renders the compact top
- * strip over the classic frame, and `classic`/`modal` render nothing: the
- * classic frame needs no form chrome, and the modal layer owns its card.
+ * orb with its drag gesture and context menu, `panel` renders the expanded
+ * chat box, and `classic`/`modal` render nothing: the classic frame needs no
+ * form chrome, and the modal layer owns its card.
  */
 import { useCallback, useMemo, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -17,7 +17,7 @@ import { activeSession, orbLabelKey, orbVisualState } from './state.ts'
 import type { OrbVisualState } from './state.ts'
 import { OrbMenu } from './OrbMenu.tsx'
 import type { OrbMenuEntryId } from './OrbMenu.tsx'
-import { PanelStrip } from './PanelStrip.tsx'
+import { QuickPrompt } from './QuickPrompt.tsx'
 import { usePointerDrag } from './use-pointer-drag.ts'
 import type { NS } from './locales.ts'
 import css from './OrbForm.module.css'
@@ -56,8 +56,16 @@ export interface OrbSurfaceActions {
   readonly toggleMuted: () => void
   /** Advance the auto-speak policy one step. */
   readonly cyclePolicy: () => void
-  /** Start a collapsed-panel capture, or finish one into the expanded composer. */
+  /** Start a collapsed-panel capture, or finish one into the expanded chat box. */
   readonly toggleVoice: () => void
+  /**
+   * Send one prompt to the current conversation.
+   * @param text - trimmed prompt text.
+   * @returns after the Host accepted the prompt.
+   */
+  readonly submitPrompt: (text: string) => Promise<void>
+  /** @returns the transcript a collapsed-panel capture held, consumed once. */
+  readonly takeTranscript: () => string | null
 }
 
 /** Injected face of the `shell.overlay` entry. */
@@ -157,13 +165,10 @@ export function OrbLayer(props: OrbLayerProps) {
 
   if (surface.presentation === 'classic' || surface.presentation === 'modal') return null
   if (surface.presentation === 'panel') {
-    return <PanelStrip
-      pinned={surface.pinned}
-      title={session?.displayTitle}
+    return <QuickPrompt
+      takeTranscript={actions.takeTranscript}
+      onSubmit={actions.submitPrompt}
       onCollapse={actions.collapse}
-      onPin={actions.setPinned}
-      onSettings={() => { actions.presentModal(QUICK_SETUP_MODAL_ID) }}
-      onDrag={actions.dragBy}
       t={t}
     />
   }

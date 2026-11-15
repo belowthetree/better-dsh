@@ -263,11 +263,11 @@ export function apply(ctx: ClientContext): void {
   ctx.inject(['surface'], (scope) => {
     surfaceSnapshot.set(scope.surface.snapshot())
     const controller = new AbortController()
-    // The frameless orb and modal windows render over a transparent page; the
-    // web shell's opaque body background steps aside through this root attribute.
+    // The frameless form windows render over a transparent page; the web
+    // shell's opaque body background steps aside through this root attribute.
     const root = typeof document === 'undefined' ? undefined : document.documentElement
     const mirror = (snapshot: SurfaceSnapshot): void => {
-      if (snapshot.presentation === 'orb' || snapshot.presentation === 'modal') {
+      if (snapshot.presentation !== 'classic') {
         if (root !== undefined) root.dataset.surface = snapshot.presentation
       } else if (root !== undefined) delete root.dataset.surface
     }

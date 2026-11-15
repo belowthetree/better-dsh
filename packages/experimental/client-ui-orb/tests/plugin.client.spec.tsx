@@ -11,6 +11,7 @@ import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import * as plugin from '../src/client/index.ts'
 import { OrbQuickSetupCard } from '../src/client/QuickSetupCard.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -300,6 +301,8 @@ it('issues every overlay action through the registered face', async () => {
     toggleMuted(): void
     cyclePolicy(): void
     toggleVoice(): void
+    submitPrompt(text: string): Promise<void>
+    takeTranscript(): string | null
   } }
   face.actions.expand()
   face.actions.collapse()
@@ -312,6 +315,7 @@ it('issues every overlay action through the registered face', async () => {
   face.actions.cyclePolicy()
   // No capture service is mounted, so the voice command is a no-op.
   face.actions.toggleVoice()
+  expect(face.actions.takeTranscript()).toBeNull()
   await flush()
   expect(surface.service.expand).toHaveBeenCalledOnce()
   expect(surface.service.collapse).toHaveBeenCalledOnce()
@@ -354,14 +358,54 @@ it('follows the carrier presentation and reduced-motion preference', async () =>
   surface.publish({ presentation: 'panel', pinned: true })
   await flush()
   expect(document.querySelector('[data-orb]')).toBeNull()
-  const pin = document.querySelector('[data-orb-strip-pin]') as HTMLElement
-  expect(pin.getAttribute('aria-pressed')).toBe('true')
-  fireEvent.click(pin)
-  expect(surface.service.setPinned).toHaveBeenCalledExactlyOnceWith(false)
-  fireEvent.click(document.querySelector('[data-orb-strip-settings]') as HTMLElement)
-  expect(surface.service.presentModal).toHaveBeenCalledExactlyOnceWith('orb.quick-setup')
-  fireEvent.click(document.querySelector('[data-orb-strip-collapse]') as HTMLElement)
+  expect(document.querySelector('[data-orb-prompt-input]')?.getAttribute('aria-label')).toBe(zh['prompt.label'])
+  fireEvent.keyDown(document.querySelector('[data-orb-prompt]') as HTMLElement, { key: 'Escape' })
   expect(surface.service.collapse).toHaveBeenCalledOnce()
+})
+
+it('sends the chat box prompt to the most recent Session', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
+  await b.runtime.sessions.add({ id: 'recent', session: { prompt } })
+  surface.publish({ presentation: 'panel' })
+  await flush()
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  fireEvent.change(input, { target: { value: '  summarize the day  ' } })
+  await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }) })
+  await flush()
+  expect(prompt).toHaveBeenCalledWith([{ type: 'text', text: 'summarize the day' }], 'queue')
+  expect(surface.service.collapse).toHaveBeenCalledOnce()
+})
+
+it('creates a blank Session when the catalog is empty', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
+  b.runtime.sessions.stubCreate(async () => b.runtime.sessions.add({ id: 'created', session: { prompt } }))
+  surface.publish({ presentation: 'panel' })
+  await flush()
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  fireEvent.change(input, { target: { value: 'hello' } })
+  await act(async () => { fireEvent.click(document.querySelector('[data-orb-prompt-send]') as HTMLElement) })
+  await flush()
+  expect(prompt).toHaveBeenCalledOnce()
+  expect(surface.service.collapse).toHaveBeenCalledOnce()
+})
+
+it('reports a rejected prompt inside the chat box', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  const prompt = vi.fn(async () => ({ ok: false as const, error: new RemoteError('gateway/internal', 'offline', {}) }))
+  await b.runtime.sessions.add({ id: 'recent', session: { prompt } })
+  surface.publish({ presentation: 'panel' })
+  await flush()
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  fireEvent.change(input, { target: { value: 'retry' } })
+  await act(async () => { fireEvent.click(document.querySelector('[data-orb-prompt-send]') as HTMLElement) })
+  await flush()
+  expect(document.querySelector('[role=alert]')?.textContent).toBe(zh['prompt.failed'])
+  expect(surface.service.collapse).not.toHaveBeenCalled()
 })
 
 it('reflects the optional voice services and drives them from the menu', async () => {

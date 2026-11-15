@@ -83,7 +83,7 @@ function pointer(target: Element, type: 'pointerDown' | 'pointerMove' | 'pointer
   fireEvent[type](target, { pointerId: 1, button: 0, clientX: x, clientY: y })
 }
 
-function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: SessionListState } = {}) {
+function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: SessionListState; transcript?: string } = {}) {
   const surface = createSnapshotStore<SurfaceSnapshot>({ ...ORB_SURFACE, ...initial.surface })
   const captureStore = createSnapshotStore<VoiceCaptureSnapshot | null>(null)
   const voice = createSnapshotStore<VoiceOutputSnapshot | null>(null)
@@ -92,6 +92,8 @@ function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: Sessi
   const actions = {
     expand: vi.fn(), collapse: vi.fn(), setPinned: vi.fn(), presentModal: vi.fn(),
     dragBy: vi.fn(), pointerInside: vi.fn(), toggleMuted: vi.fn(), cyclePolicy: vi.fn(), toggleVoice: vi.fn(),
+    submitPrompt: vi.fn(async () => {}),
+    takeTranscript: vi.fn(() => initial.transcript ?? null),
   }
   const props = {
     useSurface: bindSnapshotSelector(surface),
@@ -243,6 +245,16 @@ it('drags the orb through throttled deltas and suppresses the click it would pro
   expect(b.actions.expand).not.toHaveBeenCalled()
 })
 
+it('skips a queued drag frame that accumulated no movement', () => {
+  const b = fixture()
+  pointer(orb(), 'pointerDown', 10, 10)
+  pointer(orb(), 'pointerMove', 30, 30)
+  pointer(orb(), 'pointerMove', 10, 10)
+  act(flushFrames)
+  expect(b.actions.dragBy).not.toHaveBeenCalled()
+  pointer(orb(), 'pointerUp', 10, 10)
+})
+
 it('treats a press that stays inside the threshold as a click', () => {
   const b = fixture()
   pointer(orb(), 'pointerDown', 10, 10)
@@ -342,48 +354,82 @@ it('walks the menu rows with the arrow keys and closes on Escape or the backdrop
 })
 
 it('renders no overlay chrome for the classic and modal presentations', () => {
-  const classic = fixture({ surface: { presentation: 'classic' } })
+  fixture({ surface: { presentation: 'classic' } })
   expect(document.querySelector('[data-orb]')).toBeNull()
-  expect(document.querySelector('[data-orb-strip]')).toBeNull()
-  expect(classic.actions.expand).not.toHaveBeenCalled()
+  expect(document.querySelector('[data-orb-prompt]')).toBeNull()
   cleanup()
   fixture({ surface: { presentation: 'modal', modal: QUICK_SETUP_MODAL_ID } })
   expect(document.querySelector('[data-orb]')).toBeNull()
-  expect(document.querySelector('[data-orb-strip]')).toBeNull()
+  expect(document.querySelector('[data-orb-prompt]')).toBeNull()
 })
 
-it('renders the panel strip with collapse, pin, settings, and the active Session title', () => {
-  const b = fixture({
-    surface: { presentation: 'panel', pinned: true },
-    sessions: list(row('older', 'Older'), row('active', 'Release notes', { current: true })),
-  })
-  const strip = document.querySelector('[data-orb-strip]') as HTMLElement
-  expect(strip.getAttribute('aria-label')).toBe(zh['panel.title'])
-  expect(document.querySelector('[data-orb-strip-handle]')?.textContent).toBe('Release notes')
-  const pin = document.querySelector('[data-orb-strip-pin]') as HTMLElement
-  expect(pin.getAttribute('aria-pressed')).toBe('true')
-  expect(pin.getAttribute('aria-label')).toBe(zh['panel.unpin'])
-  fireEvent.click(pin)
-  expect(b.actions.setPinned).toHaveBeenCalledExactlyOnceWith(false)
-  fireEvent.click(document.querySelector('[data-orb-strip-collapse]') as HTMLElement)
+it('renders the expanded chat box with a send button and submits on Enter', async () => {
+  const b = fixture({ surface: { presentation: 'panel' }, transcript: 'dictated text' })
+  expect(document.querySelector('[data-orb]')).toBeNull()
+  const box = document.querySelector('[data-orb-prompt]') as HTMLElement
+  expect(box).not.toBeNull()
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  expect(input.value).toBe('dictated text')
+  expect(document.activeElement).toBe(input)
+  expect(input.getAttribute('aria-label')).toBe(zh['prompt.label'])
+  expect(input.getAttribute('placeholder')).toBe(zh['prompt.placeholder'])
+  const send = document.querySelector('[data-orb-prompt-send]') as HTMLButtonElement
+  expect(send.getAttribute('aria-label')).toBe(zh['prompt.send'])
+  expect(send.disabled).toBe(false)
+  await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }) })
+  expect(b.actions.submitPrompt).toHaveBeenCalledExactlyOnceWith('dictated text')
+  expect(input.value).toBe('')
   expect(b.actions.collapse).toHaveBeenCalledOnce()
-  fireEvent.click(document.querySelector('[data-orb-strip-settings]') as HTMLElement)
-  expect(b.actions.presentModal).toHaveBeenCalledExactlyOnceWith(QUICK_SETUP_MODAL_ID)
-
-  const handle = document.querySelector('[data-orb-strip-handle]') as HTMLElement
-  pointer(handle, 'pointerDown', 100, 20)
-  pointer(handle, 'pointerMove', 96, 32)
-  act(flushFrames)
-  pointer(handle, 'pointerUp', 96, 32)
-  expect(b.actions.dragBy).toHaveBeenCalledExactlyOnceWith(-4, 12)
 })
 
-it('falls back to the no-session label in the panel strip', () => {
+it('keeps Shift+Enter and Escape as editing and closing gestures', () => {
   const b = fixture({ surface: { presentation: 'panel' } })
-  expect(document.querySelector('[data-orb-strip-handle]')?.textContent).toBe(zh['panel.noSession'])
-  const pin = document.querySelector('[data-orb-strip-pin]') as HTMLElement
-  expect(pin.getAttribute('aria-pressed')).toBe('false')
-  expect(pin.getAttribute('aria-label')).toBe(zh['panel.pin'])
-  fireEvent.click(pin)
-  expect(b.actions.setPinned).toHaveBeenCalledExactlyOnceWith(true)
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+  expect(b.actions.submitPrompt).not.toHaveBeenCalled()
+  fireEvent.keyDown(document.querySelector('[data-orb-prompt]') as HTMLElement, { key: 'Escape' })
+  expect(b.actions.collapse).toHaveBeenCalledOnce()
+})
+
+it('disables the send button while the box is empty', () => {
+  fixture({ surface: { presentation: 'panel' } })
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  const send = (): HTMLButtonElement => document.querySelector('[data-orb-prompt-send]') as HTMLButtonElement
+  expect(send().disabled).toBe(true)
+  fireEvent.change(input, { target: { value: '   ' } })
+  expect(send().disabled).toBe(true)
+  fireEvent.change(input, { target: { value: 'hello' } })
+  expect(send().disabled).toBe(false)
+  fireEvent.click(send())
+})
+
+it('ignores an empty prompt and a second submission while one is in flight', async () => {
+  const b = fixture({ surface: { presentation: 'panel' } })
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  const send = document.querySelector('[data-orb-prompt-send]') as HTMLButtonElement
+  await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }) })
+  expect(b.actions.submitPrompt).not.toHaveBeenCalled()
+
+  let release = (): void => {}
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  b.actions.submitPrompt.mockReturnValueOnce(gate)
+  fireEvent.change(input, { target: { value: 'first' } })
+  await act(async () => { fireEvent.click(send) })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  fireEvent.click(send)
+  expect(b.actions.submitPrompt).toHaveBeenCalledExactlyOnceWith('first')
+  await act(async () => { release(); await gate })
+  expect(input.value).toBe('')
+  expect(b.actions.collapse).toHaveBeenCalledOnce()
+})
+
+it('reports a rejected submission inside the box and keeps the text', async () => {
+  const b = fixture({ surface: { presentation: 'panel' } })
+  b.actions.submitPrompt.mockRejectedValueOnce(new Error('offline'))
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  fireEvent.change(input, { target: { value: 'retry me' } })
+  await act(async () => { fireEvent.click(document.querySelector('[data-orb-prompt-send]') as HTMLElement) })
+  expect(screen.getByRole('alert').textContent).toBe(zh['prompt.failed'])
+  expect(input.value).toBe('retry me')
+  expect(b.actions.collapse).not.toHaveBeenCalled()
 })

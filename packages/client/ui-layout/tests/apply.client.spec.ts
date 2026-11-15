@@ -310,7 +310,7 @@ describe('ui-layout client apply', () => {
     await vi.waitFor(() => { expect(injected.hooks.surface.getSnapshot()).toBe(ORB_SURFACE) })
     expect(document.documentElement.dataset.surface).toBe('orb')
     fake.push({ ...ORB_SURFACE, presentation: 'panel' })
-    await vi.waitFor(() => { expect(document.documentElement.dataset.surface).toBeUndefined() })
+    await vi.waitFor(() => { expect(document.documentElement.dataset.surface).toBe('panel') })
     expect(injected.hooks.surface.getSnapshot().presentation).toBe('panel')
     // Withdrawing the service unloads its consumer and restores the classic frame.
     await provider.dispose()

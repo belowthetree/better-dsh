@@ -25,7 +25,7 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用此包
 
-此 Bundle 仅适用于 Desktop。插件管理页将其显示为关闭状态；启用后相关包可用，但不会改变经典 profile。按 Desktop 外壳形态文档创建声明球体形态的 profile，然后用 `--profile <名称>` 启动 Desktop。窗口以收起的球体打开，点击展开包含现有会话与输入区的面板，Escape 或收起返回球体；固定后面板保持打开，球体或面板都可拖动。球体右键菜单用于选择合成音色、静音播放，并在自动朗读策略之间循环。球体上的麦克风按钮与 `voice.pushToTalk` 系统级命令可在面板收起时开始采集；结束后面板展开并填入草稿，开启免手动提交时立即发送。球体开关是系统级命令，没有默认键位：在“设置 → 快捷键 → 全局”中设置后，其他应用聚焦时也能使用。语音识别与合成需要外部 DeepSeek 套件在同一 profile 中注册 `deepseek-cloud` 与 `deepseek-tts` Provider；两者都是计费的云请求。若要在没有安装包的情况下评审组装后的形态，按 [Desktop README](../../../apps/desktop/README.zh.md) 的本地形态评审步骤操作。
+此 Bundle 仅适用于 Desktop。插件管理页将其显示为关闭状态；启用后相关包可用，但不会改变经典 profile。按 Desktop 外壳形态文档创建声明球体形态的 profile，然后用 `--profile <名称>` 启动 Desktop。窗口以收起的球体打开；点击展开 560×160 的聊天框，其中只有提问输入框与发送按钮，Escape 可再次收起。Enter 或发送按钮把提问发送到最近的会话（没有会话时创建空白会话），随后折叠聊天框；Shift+Enter 换行，被拒绝的提问保留在框内并显示失败提示。固定后聊天框在焦点移走时保持打开，球体可拖动。球体右键菜单用于选择合成音色、静音播放，并在自动朗读策略之间循环。球体上的麦克风按钮与 `voice.pushToTalk` 系统级命令可在聊天框收起时开始采集；结束后展开聊天框并填入其输入框。球体开关是系统级命令，没有默认键位：在“设置 → 快捷键 → 全局”中设置后，其他应用聚焦时也能使用。语音识别与合成需要外部 DeepSeek 套件在同一 profile 中注册 `deepseek-cloud` 与 `deepseek-tts` Provider；两者都是计费的云请求。若要在没有安装包的情况下评审组装后的形态，按 [Desktop README](../../../apps/desktop/README.zh.md) 的本地形态评审步骤操作。
 
 -----
 

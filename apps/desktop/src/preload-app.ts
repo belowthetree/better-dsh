@@ -6,7 +6,7 @@ import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult }
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { SystemShortcutState } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { DESKTOP_IPC, SCHEME, type DesktopBootPayload, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
+import { DESKTOP_IPC, FORM_WINDOW_ARGUMENT, SCHEME, type DesktopBootPayload, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
 import { PLATFORM_IPC } from './platform-ipc.ts'
 import { markDocumentPlatform, syncWindowFullscreen } from './preload-platform.ts'
 import { syncNativeTheme } from './preload-theme.ts'
@@ -122,7 +122,8 @@ if (location.protocol === `${SCHEME}:` && location.hostname === 'app') {
     if (previous === null) body.removeAttribute('tabindex')
     else body.setAttribute('tabindex', previous)
   })
-  syncWindowsAppearance()
+  // A form window owns no caption or application menu: its transparent surface shows only the page.
+  if (!process.argv.includes(FORM_WINDOW_ARGUMENT)) syncWindowsAppearance()
   if (process.platform === 'win32') installMandatoryUpdateOverlay()
   contextBridge.exposeInMainWorld('__DSH_DIRECTORY_PICKER__', {
     pick: () => ipcRenderer.invoke(DESKTOP_IPC.directoryPick) as Promise<string | null>,

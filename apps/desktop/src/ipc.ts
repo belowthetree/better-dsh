@@ -9,6 +9,9 @@ import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
 
+/** Renderer argument that marks a form product window; the web page reads it from `process.argv`. */
+export const FORM_WINDOW_ARGUMENT = '--dsh-desktop-form-window'
+
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
   fileSave: 'dsh-desktop:file-save',
