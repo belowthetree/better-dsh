@@ -36,7 +36,9 @@ function fakeAdapter(): FakeAdapter {
     },
     expand: async () => { state.commands.push('expand') },
     collapse: async () => { state.commands.push('collapse') },
-    presentModal: async (id) => { state.commands.push(`presentModal:${id}`) },
+    presentModal: async (id, size) => {
+      state.commands.push(size?.heightRatio === undefined ? `presentModal:${id}` : `presentModal:${id}:${String(size.heightRatio)}`)
+    },
     dismissModal: async () => { state.commands.push('dismissModal') },
     presentBubbles: async () => { state.commands.push('presentBubbles') },
     dismissBubbles: async () => { state.commands.push('dismissBubbles') },
@@ -118,8 +120,15 @@ describe('SurfaceRuntime commands', () => {
     expect(runtime.snapshot()).toBe(panel)
   })
 
-  it('keeps the current reference when a command settles into the same presentation', async () => {
+  it('forwards the presentation size with the modal command', async () => {
     const fake = fakeAdapter()
+    const runtime = new SurfaceRuntime(fake.adapter)
+    await runtime.presentModal('better-interact.workbench', { heightRatio: 0.8 })
+    await runtime.presentModal('voice-setup')
+    expect(fake.commands).toEqual(['presentModal:better-interact.workbench:0.8', 'presentModal:voice-setup'])
+  })
+
+  it('keeps the current reference when a command settles into the same presentation', async () => {    const fake = fakeAdapter()
     const runtime = new SurfaceRuntime(fake.adapter)
     fake.nextRead = { ...BASE }
     await runtime.setPinned(false)

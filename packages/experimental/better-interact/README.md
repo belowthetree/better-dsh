@@ -29,7 +29,7 @@ Add the `better-interact` row to a profile whose form declares the orb presentat
 
 The overlay entry `better-interact.bubbles` binds the Session the catalog lists first, retains it through the `betterinteract` resource, and renders its bubbles only while the carrier presents the `bubbles` presentation. While the agent streams an answer, the entry asks the carrier for that presentation; the carrier places the column at the work area's right edge without taking focus, so it can appear while the user works in another application. The column draws the newest answer as one card and fades three seconds after the output settles, then returns the carrier to the orb. Resting the pointer on the column expands the earlier answers upward and keeps them open; three seconds after the pointer leaves, the column collapses back to the newest answer. Each bubble opens the workbench, which the carrier raises over the column and restores on dismissal.
 
-The modal entry `better-interact.workbench` renders the workbench dialog for the catalog's current Session: the shared Conversation content in its embedded variant with the Chat view alone, so no sidebar, right panel, or title bar appears. The `betterInteract.workbench` command, bound by default to Ctrl+Alt+W on Windows and macOS, opens the same dialog and is rebindable in Settings. An empty catalog renders the dialog's empty state instead of a conversation.
+The modal entry `better-interact.workbench` renders the workbench dialog for the catalog's current Session: the shared Conversation content in its embedded variant with the Chat view alone, so no sidebar, right panel, or title bar appears. The dialog asks the carrier for four fifths of the work area height and scrolls its own transcript. The `betterInteract.workbench` command, bound by default to Ctrl+Alt+W on Windows and macOS, opens the same dialog and is rebindable in Settings. An empty catalog renders the dialog's empty state instead of a conversation.
 
 ## Understand the implementation
 
@@ -44,6 +44,11 @@ The workbench reuses `conversation.content` through `renderFactorySlot` rather t
 - [ui-conversation](../../client/ui-conversation/README.md): the Conversation target and View contracts.
 - [client-ui-orb](../client-ui-orb/README.md): the orb chrome the column stands in for while it is visible.
 
+
+## Dev Note
+
+The column's timing constants are driven by fake timers in its component spec; the `bubbles` presentation and its window geometry are covered by the Desktop form-window and surface-controller specs.
+
 ## Model Experience
 
 None, as the package sends no model request, registers no tool, and adds no model-visible input.
@@ -57,7 +62,3 @@ No direct effect; the bubbles and the workbench only read Session events the tra
 - The column reports the Session the catalog lists first, so a second Session that produces output while another is ahead in the catalog is not reported.
 - The `bubbles` presentation replaces the orb while it is visible; the orb returns when the column fades or is dismissed.
 - History is limited to the Turn previews in the loaded window, so scrolling further back in the transcript does not extend it.
-
-## Dev Note
-
-The column's timing constants are driven by fake timers in its component spec; the `bubbles` presentation and its window geometry are covered by the Desktop form-window and surface-controller specs.

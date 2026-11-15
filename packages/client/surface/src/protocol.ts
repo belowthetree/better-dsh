@@ -7,6 +7,15 @@
 /** Shell forms a desktop carrier can present. */
 export type SurfaceForm = 'classic' | 'orb'
 
+/** Optional size of one modal presentation. */
+export interface ModalSizeHint {
+  /**
+   * Fraction of the work area height the modal occupies, greater than 0 and at most 1.
+   * Omitted keeps the carrier's dialog size; the carrier never exceeds the work area.
+   */
+  readonly heightRatio?: number
+}
+
 /**
  * Window presentation of one product window. `classic` is listed because the
  * classic frame reports its own presentation: a form profile must be able to
@@ -52,8 +61,9 @@ export interface DesktopSurfaceApi {
   /**
    * Raise the modal presentation over the current one.
    * @param id - registered `shell.modal` entry id to display.
+   * @param size - optional presentation size; omitted keeps the dialog size.
    */
-  presentModal(id: string): Promise<void>
+  presentModal(id: string, size?: ModalSizeHint): Promise<void>
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**

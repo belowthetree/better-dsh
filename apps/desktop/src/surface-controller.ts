@@ -1,5 +1,5 @@
 /** Presentation state machine and validated command surface for a form profile's product window. */
-import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
+import type { ModalSizeHint, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { DesktopFormLayout, DesktopWorkArea } from './form-layout.ts'
 import { clampFormLayout } from './form-layout.ts'
 import type { FormPresentationBounds } from './form-window.ts'
@@ -15,7 +15,7 @@ export const MAX_MODAL_ID_CHARS = 128
 export type SurfaceCommand =
   | { readonly kind: 'expand' }
   | { readonly kind: 'collapse' }
-  | { readonly kind: 'presentModal'; readonly id: string }
+  | { readonly kind: 'presentModal'; readonly id: string; readonly size?: ModalSizeHint }
   | { readonly kind: 'dismissModal' }
   | { readonly kind: 'presentBubbles' }
   | { readonly kind: 'dismissBubbles' }
@@ -56,6 +56,25 @@ function passive(presentation: FormPresentation): boolean {
 }
 
 /**
+ * Validate the optional modal presentation size.
+ * @param raw - untrusted IPC payload field.
+ * @returns the accepted size, undefined when the renderer sent none, or null when the payload is invalid.
+ */
+function parseModalSizeHint(raw: unknown): ModalSizeHint | null | undefined {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) return null
+  const { heightRatio } = raw
+  if (heightRatio === undefined) return {}
+  if (typeof heightRatio !== 'number' || !Number.isFinite(heightRatio) || heightRatio <= 0 || heightRatio > 1) return null
+  return { heightRatio }
+}
+
+/** Whether two modal size hints ask for the same window. */
+function sameModalSize(left: ModalSizeHint | undefined, right: ModalSizeHint | undefined): boolean {
+  return (left?.heightRatio ?? null) === (right?.heightRatio ?? null)
+}
+
+/**
  * Validate one renderer-supplied command against the closed union.
  * @param raw - untrusted IPC payload.
  * @returns the validated command, or undefined when the payload names no known command or carries invalid fields.
@@ -69,9 +88,14 @@ export function parseSurfaceCommand(raw: unknown): SurfaceCommand | undefined {
     case 'presentBubbles':
     case 'dismissBubbles':
       return { kind: raw.kind }
-    case 'presentModal':
-      return typeof raw.id === 'string' && raw.id.length > 0 && raw.id.length <= MAX_MODAL_ID_CHARS
-        ? { kind: 'presentModal', id: raw.id } : undefined
+    case 'presentModal': {
+      if (typeof raw.id !== 'string' || raw.id.length === 0 || raw.id.length > MAX_MODAL_ID_CHARS) return undefined
+      const size = parseModalSizeHint(raw.size)
+      if (size === null) return undefined
+      return size === undefined
+        ? { kind: 'presentModal', id: raw.id }
+        : { kind: 'presentModal', id: raw.id, size }
+    }
     case 'setPinned':
       return typeof raw.pinned === 'boolean' ? { kind: 'setPinned', pinned: raw.pinned } : undefined
     case 'dragBy':
@@ -98,6 +122,8 @@ export class DesktopSurfaceController {
   /** Presentation restored when the modal presentation dismisses. */
   #restore: Exclude<FormPresentation, 'modal'> = 'orb'
   #modal: string | null = null
+  /** Size hint of the active modal entry; undefined keeps the dialog size. */
+  #modalSize: ModalSizeHint | undefined
   /** Whether the renderer reported pointer presence at least once. */
   #pointerReported = false
   #pointerInside = false
@@ -133,7 +159,19 @@ export class DesktopSurfaceController {
         if (this.#presentation !== 'orb') { this.#modal = null; this.#show('orb') }
         return
       case 'presentModal':
-        if (this.#presentation === 'modal') { this.#modal = command.id; this.#publish() } else { this.#restore = this.#presentation; this.#modal = command.id; this.#show('modal') }
+        if (this.#presentation === 'modal') {
+          this.#modal = command.id
+          if (!sameModalSize(this.#modalSize, command.size)) {
+            this.#modalSize = command.size
+            this.#effects.setBounds(this.#bounds())
+          }
+          this.#publish()
+        } else {
+          this.#restore = this.#presentation
+          this.#modal = command.id
+          this.#modalSize = command.size
+          this.#show('modal')
+        }
         return
       case 'dismissModal':
         if (this.#presentation === 'modal') { this.#modal = null; this.#show(this.#restore) }
@@ -222,7 +260,7 @@ export class DesktopSurfaceController {
     switch (this.#presentation) {
       case 'orb': return orbBounds(this.#layout, workArea)
       case 'panel': return panelBounds(this.#layout, workArea)
-      case 'modal': return modalBounds(workArea)
+      case 'modal': return modalBounds(workArea, this.#modalSize)
       case 'bubbles': return bubblesBounds(workArea)
     }
   }

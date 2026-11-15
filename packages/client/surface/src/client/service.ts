@@ -1,5 +1,5 @@
 /** Surface state over one carrier adapter, exposed to Client plugins as `ctx.surface`. */
-import type { SurfaceSnapshot } from '../protocol.ts'
+import type { ModalSizeHint, SurfaceSnapshot } from '../protocol.ts'
 import type { SurfaceAdapter } from './adapters.ts'
 
 /* jscpd:ignore-start -- the service restates the carrier commands so each layer owns its JSDoc and the adapter can add initial/read. */
@@ -23,8 +23,9 @@ export interface SurfaceService {
   /**
    * Raise the modal presentation over the current one.
    * @param id - registered `shell.modal` entry id to display.
+   * @param size - optional presentation size; omitted keeps the dialog size.
    */
-  presentModal(id: string): Promise<void>
+  presentModal(id: string, size?: ModalSizeHint): Promise<void>
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**
@@ -106,8 +107,8 @@ export class SurfaceRuntime implements SurfaceService {
   }
 
   /** Raise the modal presentation over the current one. */
-  async presentModal(id: string): Promise<void> {
-    await this.command(() => this.adapter.presentModal(id))
+  async presentModal(id: string, size?: ModalSizeHint): Promise<void> {
+    await this.command(() => this.adapter.presentModal(id, size))
   }
 
   /** Dismiss the modal presentation and restore the previous one. */

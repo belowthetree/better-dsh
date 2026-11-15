@@ -15,14 +15,17 @@
   en: d152484eb41ac6b4
   zh: 87d6b45405bb805b
 /deepseek-ai-dsh-better-interact/use-this-package:
-  en: 7cbe9c6e7e5e610d
-  zh: e46112029945cd6e
+  en: f53a82df681d2fd3
+  zh: 6e20e3c7cd6b4ccf
 /deepseek-ai-dsh-better-interact/understand-the-implementation:
   en: c9d45aaf26034f37
-  zh: b6a17ad1949efab3
+  zh: e6f8fcbb9ce03ece
 /deepseek-ai-dsh-better-interact/further-exploration:
   en: 8c8d57895facd32d
-  zh: 491e52af98043ddb
+  zh: 7ce13bc00d2e4d23
+/deepseek-ai-dsh-better-interact/dev-note:
+  en: f822c7f417ef5839
+  zh: 4600f9ea6fa775a6
 /deepseek-ai-dsh-better-interact/model-experience:
   en: ff8ae84d7ae24fc0
   zh: bf0a287e1a925702
@@ -32,6 +35,3 @@
 /deepseek-ai-dsh-better-interact/known-limitations-and-deferred-work:
   en: 3ac70d36ed3562ec
   zh: cf705c0af5479e82
-/deepseek-ai-dsh-better-interact/dev-note:
-  en: f822c7f417ef5839
-  zh: d6002e7aec4ee1d3

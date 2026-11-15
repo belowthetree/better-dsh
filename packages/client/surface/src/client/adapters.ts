@@ -1,5 +1,5 @@
 /** Carrier adapters for the surface service: the Desktop preload bridge and the inert Web carrier. */
-import type { DesktopSurfaceApi, SurfaceBootGlobal, SurfaceDescriptor, SurfaceSnapshot } from '../protocol.ts'
+import type { DesktopSurfaceApi, ModalSizeHint, SurfaceBootGlobal, SurfaceDescriptor, SurfaceSnapshot } from '../protocol.ts'
 
 /** Presentation of a carrier that cannot change it: Web pages and classic Desktop windows. */
 const INERT_SNAPSHOT: SurfaceSnapshot = Object.freeze({
@@ -31,8 +31,9 @@ export interface SurfaceAdapter {
   /**
    * Raise the modal presentation over the current one.
    * @param id - registered `shell.modal` entry id to display.
+   * @param size - optional presentation size; omitted keeps the dialog size.
    */
-  presentModal(id: string): Promise<void>
+  presentModal(id: string, size?: ModalSizeHint): Promise<void>
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**
@@ -104,7 +105,7 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
     subscribe: listener => api.subscribe(listener),
     expand: () => api.expand(),
     collapse: () => api.collapse(),
-    presentModal: id => api.presentModal(id),
+    presentModal: (id, size) => api.presentModal(id, size),
     dismissModal: () => api.dismissModal(),
     presentBubbles: () => api.presentBubbles(),
     dismissBubbles: () => api.dismissBubbles(),

@@ -195,6 +195,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 |---|---|---|
 | `@deepseek-ai/dsh-action-cards` | yes | Optional action cards below answers: one shared proposal tool, card state, user actions and status notices |
 | `@deepseek-ai/dsh-api-text-to-speech` | yes | Authenticated speech synthesis for browser clients |
+| `@deepseek-ai/dsh-better-interact` | no | Agent interactivity for the orb form: an output bubble column and a workbench dialog hosting the conversation surface |
 | `@deepseek-ai/dsh-client-ui-action-cards` | no | Action cards below completed answers: the shared card frame, kind bodies and the compact tool row |
 | `@deepseek-ai/dsh-client-ui-creation-recommendations` | no | Body of the personalized page card: location choice, creation progress, Undo and Restore |
 | `@deepseek-ai/dsh-client-ui-orb` | no | Orb form client plugins: floating orb overlay, centered chat dialog, quick voice setup card, and the orb.toggle system command |

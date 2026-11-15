@@ -4,6 +4,7 @@ import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import { apply, inject, WORKBENCH_COMMAND_ID } from '../src/client/index.ts'
 import type { BubblesInjected } from '../src/client/bubbles.tsx'
 import { WORKBENCH_MODAL_ID } from '../src/client/resource.ts'
+import { WORKBENCH_MODAL_SIZE } from '../src/client/workbench.tsx'
 
 type Registration = { readonly name: string; readonly [key: string]: unknown }
 type Command = { readonly id: string; readonly resolve: () => { readonly status: string; readonly run: () => void } }
@@ -90,7 +91,7 @@ it('drives the carrier presentation from the bubble entries', () => {
   injected.open()
   expect(presentBubbles).toHaveBeenCalledTimes(1)
   expect(dismissBubbles).toHaveBeenCalledTimes(1)
-  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID)
+  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
 })
 
 it('reports a carrier that refuses a presentation command', async () => {
@@ -115,7 +116,7 @@ it('opens the workbench through the carrier from its launcher command', () => {
   const resolution = command!.resolve()
   expect(resolution.status).toBe('handled')
   resolution.run()
-  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID)
+  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
 })
 
 it('reports a carrier that refuses the workbench', async () => {

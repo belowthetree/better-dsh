@@ -87,6 +87,21 @@ describe('modal bounds', () => {
     expect(modalBounds({ x: 0, y: 0, width: 640, height: 480 }))
       .toEqual({ x: 0, y: 0, width: 640, height: 480 })
   })
+
+  it('grows to the requested work-area height fraction', () => {
+    expect(modalBounds({ x: 0, y: 0, width: 2560, height: 1440 }, { heightRatio: 0.8 }))
+      .toEqual({ x: 896, y: 144, width: MODAL_SIZE.width, height: 1152 })
+  })
+
+  it('keeps the dialog height on a work area the fraction would shrink below it', () => {
+    expect(modalBounds({ x: 0, y: 0, width: 1280, height: 600 }, { heightRatio: 0.8 }))
+      .toEqual({ x: 256, y: 20, width: MODAL_SIZE.width, height: MODAL_SIZE.height })
+  })
+
+  it('treats an empty size hint as the dialog size', () => {
+    expect(modalBounds({ x: 0, y: 0, width: 1920, height: 1080 }, {}))
+      .toEqual(modalBounds({ x: 0, y: 0, width: 1920, height: 1080 }))
+  })
 })
 
 describe('form window options', () => {

@@ -1,9 +1,13 @@
 /** Workbench dialog hosting the shared conversation surface. */
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/client'
 import type { PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
 import { workbenchAddress } from './resource.ts'
 import css from './Workbench.module.css'
+
+/** Dialog size the workbench asks the carrier for: four fifths of the work area height. */
+export const WORKBENCH_MODAL_SIZE: ModalSizeHint = { heightRatio: 0.8 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {

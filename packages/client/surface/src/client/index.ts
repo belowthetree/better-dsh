@@ -11,7 +11,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export type { SurfaceService } from './service.ts'
-export type { SurfaceSnapshot } from '../protocol.ts'
+export type { ModalSizeHint, SurfaceSnapshot } from '../protocol.ts'
 
 /**
  * Client plugin body: create the carrier adapter, provide `ctx.surface`, and

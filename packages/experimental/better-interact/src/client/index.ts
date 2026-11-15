@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
-import { WorkbenchConversation, WorkbenchDialog } from './workbench.tsx'
+import { WorkbenchConversation, WorkbenchDialog, WORKBENCH_MODAL_SIZE } from './workbench.tsx'
 import type { BubblesInjected } from './bubbles.tsx'
 import { BubblesLayer, BubbleStack } from './bubbles.tsx'
 
@@ -35,7 +35,7 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
 
   const openWorkbench = (): void => {
-    ctx.surface.presentModal(WORKBENCH_MODAL_ID).catch((error: unknown) => {
+    ctx.surface.presentModal(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE).catch((error: unknown) => {
       console.error('better-interact: opening the workbench failed', error)
     })
   }
@@ -86,7 +86,7 @@ export function apply(ctx: Context): void {
     hooks: { surface },
     show: () => { ctx.surface.presentBubbles().catch(fail('presenting the bubble column')) },
     hide: () => { ctx.surface.dismissBubbles().catch(fail('dismissing the bubble column')) },
-    open: () => { ctx.surface.presentModal(WORKBENCH_MODAL_ID).catch(fail('opening the workbench')) },
+    open: () => { ctx.surface.presentModal(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE).catch(fail('opening the workbench')) },
   }
 
   ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({

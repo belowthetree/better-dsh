@@ -33,7 +33,7 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     },
     expand: () => command('expand', []),
     collapse: () => command('collapse', []),
-    presentModal: id => command('presentModal', [id]),
+    presentModal: (id, size) => command('presentModal', size === undefined ? [id] : [id, size]),
     dismissModal: () => command('dismissModal', []),
     presentBubbles: () => command('presentBubbles', []),
     dismissBubbles: () => command('dismissBubbles', []),
@@ -128,6 +128,7 @@ describe('desktop carrier', () => {
     await adapter.expand()
     await adapter.collapse()
     await adapter.presentModal('voice-setup')
+    await adapter.presentModal('better-interact.workbench', { heightRatio: 0.8 })
     await adapter.dismissModal()
     await adapter.presentBubbles()
     await adapter.dismissBubbles()
@@ -138,6 +139,7 @@ describe('desktop carrier', () => {
       { name: 'expand', args: [] },
       { name: 'collapse', args: [] },
       { name: 'presentModal', args: ['voice-setup'] },
+      { name: 'presentModal', args: ['better-interact.workbench', { heightRatio: 0.8 }] },
       { name: 'dismissModal', args: [] },
       { name: 'presentBubbles', args: [] },
       { name: 'dismissBubbles', args: [] },

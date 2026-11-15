@@ -25,9 +25,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当 profile 挂载本包时，`ctx.surface` 提供 `snapshot()`、`follow(signal)`、`expand()`、`collapse()`、`presentModal(id)`、`dismissModal()`、`setPinned(pinned)`、`dragBy(deltaX, deltaY)` 与 `setPointerInside(inside)`。在某个呈现字段变化之前，`snapshot()` 返回同一个引用稳定的值；`follow(signal)` 依次产出当前快照与之后的每次变化，直到 signal 中止。命令方法仅在载体确认后 resolve；载体拒绝的命令会让调用方 reject，并保留上一份快照。该插件不要求任何注入服务，因此可挂载于任意 Client 组合。
+当 profile 挂载本包时，`ctx.surface` 提供 `snapshot()`、`follow(signal)`、`expand()`、`collapse()`、`presentModal(id, size?)`、`dismissModal()`、`presentBubbles()`、`dismissBubbles()`、`setPinned(pinned)`、`dragBy(deltaX, deltaY)` 与 `setPointerInside(inside)`。在某个呈现字段变化之前，`snapshot()` 返回同一个引用稳定的值；`follow(signal)` 依次产出当前快照与之后的每次变化，直到 signal 中止。命令方法仅在载体确认后 resolve；载体拒绝的命令会让调用方 reject，并保留上一份快照。该插件不要求任何注入服务，因此可挂载于任意 Client 组合。
 
-`SurfaceSnapshot` 携带形态（`classic` 或 `orb`）、呈现（`classic`、`orb`、`panel` 或 `modal`）、是否置顶、当前载体能否改变呈现，以及活动的 `shell.modal` 条目 id。classic 框架报告 `classic`，使形态 profile 能收回到它；模态 id 让框架从共享 slot 注册表中选择模态内容，而不是拥有该内容。
+`SurfaceSnapshot` 携带形态（`classic` 或 `orb`）、呈现（`classic`、`orb`、`panel`、`modal` 或 `bubbles`）、是否置顶、当前载体能否改变呈现，以及活动的 `shell.modal` 条目 id。classic 框架报告 `classic`，使形态 profile 能收回到它；模态 id 让框架从共享 slot 注册表中选择模态内容，而不是拥有该内容。条目还可以传入 `ModalSizeHint`：`heightRatio` 要求对话框占工作区高度的该比例，省略则保持载体的对话框尺寸。`bubbles` 呈现是载体右缘的输出列，只承载 overlay 席位。
 
 桌面端通过 `dsh-desktop:boot` 载荷发布启动描述符；[apps/web](../../../apps/web/src/main.ts) 在 Client 注入运行前把它存为 `globalThis.__DSH_SURFACE__`。Electron 适配器读取 `window.dshDesktop.surface`，并以该描述符作为首份快照。没有该桥的页面获得惰性适配器：`available: false`、classic 呈现，命令无效果但正常 resolve。
 

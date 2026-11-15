@@ -82,7 +82,8 @@ function createProductApi(): DshDesktopProductApi {
       },
       expand: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'expand' }) as Promise<void>,
       collapse: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'collapse' }) as Promise<void>,
-      presentModal: id => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'presentModal', id }) as Promise<void>,
+      presentModal: (id, size) =>
+        ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'presentModal', id, size }) as Promise<void>,
       dismissModal: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'dismissModal' }) as Promise<void>,
       presentBubbles: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'presentBubbles' }) as Promise<void>,
       dismissBubbles: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'dismissBubbles' }) as Promise<void>,

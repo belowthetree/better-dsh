@@ -50,6 +50,11 @@ describe('parseSurfaceCommand', () => {
     [{ kind: 'presentBubbles' }, { kind: 'presentBubbles' }],
     [{ kind: 'dismissBubbles' }, { kind: 'dismissBubbles' }],
     [{ kind: 'presentModal', id: 'voice-setup' }, { kind: 'presentModal', id: 'voice-setup' }],
+    [
+      { kind: 'presentModal', id: 'voice-setup', size: { heightRatio: 0.8 } },
+      { kind: 'presentModal', id: 'voice-setup', size: { heightRatio: 0.8 } },
+    ],
+    [{ kind: 'presentModal', id: 'voice-setup', size: {} }, { kind: 'presentModal', id: 'voice-setup', size: {} }],
     [{ kind: 'setPinned', pinned: true }, { kind: 'setPinned', pinned: true }],
     [{ kind: 'dragBy', deltaX: -4, deltaY: 8 }, { kind: 'dragBy', deltaX: -4, deltaY: 8 }],
     [{ kind: 'pointerInside', inside: false }, { kind: 'pointerInside', inside: false }],
@@ -67,6 +72,11 @@ describe('parseSurfaceCommand', () => {
     ['oversized modal id', { kind: 'presentModal', id: 'x'.repeat(MAX_MODAL_ID_CHARS + 1) }],
     ['non-string modal id', { kind: 'presentModal', id: 7 }],
     ['non-boolean pinned', { kind: 'setPinned', pinned: 'yes' }],
+    ['non-object size', { kind: 'presentModal', id: 'x', size: 'tall' }],
+    ['zero height ratio', { kind: 'presentModal', id: 'x', size: { heightRatio: 0 } }],
+    ['oversized height ratio', { kind: 'presentModal', id: 'x', size: { heightRatio: 1.5 } }],
+    ['nan height ratio', { kind: 'presentModal', id: 'x', size: { heightRatio: Number.NaN } }],
+    ['string height ratio', { kind: 'presentModal', id: 'x', size: { heightRatio: '0.8' } }],
     ['nan delta', { kind: 'dragBy', deltaX: Number.NaN, deltaY: 0 }],
     ['infinite delta', { kind: 'dragBy', deltaX: 0, deltaY: Number.POSITIVE_INFINITY }],
     ['non-boolean pointer', { kind: 'pointerInside', inside: 1 }],
@@ -179,6 +189,26 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'second' })
     expect(controller.snapshot().modal).toBe('second')
     expect(window.bounds.length).toBe(bounds)
+  })
+
+  it('sizes the modal window from the presentation size hint', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench', size: { heightRatio: 0.8 } })
+    expect(window.bounds.at(-1)).toEqual(modalBounds(WORK_AREA, { heightRatio: 0.8 }))
+    controller.dispatch({ kind: 'dismissModal' })
+    expect(controller.snapshot().presentation).toBe('orb')
+  })
+
+  it('resizes the modal window when a later entry asks for another size', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench', size: { heightRatio: 0.8 } })
+    controller.dispatch({ kind: 'presentModal', id: 'orb.chat', size: { heightRatio: 0.5 } })
+    expect(window.bounds.at(-1)).toEqual(modalBounds(WORK_AREA, { heightRatio: 0.5 }))
+    const resized = window.bounds.length
+    controller.dispatch({ kind: 'presentModal', id: 'permission-repair', size: { heightRatio: 0.5 } })
+    expect(window.bounds.length).toBe(resized)
   })
 
   it('ignores modal dismissal while no modal is presented', () => {

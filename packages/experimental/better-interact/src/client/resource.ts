@@ -61,7 +61,11 @@ function waitForAbort(signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
 }
 
-/** Keep one Session retained for as long as the workbench shows it. */
+/**
+ * Keep one Session retained for as long as the workbench shows it.
+ * @param sessions - Session catalog the provider retains through.
+ * @returns the resource provider that opens one Session reference per address.
+ */
 export function workbenchResourceProvider(sessions: ISessions): ResourceProvider<typeof WORKBENCH_PROTOCOL> {
   return {
     protocol: WORKBENCH_PROTOCOL,

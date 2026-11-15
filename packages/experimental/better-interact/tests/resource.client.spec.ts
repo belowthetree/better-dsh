@@ -19,7 +19,7 @@ it.each([
 
 function sessions(): ISessions & { readonly released: () => number } {
   let released = 0
-  const reference: SessionReference = { sessionId: 'session-1' as SessionId, release: () => { released += 1 } }
+  const reference = { sessionId: 'session-1' as SessionId, release: () => { released += 1 } } as unknown as SessionReference
   return {
     retain: vi.fn(() => reference),
     get released() { return released },

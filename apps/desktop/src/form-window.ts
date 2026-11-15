@@ -1,6 +1,7 @@
 /** Window geometry and presentation options for the desktop form window. */
 
 import type { BrowserWindowConstructorOptions } from 'electron'
+import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/protocol'
 import { FORM_WINDOW_ARGUMENT } from './ipc.ts'
 import { clampFormLayout, type DesktopFormLayout, type DesktopWorkArea } from './form-layout.ts'
 
@@ -64,11 +65,15 @@ export function panelBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea
  * The window covers only the dialog: a topmost window spanning a whole display is treated as
  * an occluder by Windows, which stops rendering in the covered application.
  * @param workArea - target display work area.
+ * @param size - optional presentation size; a height ratio taller than the dialog grows the box, never past the work area.
  * @returns centered modal bounds inside the work area.
  */
-export function modalBounds(workArea: DesktopWorkArea): FormPresentationBounds {
+export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {}): FormPresentationBounds {
   const width = Math.min(MODAL_SIZE.width, workArea.width)
-  const height = Math.min(MODAL_SIZE.height, workArea.height)
+  const wanted = size.heightRatio === undefined
+    ? MODAL_SIZE.height
+    : Math.max(MODAL_SIZE.height, Math.round(workArea.height * size.heightRatio))
+  const height = Math.min(wanted, workArea.height)
   return {
     x: workArea.x + Math.floor((workArea.width - width) / 2),
     y: workArea.y + Math.floor((workArea.height - height) / 2),
