@@ -239,11 +239,9 @@
 }
 
 /* Chat modal content. The frame keeps the dismissal layer, focus trap, and Escape;
-   this entry owns its surface, so the box sits on a soft fill that fades from
-   the box outward instead of a hard card. */
+   this entry owns its surface: one card whose elevation shadow starts at the edge,
+   so the dialog keeps a defined boundary over whatever sits behind it. */
 .prompt {
-  position: relative;
-  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -251,17 +249,9 @@
   width: min(620px, 100%);
   margin: 0 auto;
   padding: 16px;
-}
-
-.prompt::before {
-  content: '';
-  position: absolute;
-  inset: -32px -40px;
-  z-index: -1;
   border-radius: var(--dsw-radius-xl);
-  background: var(--dsw-alias-bg-layer-1);
-  filter: blur(28px);
-  pointer-events: none;
+  background: var(--dsw-alias-bg-base);
+  box-shadow: var(--dsw-elevation-panel);
 }
 
 .promptInput {

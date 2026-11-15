@@ -1,0 +1,18 @@
+/* The dialog card is the frame's; the workbench fills it so the conversation
+   keeps its own transcript scroll area and the composer stays docked. */
+.root {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(100vh - 48px);
+  min-height: 0;
+}
+
+.empty {
+  margin: 0;
+  padding: 24px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-s-14);
+  text-align: center;
+}

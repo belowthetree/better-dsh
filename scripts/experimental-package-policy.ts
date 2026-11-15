@@ -33,6 +33,7 @@ export const EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS: Readonly<Record<string, strin
   'packages/experimental/client-ui-orb': '@deepseek-ai/dsh-client-ui-orb',
   'packages/experimental/client-ui-voice-output': '@deepseek-ai/dsh-client-ui-voice-output',
   'packages/experimental/better-bundle': '@deepseek-ai/dsh-better-bundle',
+  'packages/experimental/better-interact': '@deepseek-ai/dsh-better-interact',
 } satisfies Record<`packages/experimental/${string}`, `@deepseek-ai/dsh-${string}`>
 
 /** Legacy npm namespace, allowed only in `LEGACY_PREFIXED_EXPERIMENTAL_PACKAGE_DIRECTORIES`. */

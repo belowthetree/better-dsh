@@ -70,6 +70,7 @@
     { "path": "./packages/experimental/client-voice-capture/tsconfig.client.json" },
     { "path": "./packages/experimental/client-ui-orb/tsconfig.client.json" },
     { "path": "./packages/experimental/client-ui-voice-output/tsconfig.client.json" },
+    { "path": "./packages/experimental/better-interact/tsconfig.client.json" },
     { "path": "./packages/experimental/client-ui-claude-code-mods" },
 
     { "path": "./packages/client/ui-sidebar-terminal" },

@@ -1,0 +1,3 @@
+- insert:
+    - id: client-ui-better-interact
+      name: '@deepseek-ai/dsh-better-interact'
