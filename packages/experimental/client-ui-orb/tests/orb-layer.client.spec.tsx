@@ -162,9 +162,20 @@ it('offers a mic control and a voice menu entry only while the capture service i
   act(() => { b.capture.set(capture('idle')) })
   const mic = document.querySelector('[data-orb-mic]') as HTMLButtonElement
   expect(mic.getAttribute('aria-label')).toBe(zh['orb.micStart'])
+  fireEvent.pointerDown(mic, { pointerId: 1, button: 0, clientX: 40, clientY: 60 })
+  fireEvent.pointerEnter(mic)
+  fireEvent.pointerLeave(mic)
+  expect(b.actions.pointerInside).toHaveBeenNthCalledWith(1, true)
+  expect(b.actions.pointerInside).toHaveBeenNthCalledWith(2, false)
   fireEvent.click(mic)
   expect(b.actions.toggleVoice).toHaveBeenCalledOnce()
   expect(b.actions.expand).not.toHaveBeenCalled()
+
+  fireEvent.contextMenu(orb())
+  const idleEntry = document.querySelector('[data-orb-menu-entry="voice"]') as HTMLButtonElement
+  expect(idleEntry.textContent).toBe(zh['menu.voiceStart'])
+  fireEvent.click(idleEntry)
+  expect(b.actions.toggleVoice).toHaveBeenCalledTimes(2)
 
   act(() => { b.capture.set(capture('capturing')) })
   expect(mic.getAttribute('aria-label')).toBe(zh['orb.micStop'])
@@ -172,10 +183,12 @@ it('offers a mic control and a voice menu entry only while the capture service i
   const entry = document.querySelector('[data-orb-menu-entry="voice"]') as HTMLButtonElement
   expect(entry.textContent).toBe(zh['menu.voiceStop'])
   fireEvent.click(entry)
-  expect(b.actions.toggleVoice).toHaveBeenCalledTimes(2)
+  expect(b.actions.toggleVoice).toHaveBeenCalledTimes(3)
 
   act(() => { b.capture.set(null) })
   expect(document.querySelector('[data-orb-mic]')).toBeNull()
+  fireEvent.contextMenu(orb())
+  expect(document.querySelector('[data-orb-menu-entry="voice"]')).toBeNull()
 })
 
 it('marks hover, press, and the reduced-motion preference', () => {

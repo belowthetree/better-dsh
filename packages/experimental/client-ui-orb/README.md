@@ -77,7 +77,7 @@ No direct effect; ordinary user submission owns every model-visible message.
 - No attention badge. Pending approvals and questions keep rendering inside the conversation, and the orb does not count or badge them, which also means the carrier's attention-driven expansion has nothing to trigger from this package.
 - No focus handoff. Expanding the panel does not move keyboard focus into the composer; a form owner that needs it has to request focus after `ctx.surface.expand()`.
 - The panel strip does not relayout the frame. It is a fixed-height band over the classic frame's top edge, so a frame header beneath it stays covered rather than moving down.
-- The orb's context menu renders inside the orb window. The 112-pixel presentation clips it, so the carrier decides how much room the menu presentation needs.
+- The orb's context menu renders inside the orb window. The 112-pixel presentation clips it, so its entries cannot be reached in the orb presentation; a carrier that gives the menu presentation more room makes them reachable, and the panel strip's settings button is the usable path meanwhile.
 - Voice controls require the sibling packages. Without the playback package the mute and auto-speak policy entries and the voice catalog are unavailable, and the card explains that instead of offering settings.
 - Desktop form profiles only. A Web page keeps the classic presentation, so no page-level orb fallback exists here.
 - Rendered light/dark and reduced-motion scenes were not inspected in a real form window in this change; component behavior is covered by driven props and the plugin suite, and the assembled visual review belongs with the form carrier.

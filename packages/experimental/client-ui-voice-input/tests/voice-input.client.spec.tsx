@@ -130,6 +130,13 @@ it('keeps a held transcript beside the microphone when its insertion is rejected
   expect(b.inputActions.submit).not.toHaveBeenCalled()
 })
 
+it('inserts a held transcript without submitting while hands-free is off', async () => {
+  const b = fixture()
+  act(() => { b.snapshots.set({ ...b.snapshots.getSnapshot(), pendingTranscript: 'held text' }) })
+  await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith('held text', spanA) })
+  expect(b.inputActions.submit).not.toHaveBeenCalled()
+})
+
 it('leaves the held transcript for the next mount when taking it produced nothing', async () => {
   const b = fixture()
   b.takeTranscript.mockReturnValue(null)

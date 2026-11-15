@@ -242,6 +242,28 @@ it('starts a collapsed-panel capture and finishes it into the expanded composer'
   expect(capture.service.begin).toHaveBeenCalledTimes(1)
 })
 
+it('reports rejected capture commands without interrupting the orb', async () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const surface = surfaceDouble()
+  const capture = captureDouble(IDLE_CAPTURE)
+  const b = await bench({ surface: surface.service, capture })
+  await provideVoice(b.runtime, capture, outputDouble(PLAYBACK))
+  const entry = b.runtime.slots.entries('shell.overlay')[0]
+  const face = entry?.inject?.() as { actions: { toggleVoice(): void } }
+  capture.service.begin.mockRejectedValueOnce(new Error('microphone busy'))
+  face.actions.toggleVoice()
+  await flush()
+  expect(errors).toHaveBeenCalledWith('orb: voice capture command failed', expect.any(Error))
+
+  capture.publish(CAPTURING)
+  await flush()
+  capture.service.finish.mockRejectedValueOnce(new Error('service withdrawn'))
+  face.actions.toggleVoice()
+  await flush()
+  expect(errors).toHaveBeenCalledTimes(2)
+  expect(surface.service.expand).not.toHaveBeenCalled()
+})
+
 it('collapses the panel through the toggle command and contains carrier failures', async () => {
   const surface = surfaceDouble()
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})

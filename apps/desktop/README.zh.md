@@ -94,9 +94,13 @@ profile 清单可以声明 Desktop 呈现的桌面形态：`dsh.profile.form.kin
 
 `orb` profile 将产品窗口构造为无边框、透明、始终置顶且不在任务栏显示的窗口，初始置于 112 像素的 orb 边界。一个产品窗口呈现 orb、420×720 面板和铺满显示器的模态层；渲染进程通过同源 preload surface API 请求切换，主进程按封闭命令联合校验并钳制到显示工作区。渲染进程上报指针是否在交互区域内，使 orb 之外的点击穿透到桌面；orb 位置与固定状态保存在 `userData/form-layout.json`，不可读、格式错误或版本号更高的文件回退到默认值。显示器变化会重新钳制已保存的位置。classic profile 保留其 1280×820 工作区窗口。
 
-实验性 `@deepseek-ai/dsh-better-bundle` 组合了球体形态：Surface 服务、球体外观、共享麦克风捕获、带 `deepseek-cloud` 与 `deepseek-tts` Provider id 的两个语音 seam、两个带认证的语音 Remote，以及播放消费者。在插件管理页启用它只会让这些包可用，并不会声明形态。创建 Desktop 自有的形态 profile：写入 `$DSH_HOME/profiles/<名称>/package.json`，在 `dsh.profile.bundles` 中列出 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-experimental-voice-input-bundle` 与 `@deepseek-ai/dsh-better-bundle`，并在 `dsh.profile` 下写入 `"form": { "kind": "orb" }` 与 `"owner": "desktop"`；从已初始化的 profile 复制 `cordis.patch.yml` 与 hoisted `pnpm-workspace.yaml`，通过插件管理页把外部套件安装到该 profile，然后用 `--profile <名称>` 启动。better bundle 已自带识别行时无需再列出语音输入 Bundle，只列出该 profile 真正需要的 Bundle。
+实验性 `@deepseek-ai/dsh-better-bundle` 组合了球体形态：Surface 服务、球体外观、共享麦克风捕获、带 `deepseek-cloud` 与 `deepseek-tts` Provider id 的两个语音 seam、两个带认证的语音 Remote，以及播放消费者。在插件管理页启用它只会让这些包可用，并不会声明形态。创建 Desktop 自有的形态 profile：写入 `$DSH_HOME/profiles/<名称>/package.json`，在 `dsh.profile.bundles` 中列出 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 与 `@deepseek-ai/dsh-better-bundle`，并在 `dsh.profile` 下写入 `"form": { "kind": "orb" }` 与 `"owner": "desktop"`；从已初始化的 profile 复制 `cordis.patch.yml` 与 hoisted `pnpm-workspace.yaml`，通过插件管理页把外部套件安装到该 profile，然后用 `--profile <名称>` 启动。不要再列出语音输入 Bundle：better bundle 已自带识别行，两者同时列出会重复插入语音行。
 
 系统级快捷键命令会在聚焦窗口拦截之外注册为操作系统全局加速器。主进程从每个已接受系统绑定推导加速器，在每次目录或偏好变化后重新注册，并按命令报告结果，因此已被其他应用占用的组合会连同原有绑定一起保持可见。快捷键录制界面捕获按键期间暂停注册，退出时全部释放；激活以带 revision 的命令事件到达渲染进程，客户端按与聚焦窗口绑定完全相同的方式执行。Windows 与 macOS 会注册；Linux 保留其聚焦窗口模型并将系统命令报告为不可用。Electron 的全局加速器没有按键抬起回调，因此系统命令每次按下触发一次，不支持按住手势。
+
+### 本地形态评审
+
+开发启动会加载其 `DSH_HOME` 下名为 `desktop` 的 profile：`pnpm run dev:desktop` 先构建，`pnpm run start:desktop` 复用当前构建，两者都在启动 Electron 前准备主运行时。若要在不触碰日常数据的情况下评审形态，把 `DSH_HOME` 指向单独目录，让首次启动创建 `profiles/desktop`，把该 profile 的 `dsh.profile.bundles` 换成上面的 Bundle 列表并加入 `form` 声明，然后再次启动；窗口以收起的 112 像素悬浮球打开，点击展开为 420×720 面板。源码启动不携带仓库外插件，因此在安装外部 Provider 之前识别与合成会失败；悬浮球的右键菜单仍被悬浮球窗口裁剪（[client-ui-orb 限制](../../packages/experimental/client-ui-orb/README.zh.md#known-limitations-and-deferred-work)），请改用面板顶栏的设置按钮查看语音卡片。
 
 <a id="key-technical-decisions"></a>
 
