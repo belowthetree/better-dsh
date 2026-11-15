@@ -6,6 +6,8 @@ import {
   PANEL_SIZE,
   SCREEN_MARGIN,
   formWindowOptions,
+  BUBBLES_WIDTH,
+  bubblesBounds,
   modalBounds,
   orbBounds,
   panelBounds,
@@ -58,6 +60,20 @@ describe('panel bounds', () => {
     const display: DesktopWorkArea = { x: -1920, y: 0, width: 1920, height: 1080 }
     expect(panelBounds({ version: 1, orb: { x: -136, y: 484 }, pinned: false }, display))
       .toEqual({ x: -696, y: 484, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
+  })
+})
+
+describe('bubble bounds', () => {
+  it('anchors the column to the right edge, inset by the screen margin', () => {
+    const bounds = bubblesBounds({ x: 0, y: 0, width: 1920, height: 1080 })
+    expect(bounds.width).toBe(BUBBLES_WIDTH)
+    expect(bounds.x).toBe(1920 - BUBBLES_WIDTH - SCREEN_MARGIN)
+    expect(bounds.height).toBe(648)
+    expect(bounds.y).toBe(216)
+  })
+
+  it('shrinks to a work area narrower than the column', () => {
+    expect(bubblesBounds({ x: 0, y: 0, width: 320, height: 400 })).toEqual({ x: 0, y: 80, width: 320, height: 240 })
   })
 })
 

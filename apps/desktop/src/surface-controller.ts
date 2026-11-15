@@ -3,7 +3,10 @@ import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { DesktopFormLayout, DesktopWorkArea } from './form-layout.ts'
 import { clampFormLayout } from './form-layout.ts'
 import type { FormPresentationBounds } from './form-window.ts'
-import { modalBounds, orbBounds, panelBounds, presentationResizable } from './form-window.ts'
+import { bubblesBounds, modalBounds, orbBounds, panelBounds, presentationResizable } from './form-window.ts'
+
+/** Window presentations the controller drives inside the product window. */
+type FormPresentation = 'orb' | 'panel' | 'modal' | 'bubbles'
 
 /** Longest accepted `shell.modal` entry id. */
 export const MAX_MODAL_ID_CHARS = 128
@@ -14,6 +17,8 @@ export type SurfaceCommand =
   | { readonly kind: 'collapse' }
   | { readonly kind: 'presentModal'; readonly id: string }
   | { readonly kind: 'dismissModal' }
+  | { readonly kind: 'presentBubbles' }
+  | { readonly kind: 'dismissBubbles' }
   | { readonly kind: 'setPinned'; readonly pinned: boolean }
   | { readonly kind: 'dragBy'; readonly deltaX: number; readonly deltaY: number }
   | { readonly kind: 'pointerInside'; readonly inside: boolean }
@@ -40,6 +45,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** Presentations that take keyboard focus when they appear. */
+function focusable(presentation: FormPresentation): boolean {
+  return presentation === 'panel' || presentation === 'modal'
+}
+
+/** Presentations that stay out of the user's way: they never take focus, and empty pixels pass clicks through. */
+function passive(presentation: FormPresentation): boolean {
+  return presentation === 'orb' || presentation === 'bubbles'
+}
+
 /**
  * Validate one renderer-supplied command against the closed union.
  * @param raw - untrusted IPC payload.
@@ -51,6 +66,8 @@ export function parseSurfaceCommand(raw: unknown): SurfaceCommand | undefined {
     case 'expand':
     case 'collapse':
     case 'dismissModal':
+    case 'presentBubbles':
+    case 'dismissBubbles':
       return { kind: raw.kind }
     case 'presentModal':
       return typeof raw.id === 'string' && raw.id.length > 0 && raw.id.length <= MAX_MODAL_ID_CHARS
@@ -77,9 +94,9 @@ export function parseSurfaceCommand(raw: unknown): SurfaceCommand | undefined {
 export class DesktopSurfaceController {
   readonly #effects: SurfaceWindowEffects
   #layout: DesktopFormLayout
-  #presentation: 'orb' | 'panel' | 'modal' = 'orb'
+  #presentation: FormPresentation = 'orb'
   /** Presentation restored when the modal presentation dismisses. */
-  #restore: 'orb' | 'panel' = 'orb'
+  #restore: Exclude<FormPresentation, 'modal'> = 'orb'
   #modal: string | null = null
   /** Whether the renderer reported pointer presence at least once. */
   #pointerReported = false
@@ -121,6 +138,12 @@ export class DesktopSurfaceController {
       case 'dismissModal':
         if (this.#presentation === 'modal') { this.#modal = null; this.#show(this.#restore) }
         return
+      case 'presentBubbles':
+        if (this.#presentation !== 'bubbles') this.#show('bubbles')
+        return
+      case 'dismissBubbles':
+        if (this.#presentation === 'bubbles') this.#show('orb')
+        return
       case 'setPinned':
         this.#layout = { ...this.#layout, pinned: command.pinned }
         this.#effects.persist(this.#layout)
@@ -150,14 +173,15 @@ export class DesktopSurfaceController {
    */
   ensurePanel(): boolean {
     if (this.#presentation === 'modal') return false
-    if (this.#presentation === 'orb') this.#show('panel')
+    if (this.#presentation !== 'panel') this.#show('panel')
     return true
   }
 
   /**
    * Collapse an unpinned panel, and dismiss the modal, when the window loses focus.
    * The modal window covers only the dialog, so leaving it is how the user dismisses
-   * the presentation by activating another application.
+   * the presentation by activating another application. The bubble column and the orb
+   * stay: both are passive and never owned the focus they lose.
    */
   blurred(): void {
     if (this.#presentation === 'modal') {
@@ -184,12 +208,12 @@ export class DesktopSurfaceController {
     this.#publish()
   }
 
-  #show(presentation: 'orb' | 'panel' | 'modal', focus = true): void {
+  #show(presentation: FormPresentation, focus = true): void {
     this.#presentation = presentation
     this.#effects.setBounds(this.#bounds())
     this.#effects.setResizable(presentationResizable(presentation))
     this.#effects.setIgnoreMouseEvents(this.#ignoreMouse())
-    if (focus && presentation !== 'orb') this.#effects.focus()
+    if (focus && focusable(presentation)) this.#effects.focus()
     this.#publish()
   }
 
@@ -199,13 +223,14 @@ export class DesktopSurfaceController {
       case 'orb': return orbBounds(this.#layout, workArea)
       case 'panel': return panelBounds(this.#layout, workArea)
       case 'modal': return modalBounds(workArea)
+      case 'bubbles': return bubblesBounds(workArea)
     }
   }
 
   #ignoreMouse(): boolean {
-    // The renderer owns the hit test; until it reports pointer presence the orb
+    // The renderer owns the hit test; until it reports pointer presence the window
     // stays interactive so a first click is never lost to click-through.
-    return this.#presentation === 'orb' && this.#pointerReported && !this.#pointerInside
+    return passive(this.#presentation) && this.#pointerReported && !this.#pointerInside
   }
 
   #publish(): void {

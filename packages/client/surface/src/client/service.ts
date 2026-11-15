@@ -28,6 +28,13 @@ export interface SurfaceService {
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**
+   * Show the bubble column presentation: a topmost column at the work area's right edge.
+   * It never takes focus, so it can appear while the user works in another application.
+   */
+  presentBubbles(): Promise<void>
+  /** Dismiss the bubble column and restore the orb presentation. */
+  dismissBubbles(): Promise<void>
+  /**
    * Keep a collapsed or panel presentation above other windows.
    * @param pinned - whether the presentation stays visible.
    */
@@ -106,6 +113,16 @@ export class SurfaceRuntime implements SurfaceService {
   /** Dismiss the modal presentation and restore the previous one. */
   async dismissModal(): Promise<void> {
     await this.command(() => this.adapter.dismissModal())
+  }
+
+  /** Show the bubble column presentation at the work area's right edge. */
+  async presentBubbles(): Promise<void> {
+    await this.command(() => this.adapter.presentBubbles())
+  }
+
+  /** Dismiss the bubble column and restore the orb presentation. */
+  async dismissBubbles(): Promise<void> {
+    await this.command(() => this.adapter.dismissBubbles())
   }
 
   /** Keep a collapsed or panel presentation above other windows. */

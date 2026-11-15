@@ -12,7 +12,7 @@ export type SurfaceForm = 'classic' | 'orb'
  * classic frame reports its own presentation: a form profile must be able to
  * collapse back to it, and every carrier starts there.
  */
-export type SurfacePresentation = 'classic' | 'orb' | 'panel' | 'modal'
+export type SurfacePresentation = 'classic' | 'orb' | 'panel' | 'modal' | 'bubbles'
 
 /** Presentation state shared by the carrier, the client service, and tests. */
 export interface SurfaceSnapshot {
@@ -56,6 +56,13 @@ export interface DesktopSurfaceApi {
   presentModal(id: string): Promise<void>
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
+  /**
+   * Show the bubble column presentation: a topmost column at the work area's right edge.
+   * It never takes focus, so it can appear while the user works in another application.
+   */
+  presentBubbles(): Promise<void>
+  /** Dismiss the bubble column and restore the orb presentation. */
+  dismissBubbles(): Promise<void>
   /**
    * Keep a collapsed or panel presentation above other windows.
    * @param pinned - whether the presentation stays visible.

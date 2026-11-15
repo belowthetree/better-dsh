@@ -1,19 +1,23 @@
 /**
- * Better-interact client plugin: the workbench dialog that hosts the current
- * conversation without the shell's side panels, plus its launcher command.
+ * Better-interact client plugin: the output bubble column that reports agent
+ * work on the desktop, and the workbench dialog that hosts the conversation
+ * without the shell's side panels.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
-import type {} from '@deepseek-ai/dsh-client-surface/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
 import { WorkbenchConversation, WorkbenchDialog } from './workbench.tsx'
+import type { BubblesInjected } from './bubbles.tsx'
+import { BubblesLayer, BubbleStack } from './bubbles.tsx'
 
 /** Required services: the frame seat, the carrier, the command registry, and the Session catalog. */
 export const inject = ['surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions']
@@ -61,4 +65,41 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.slots.inject('better-interact.workbench.conversation', () => ctx.slots.register({
     name: 'better-interact.workbench.conversation',
   }, WorkbenchConversation)), 'better-interact: workbench conversation')
+
+  const fail = (step: string) => (error: unknown): void => {
+    console.error(`better-interact: ${step} failed`, error)
+  }
+  const surface = createSnapshotStore<SurfaceSnapshot>(ctx.surface.snapshot())
+  ctx.effect(() => {
+    const lifetime = new AbortController()
+    void (async (): Promise<void> => {
+      try {
+        for await (const snapshot of ctx.surface.follow(lifetime.signal)) surface.set(snapshot)
+      } catch (error) {
+        // Aborting ends the iteration without throwing; anything else is a defect worth reporting.
+        fail('observing the carrier')(error)
+      }
+    })()
+    return () => { lifetime.abort() }
+  }, 'better-interact: surface observation')
+  const bubbles: BubblesInjected = {
+    hooks: { surface },
+    show: () => { ctx.surface.presentBubbles().catch(fail('presenting the bubble column')) },
+    hide: () => { ctx.surface.dismissBubbles().catch(fail('dismissing the bubble column')) },
+    open: () => { ctx.surface.presentModal(WORKBENCH_MODAL_ID).catch(fail('opening the workbench')) },
+  }
+
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'better-interact.bubbles',
+    locale: NS,
+    inject: () => bubbles,
+    children: { 'better-interact.bubbles.stack': { kind: 'single', scope: 'session' } },
+  }, BubblesLayer)), 'better-interact: bubble column')
+
+  ctx.effect(() => ctx.slots.inject('better-interact.bubbles.stack', () => ctx.slots.register({
+    name: 'better-interact.bubbles.stack',
+    locale: NS,
+    inject: () => bubbles,
+  }, BubbleStack)), 'better-interact: bubble stack')
 }

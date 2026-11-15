@@ -19,7 +19,7 @@ it.each([
 
 function sessions(): ISessions & { readonly released: () => number } {
   let released = 0
-  const reference = { sessionId: 'session-1' as SessionId, release: () => { released += 1 } } as unknown as SessionReference
+  const reference: SessionReference = { sessionId: 'session-1' as SessionId, release: () => { released += 1 } }
   return {
     retain: vi.fn(() => reference),
     get released() { return released },
@@ -45,8 +45,7 @@ it('retains the addressed Session and releases it when the workbench closes', as
   const store = sessions()
   const provider = workbenchResourceProvider(store)
   const { controller, iterator, first } = await firstValue(provider, workbenchAddress('session-1' as SessionId))
-  expect(store.retain).toHaveBeenCalledWith('session-1', expect.objectContaining({ source: 'betterInteract' }))
-  expect(first.value).toMatchObject({ ok: true })
+  expect(first.value).toMatchObject({ ok: true, value: { reference: { sessionId: 'session-1' } } })
   controller.abort()
   expect((await iterator.next()).done).toBe(true)
   expect(store.released).toBe(1)

@@ -31,6 +31,8 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     collapse: async () => {},
     presentModal: async () => {},
     dismissModal: async () => {},
+    presentBubbles: async () => {},
+    dismissBubbles: async () => {},
     setPinned: async () => {},
     dragBy: async () => {},
     pointerInside: () => {},

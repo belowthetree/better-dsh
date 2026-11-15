@@ -38,6 +38,8 @@ function fakeAdapter(): FakeAdapter {
     collapse: async () => { state.commands.push('collapse') },
     presentModal: async (id) => { state.commands.push(`presentModal:${id}`) },
     dismissModal: async () => { state.commands.push('dismissModal') },
+    presentBubbles: async () => { state.commands.push('presentBubbles') },
+    dismissBubbles: async () => { state.commands.push('dismissBubbles') },
     setPinned: async (pinned) => { state.commands.push(`setPinned:${String(pinned)}`) },
     dragBy: async (deltaX, deltaY) => { state.commands.push(`dragBy:${String(deltaX)},${String(deltaY)}`) },
     pointerInside: (inside) => { state.commands.push(`pointerInside:${String(inside)}`) },
@@ -104,11 +106,14 @@ describe('SurfaceRuntime commands', () => {
     await runtime.collapse()
     await runtime.presentModal('voice-setup')
     await runtime.dismissModal()
+    await runtime.presentBubbles()
+    await runtime.dismissBubbles()
     await runtime.setPinned(true)
     await runtime.dragBy(6, -2)
     runtime.setPointerInside(true)
     expect(fake.commands).toEqual([
-      'expand', 'collapse', 'presentModal:voice-setup', 'dismissModal', 'setPinned:true', 'dragBy:6,-2', 'pointerInside:true',
+      'expand', 'collapse', 'presentModal:voice-setup', 'dismissModal', 'presentBubbles', 'dismissBubbles',
+      'setPinned:true', 'dragBy:6,-2', 'pointerInside:true',
     ])
     expect(runtime.snapshot()).toBe(panel)
   })

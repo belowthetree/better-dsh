@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** The workbench renders the shared Conversation inside the modal card. */
 import { render, screen } from '@testing-library/react'
+import { createElement } from 'react'
 import { expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { WorkbenchConversation, WorkbenchDialog } from '../src/client/workbench.tsx'
@@ -20,14 +21,14 @@ function dialogProps(options: { readonly session?: boolean; readonly reference?:
 
 it('renders the empty state while no Session exists', () => {
   const { props } = dialogProps({ session: false, reference: false })
-  render(<WorkbenchDialog {...props as never} />)
+  render(createElement(WorkbenchDialog, props as never))
   expect(screen.getByText('workbench.empty')).toBeTruthy()
   expect(screen.queryByTestId('conversation')).toBeNull()
 })
 
 it('renders the bound conversation seat', () => {
   const { props, renderSlot } = dialogProps()
-  render(<WorkbenchDialog {...props as never} />)
+  render(createElement(WorkbenchDialog, props as never))
   expect(screen.getByTestId('conversation')).toBeTruthy()
   expect(renderSlot).toHaveBeenCalledWith('better-interact.workbench.conversation', {})
 })
@@ -36,7 +37,11 @@ function conversationProps(
   session: { blank: boolean; running: boolean; promptAttempted: boolean; openState: string },
   summaryKnown = true,
 ) {
-  const renderFactorySlot = vi.fn(() => <div data-testid="content" />)
+  const calls: unknown[][] = []
+  const renderFactorySlot = (...args: unknown[]) => {
+    calls.push(args)
+    return <div data-testid="content" />
+  }
   return {
     props: {
       sessionId: 'session-1' as SessionId,
@@ -46,38 +51,42 @@ function conversationProps(
         select(summaryKnown ? { byId: { 'session-1': { blank: session.blank } } } : { byId: {} }),
       renderFactorySlot,
     },
-    renderFactorySlot,
+    calls,
   }
 }
 
+/** Read the fixed View component one render handed to the conversation content. */
+function fixedView(calls: unknown[][]): unknown {
+  const options = calls[0]?.[2] as { slots: { views: unknown } }
+  return options.slots.views
+}
+
 it('composes the shared conversation content with the fixed chat view', () => {
-  const { props, renderFactorySlot } = conversationProps({ blank: true, running: false, promptAttempted: false, openState: 'open' })
-  render(<WorkbenchConversation {...props as never} />)
-  expect(renderFactorySlot).toHaveBeenCalledWith(
+  const { props, calls } = conversationProps({ blank: true, running: false, promptAttempted: false, openState: 'open' })
+  render(createElement(WorkbenchConversation, props as never))
+  expect(calls[0]?.slice(0, 2)).toEqual([
     'conversation.content',
     { variant: 'embedded', phase: 'hero', hero: true },
-    expect.objectContaining({ slots: expect.objectContaining({ views: expect.any(Function) }) }),
-  )
+  ])
+  expect(typeof fixedView(calls)).toBe('function')
 })
 
 it('follows a running conversation', () => {
-  const { props, renderFactorySlot } = conversationProps({ blank: false, running: true, promptAttempted: true,
+  const { props, calls } = conversationProps({ blank: false, running: true, promptAttempted: true,
     openState: 'open' })
-  render(<WorkbenchConversation {...props as never} />)
-  expect(renderFactorySlot).toHaveBeenCalledWith(
+  render(createElement(WorkbenchConversation, props as never))
+  expect(calls[0]?.slice(0, 2)).toEqual([
     'conversation.content',
     { variant: 'embedded', phase: 'active', hero: false },
-    expect.anything(),
-  )
+  ])
 })
 
 it('settles a blank session whose history is still loading', () => {
-  const { props, renderFactorySlot } = conversationProps(
+  const { props, calls } = conversationProps(
     { blank: true, running: false, promptAttempted: false, openState: 'loading' }, false)
-  render(<WorkbenchConversation {...props as never} />)
-  expect(renderFactorySlot).toHaveBeenCalledWith(
+  render(createElement(WorkbenchConversation, props as never))
+  expect(calls[0]?.slice(0, 2)).toEqual([
     'conversation.content',
     { variant: 'embedded', phase: 'settling', hero: false },
-    expect.anything(),
-  )
+  ])
 })

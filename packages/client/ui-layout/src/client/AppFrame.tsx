@@ -221,12 +221,12 @@ function ModalLayer({ modal, renderSlot, dismissModal }: {
 }
 
 /**
- * Transparent root of the orb, panel, and modal presentations: the frame
+ * Transparent root of the orb, panel, modal, and bubble presentations: the frame
  * columns are absent, and only the overlay seat and, while a modal entry is
  * active, the modal layer render.
  */
 function PresentationRoot({ presentation, modal, renderSlot, dismissModal }: {
-  presentation: 'orb' | 'panel' | 'modal'
+  presentation: 'orb' | 'panel' | 'modal' | 'bubbles'
   modal: string | null
   renderSlot: AppFrameProps['renderSlot']
   dismissModal: () => void

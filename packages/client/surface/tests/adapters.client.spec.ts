@@ -35,6 +35,8 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     collapse: () => command('collapse', []),
     presentModal: id => command('presentModal', [id]),
     dismissModal: () => command('dismissModal', []),
+    presentBubbles: () => command('presentBubbles', []),
+    dismissBubbles: () => command('dismissBubbles', []),
     setPinned: pinned => command('setPinned', [pinned]),
     dragBy: (deltaX, deltaY) => command('dragBy', [deltaX, deltaY]),
     pointerInside: (inside) => { calls.push({ name: 'pointerInside', args: [inside] }) },
@@ -70,6 +72,8 @@ describe('inert carrier', () => {
     await adapter.collapse()
     await adapter.presentModal('voice-setup')
     await adapter.dismissModal()
+    await adapter.presentBubbles()
+    await adapter.dismissBubbles()
     await adapter.setPinned(true)
     await adapter.dragBy(12, -4)
     adapter.pointerInside(true)
@@ -125,6 +129,8 @@ describe('desktop carrier', () => {
     await adapter.collapse()
     await adapter.presentModal('voice-setup')
     await adapter.dismissModal()
+    await adapter.presentBubbles()
+    await adapter.dismissBubbles()
     await adapter.setPinned(true)
     await adapter.dragBy(8, -3)
     adapter.pointerInside(false)
@@ -133,6 +139,8 @@ describe('desktop carrier', () => {
       { name: 'collapse', args: [] },
       { name: 'presentModal', args: ['voice-setup'] },
       { name: 'dismissModal', args: [] },
+      { name: 'presentBubbles', args: [] },
+      { name: 'dismissBubbles', args: [] },
       { name: 'setPinned', args: [true] },
       { name: 'dragBy', args: [8, -3] },
       { name: 'pointerInside', args: [false] },

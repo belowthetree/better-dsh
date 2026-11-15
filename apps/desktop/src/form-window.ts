@@ -16,6 +16,9 @@ export const PANEL_MIN_SIZE = { width: 420, height: 120 } as const
 /** Modal dialog window size in logical pixels: the frame's widest card plus its own padding. */
 export const MODAL_SIZE = { width: 768, height: 560 } as const
 
+/** Bubble column width in logical pixels; its height follows the display work area. */
+export const BUBBLES_WIDTH = 380
+
 /** Gap between a presentation and the work area edge, in logical pixels. */
 export const SCREEN_MARGIN = 24
 
@@ -75,6 +78,24 @@ export function modalBounds(workArea: DesktopWorkArea): FormPresentationBounds {
 }
 
 /**
+ * Anchor the bubble column to the work area's right edge, inset by the screen margin and vertically centered.
+ * The column is tall enough for the expanded history and never covers a whole display, so covered
+ * applications keep rendering.
+ * @param workArea - target display work area.
+ * @returns bubble column bounds inside the work area.
+ */
+export function bubblesBounds(workArea: DesktopWorkArea): FormPresentationBounds {
+  const width = Math.min(BUBBLES_WIDTH, workArea.width)
+  const height = Math.min(workArea.height - SCREEN_MARGIN * 2, Math.max(ORB_SIZE, Math.round(workArea.height * 0.6)))
+  return {
+    x: Math.max(workArea.x, workArea.x + workArea.width - width - SCREEN_MARGIN),
+    y: workArea.y + Math.floor((workArea.height - height) / 2),
+    width,
+    height,
+  }
+}
+
+/**
  * Build the Electron options for the form product window.
  * One window hosts every presentation: frameless, transparent, always on top, absent from the taskbar, created at the orb bounds.
  * @param input - preload bundle path, current layout, and the display work area.
@@ -121,8 +142,8 @@ export function formWindowOptions(input: {
 /**
  * Whether the user may resize a presentation; only the expanded panel is resizable.
  * @param presentation - current form presentation.
- * @returns true for the panel presentation, false for the orb and modal presentations.
+ * @returns true for the panel presentation, false for the orb, modal, and bubble presentations.
  */
-export function presentationResizable(presentation: 'orb' | 'panel' | 'modal'): boolean {
+export function presentationResizable(presentation: 'orb' | 'panel' | 'modal' | 'bubbles'): boolean {
   return presentation === 'panel'
 }

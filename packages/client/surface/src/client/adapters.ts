@@ -36,6 +36,13 @@ export interface SurfaceAdapter {
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**
+   * Show the bubble column presentation: a topmost column at the work area's right edge.
+   * It never takes focus, so it can appear while the user works in another application.
+   */
+  presentBubbles(): Promise<void>
+  /** Dismiss the bubble column and restore the orb presentation. */
+  dismissBubbles(): Promise<void>
+  /**
    * Keep a collapsed or panel presentation above other windows.
    * @param pinned - whether the presentation stays visible.
    */
@@ -76,6 +83,8 @@ export function inertSurfaceAdapter(): SurfaceAdapter {
     collapse: () => Promise.resolve(),
     presentModal: () => Promise.resolve(),
     dismissModal: () => Promise.resolve(),
+    presentBubbles: () => Promise.resolve(),
+    dismissBubbles: () => Promise.resolve(),
     setPinned: () => Promise.resolve(),
     dragBy: () => Promise.resolve(),
     pointerInside: () => {},
@@ -97,6 +106,8 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
     collapse: () => api.collapse(),
     presentModal: id => api.presentModal(id),
     dismissModal: () => api.dismissModal(),
+    presentBubbles: () => api.presentBubbles(),
+    dismissBubbles: () => api.dismissBubbles(),
     setPinned: pinned => api.setPinned(pinned),
     dragBy: (deltaX, deltaY) => api.dragBy(deltaX, deltaY),
     pointerInside: (inside) => { api.pointerInside(inside) },

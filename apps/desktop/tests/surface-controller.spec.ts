@@ -4,7 +4,7 @@ import {
   DesktopSurfaceController, MAX_MODAL_ID_CHARS, parseSurfaceCommand, type SurfaceWindowEffects,
 } from '../src/surface-controller.ts'
 import type { DesktopFormLayout } from '../src/form-layout.ts'
-import { modalBounds, type FormPresentationBounds } from '../src/form-window.ts'
+import { bubblesBounds, modalBounds, type FormPresentationBounds } from '../src/form-window.ts'
 
 const WORK_AREA = { x: 0, y: 0, width: 1440, height: 900 }
 const LAYOUT: DesktopFormLayout = { version: 1, orb: { x: 1300, y: 400 }, pinned: false }
@@ -47,6 +47,8 @@ describe('parseSurfaceCommand', () => {
     [{ kind: 'expand' }, { kind: 'expand' }],
     [{ kind: 'collapse' }, { kind: 'collapse' }],
     [{ kind: 'dismissModal' }, { kind: 'dismissModal' }],
+    [{ kind: 'presentBubbles' }, { kind: 'presentBubbles' }],
+    [{ kind: 'dismissBubbles' }, { kind: 'dismissBubbles' }],
     [{ kind: 'presentModal', id: 'voice-setup' }, { kind: 'presentModal', id: 'voice-setup' }],
     [{ kind: 'setPinned', pinned: true }, { kind: 'setPinned', pinned: true }],
     [{ kind: 'dragBy', deltaX: -4, deltaY: 8 }, { kind: 'dragBy', deltaX: -4, deltaY: 8 }],
@@ -302,6 +304,84 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'fatal-form' })
     expect(window.published.at(-1)).toMatchObject({ presentation: 'modal', modal: 'fatal-form' })
   })
+
+  it('presents the bubble column at the right edge without focus', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' })
+    expect(controller.snapshot()).toMatchObject({ presentation: 'bubbles', modal: null })
+    expect(window.bounds.at(-1)).toEqual(bubblesBounds(WORK_AREA))
+    expect(window.resizable.at(-1)).toBe(false)
+    expect(window.focused).toBe(0)
+  })
+
+  it('dismisses the bubble column back to the orb without focus', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' })
+    controller.dispatch({ kind: 'dismissBubbles' })
+    expect(controller.snapshot().presentation).toBe('orb')
+    expect(window.bounds.at(-1)).toEqual({ x: 1300, y: 400, width: 112, height: 112 })
+    expect(window.focused).toBe(0)
+  })
+
+  it('ignores bubble commands that do not change the presentation', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'dismissBubbles' })
+    expect(window.published).toEqual([])
+    controller.dispatch({ kind: 'presentBubbles' })
+    const published = window.published.length
+    controller.dispatch({ kind: 'presentBubbles' })
+    expect(window.published.length).toBe(published)
+  })
+
+  it('keeps the bubble column when the window loses focus', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' })
+    const bounds = window.bounds.length
+    controller.blurred()
+    expect(controller.snapshot().presentation).toBe('bubbles')
+    expect(window.bounds.length).toBe(bounds)
+  })
+
+  it('restores the bubble column a modal was raised from', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' })
+    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench' })
+    expect(window.bounds.at(-1)).toEqual(modalBounds(WORK_AREA))
+    controller.dispatch({ kind: 'dismissModal' })
+    expect(controller.snapshot()).toMatchObject({ presentation: 'bubbles', modal: null })
+  })
+
+  it('returns to the bubble column when a modal raised from it loses focus', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' })
+    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench' })
+    controller.blurred()
+    expect(controller.snapshot()).toMatchObject({ presentation: 'bubbles', modal: null })
+  })
+
+  it('replaces the bubble column when a shell-owned document needs the panel', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' })
+    expect(controller.ensurePanel()).toBe(true)
+    expect(controller.snapshot().presentation).toBe('panel')
+  })
+
+  it('passes clicks through the empty pixels of the bubble column', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'pointerInside', inside: false })
+    controller.dispatch({ kind: 'presentBubbles' })
+    expect(window.ignored.at(-1)).toBe(true)
+    controller.dispatch({ kind: 'pointerInside', inside: true })
+    expect(window.ignored.at(-1)).toBe(false)
+  })
 })
 
 describe('command dispatch through parsed input', () => {
@@ -314,6 +394,8 @@ describe('command dispatch through parsed input', () => {
       { kind: 'presentModal', id: 'card' },
       { kind: 'dismissModal' },
       { kind: 'setPinned', pinned: false },
+      { kind: 'presentBubbles' },
+      { kind: 'dismissBubbles' },
       { kind: 'collapse' },
     ]) {
       const command = parseSurfaceCommand(raw)

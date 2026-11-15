@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/better-interact/README.md
+/:
+  en: f2857be8aa1fd388
+  zh: f2857be8aa1fd388
+/deepseek-ai-dsh-better-interact:
+  en: 9e56552dd92dc193
+  zh: 66ff39b0058502a7
+/deepseek-ai-dsh-better-interact/summary:
+  en: c67686f3e98b784a
+  zh: 00d196f723eee0f5
+/deepseek-ai-dsh-better-interact/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 87d6b45405bb805b
+/deepseek-ai-dsh-better-interact/use-this-package:
+  en: 7cbe9c6e7e5e610d
+  zh: e46112029945cd6e
+/deepseek-ai-dsh-better-interact/understand-the-implementation:
+  en: c9d45aaf26034f37
+  zh: b6a17ad1949efab3
+/deepseek-ai-dsh-better-interact/further-exploration:
+  en: 8c8d57895facd32d
+  zh: 491e52af98043ddb
+/deepseek-ai-dsh-better-interact/model-experience:
+  en: ff8ae84d7ae24fc0
+  zh: bf0a287e1a925702
+/deepseek-ai-dsh-better-interact/model-experience/kv-cache-effect:
+  en: 1dbffb7ed522d47b
+  zh: c5c0e84a7c0fd711
+/deepseek-ai-dsh-better-interact/known-limitations-and-deferred-work:
+  en: 3ac70d36ed3562ec
+  zh: cf705c0af5479e82
+/deepseek-ai-dsh-better-interact/dev-note:
+  en: f822c7f417ef5839
+  zh: d6002e7aec4ee1d3

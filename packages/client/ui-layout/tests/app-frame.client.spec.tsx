@@ -839,6 +839,16 @@ describe('AppFrame surface presentations', () => {
     expect(frame.querySelector('[data-shell-modal]')).toBeNull()
   })
 
+  it('renders the transparent bubble root with only the overlay seat', () => {
+    surfaceState = createSnapshotStore({ ...ORB, presentation: 'bubbles' })
+    const { frame, slotCalls, getByTestId } = mountFrame()
+    expect(frame.dataset.surface).toBe('bubbles')
+    expect(getByTestId('shell.overlay-content')).toBeTruthy()
+    expect(slotCalls.map(call => call.key)).toEqual(['shell.overlay'])
+    expect(frame.querySelector('[data-testid="main-content"]')).toBeNull()
+    expect(frame.querySelector('[data-shell-modal]')).toBeNull()
+  })
+
   it('renders the modal backdrop and the active shell.modal entry', () => {
     const dismissModal = vi.fn()
     surfaceState = createSnapshotStore({ ...ORB, presentation: 'modal', modal: 'voice-setup' })

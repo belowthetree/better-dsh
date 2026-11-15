@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-better-interact",
-  "description": "Agent interactivity for the orb form: a workbench dialog hosting the conversation surface",
+  "description": "Agent interactivity for the orb form: an output bubble column and a workbench dialog hosting the conversation surface",
   "version": "0.2.2-rc.2",
   "publishConfig": {
     "access": "public"
@@ -22,6 +22,7 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./locale/*.json": "./locale/*.json",
     "./src/*": "./src/*",
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml"
@@ -33,6 +34,7 @@
     "lib/types/**/*.d.ts.map",
     "lib/**/*.js.map",
     "cordis.patch.yml",
+    "locale/*.json",
     "src"
   ],
   "license": "MIT",
@@ -46,7 +48,9 @@
     "@deepseek-ai/dsh-client-locale": "workspace:*",
     "@deepseek-ai/dsh-client-resources": "workspace:*",
     "@deepseek-ai/dsh-client-shortcuts": "workspace:*",
+    "@deepseek-ai/dsh-client-store": "workspace:*",
     "@deepseek-ai/dsh-client-surface": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-chat": "workspace:*",
     "@deepseek-ai/dsh-client-ui-conversation": "workspace:*",
     "@deepseek-ai/dsh-client-ui-layout": "workspace:*",
     "@deepseek-ai/dsh-client-ui-renderer": "workspace:*",
@@ -64,7 +68,9 @@
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-resources",
         "@deepseek-ai/dsh-client-shortcuts",
+        "@deepseek-ai/dsh-client-store",
         "@deepseek-ai/dsh-client-surface",
+        "@deepseek-ai/dsh-client-ui-chat",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-session",
