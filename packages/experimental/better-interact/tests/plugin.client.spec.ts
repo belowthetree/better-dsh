@@ -43,6 +43,7 @@ function context() {
       presentModal,
       presentBubbles,
       dismissBubbles,
+      setPointerInside: vi.fn(),
     },
     shortcuts: { register: vi.fn((command: Command) => { commands.push(command); return () => {} }) },
     slots: {
@@ -89,9 +90,11 @@ it('drives the carrier presentation from the bubble entries', () => {
   injected.show()
   injected.hide()
   injected.open()
+  injected.pointerInside(true)
   expect(presentBubbles).toHaveBeenCalledTimes(1)
   expect(dismissBubbles).toHaveBeenCalledTimes(1)
   expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
+  expect(ctx.surface.setPointerInside).toHaveBeenCalledWith(true)
 })
 
 it('reports a carrier that refuses a presentation command', async () => {

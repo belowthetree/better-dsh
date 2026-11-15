@@ -41,6 +41,8 @@ export interface BubblesInjected {
   hide(): void
   /** Raise the workbench for the Session the bubble column reports. */
   open(): void
+  /** Report whether the pointer is over the bubble column, so the carrier can pass clicks through elsewhere. */
+  pointerInside(inside: boolean): void
 }
 
 /** Props of the `shell.overlay` entry `better-interact.bubbles`. */
@@ -115,16 +117,22 @@ export function BubblesLayer(props: BubblesLayerProps) {
  * @returns the column while the carrier presents it, nothing otherwise.
  */
 export function BubbleStack(props: BubbleStackProps) {
-  const { show, hide, open, t } = props
+  const { show, hide, open, pointerInside, t } = props
   const presentation = props.useSurface(snapshot => snapshot.presentation)
   const running = props.useSession(value => value.running)
   const chat = props.useConversation(state => state.views.get('chat'))
   const [expanded, setExpanded] = useState(false)
-  const [hovering, setHovering] = useState(false)
+  const [activity, setActivity] = useState(0)
   const [faded, setFaded] = useState(false)
   const { entries, live } = bubbleOutputs(chat)
   const busy = running || live !== ''
   const visible = presentation === 'bubbles'
+
+  // The column starts transparent to clicks; the carrier forwards pointer moves
+  // to the page, so the first move over the stack asks for clicks back.
+  useEffect(() => {
+    pointerInside(false)
+  }, [pointerInside])
 
   useEffect(() => {
     if (!busy) return
@@ -133,20 +141,26 @@ export function BubbleStack(props: BubbleStackProps) {
   }, [busy, visible, show])
 
   useEffect(() => {
-    if (busy || entries.length === 0 || expanded) return
+    if (!expanded) return
+    const collapse = setTimeout(() => { setExpanded(false) }, BUBBLE_COLLAPSE_MS)
+    return () => { clearTimeout(collapse) }
+  }, [expanded, activity])
+
+  useEffect(() => {
+    if (busy || entries.length === 0 || expanded || !visible) return
     const fade = setTimeout(() => { setFaded(true) }, BUBBLE_FADE_MS)
     const dismiss = setTimeout(() => { hide() }, BUBBLE_FADE_MS + BUBBLE_FADE_OUT_MS)
     return () => {
       clearTimeout(fade)
       clearTimeout(dismiss)
     }
-  }, [busy, entries.length, expanded, hide])
+  }, [busy, entries.length, expanded, visible, hide])
 
-  useEffect(() => {
-    if (hovering || !expanded) return
-    const collapse = setTimeout(() => { setExpanded(false) }, BUBBLE_COLLAPSE_MS)
-    return () => { clearTimeout(collapse) }
-  }, [hovering, expanded])
+  const touch = (): void => {
+    pointerInside(true)
+    setActivity(value => value + 1)
+    setExpanded(true)
+  }
 
   if (!visible || entries.length === 0) return null
   const shown = expanded ? entries : entries.slice(-1)
@@ -159,8 +173,9 @@ export function BubbleStack(props: BubbleStackProps) {
       className={css.stack}
       role="log"
       aria-label={t('bubbles.label')}
-      onPointerEnter={() => { setHovering(true); setExpanded(true) }}
-      onPointerLeave={() => { setHovering(false) }}
+      onPointerEnter={touch}
+      onPointerMove={touch}
+      onPointerLeave={() => { pointerInside(false) }}
     >
       {shown.map(entry => <button
         key={entry.key}

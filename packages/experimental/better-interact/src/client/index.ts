@@ -87,6 +87,7 @@ export function apply(ctx: Context): void {
     show: () => { ctx.surface.presentBubbles().catch(fail('presenting the bubble column')) },
     hide: () => { ctx.surface.dismissBubbles().catch(fail('dismissing the bubble column')) },
     open: () => { ctx.surface.presentModal(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE).catch(fail('opening the workbench')) },
+    pointerInside: (inside) => { ctx.surface.setPointerInside(inside) },
   }
 
   ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({

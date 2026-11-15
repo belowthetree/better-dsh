@@ -45,12 +45,14 @@ html[data-platform='darwin'] body {
   background: transparent;
 }
 
-/* The form's frameless orb, panel, and modal windows render over a transparent
-   page; ui-layout mirrors the presentation onto the document root. */
+/* The form's frameless orb, panel, bubbles, and modal windows render over a
+   transparent page; ui-layout mirrors the presentation onto the document root. */
 html[data-surface='orb'],
 html[data-surface='orb'] body,
 html[data-surface='panel'],
 html[data-surface='panel'] body,
+html[data-surface='bubbles'],
+html[data-surface='bubbles'] body,
 html[data-surface='modal'],
 html[data-surface='modal'] body {
   background: transparent;
