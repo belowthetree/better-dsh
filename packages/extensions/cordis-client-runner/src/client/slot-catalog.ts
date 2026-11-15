@@ -4003,14 +4003,14 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'shell.leading\', () => ctx.slots.register(\n      { name: \'shell.leading\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-layout/src/client/index.ts:134',
+    source: 'packages/client/ui-layout/src/client/index.ts:136',
   },
   {
     key: 'shell.modal',
     kind: 'list',
     scope: 'root',
     summary: 'Modal content seat for the form modal presentation.',
-    doc: 'Modal content seat for the form modal presentation. Entries register a\nstable id and render inside the frame\'s dimmed, focus-trapped card while\n`ctx.surface.snapshot().modal` names that id. The frame owns the\nbackdrop, focus trap, and Escape/backdrop dismissal; an entry owns only\nits content. A classic profile that never enters the modal presentation\nrenders no entry.',
+    doc: 'Modal content seat for the form modal presentation. Entries register a\nstable id and render inside the frame\'s dimmed, focus-trapped card while\n`ctx.surface.snapshot().modal` names that id. The frame owns the\nbackdrop, focus trap, and Escape/backdrop dismissal; an entry owns its\ncontent. An entry that draws its own surface marks its root with\n`data-shell-modal-surface="bare"`: the frame then drops the card\'s\nbackground, shadow, corner radius, and clipping around it. A classic\nprofile that never enters the modal presentation renders no entry.',
     registerOptions: [
       {
         name: 'id',
@@ -4055,7 +4055,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'shell.modal\', () => ctx.slots.register(\n      { name: \'shell.modal\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-layout/src/client/index.ts:120',
+    source: 'packages/client/ui-layout/src/client/index.ts:122',
   },
   {
     key: 'shell.overlay',

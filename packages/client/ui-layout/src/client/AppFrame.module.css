@@ -407,3 +407,14 @@
   box-shadow: var(--dsw-elevation-panel);
   outline: none;
 }
+
+/* A modal entry that draws its own surface marks its content
+   `data-shell-modal-surface="bare"`: the frame keeps the backdrop, focus trap,
+   and dismissal but drops the card chrome and clipping, so the entry's surface
+   can fade past the dialog box. */
+.modalCard:has([data-shell-modal-surface='bare']) {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}

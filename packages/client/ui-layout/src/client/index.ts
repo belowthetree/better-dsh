@@ -113,9 +113,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * Modal content seat for the form modal presentation. Entries register a
      * stable id and render inside the frame's dimmed, focus-trapped card while
      * `ctx.surface.snapshot().modal` names that id. The frame owns the
-     * backdrop, focus trap, and Escape/backdrop dismissal; an entry owns only
-     * its content. A classic profile that never enters the modal presentation
-     * renders no entry.
+     * backdrop, focus trap, and Escape/backdrop dismissal; an entry owns its
+     * content. An entry that draws its own surface marks its root with
+     * `data-shell-modal-surface="bare"`: the frame then drops the card's
+     * background, shadow, corner radius, and clipping around it. A classic
+     * profile that never enters the modal presentation renders no entry.
      */
     'shell.modal': { kind: 'list'; scope: 'root' }
     /**

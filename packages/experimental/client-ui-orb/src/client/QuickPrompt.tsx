@@ -130,7 +130,7 @@ export function QuickPrompt(props: QuickPromptProps) {
       : phase === 'transcribing' ? t('prompt.voiceTranscribing')
         : notice === null ? null : t(notice === 'voiceEmpty' ? 'prompt.voiceEmpty' : 'prompt.voiceFailed')
 
-  return <div className={css.prompt} data-orb-prompt>
+  return <div className={css.prompt} data-orb-prompt data-shell-modal-surface="bare">
     <textarea ref={input} className={css.promptInput} data-orb-prompt-input value={text} rows={2}
       aria-label={t('prompt.label')} placeholder={t('prompt.placeholder')}
       onChange={(event) => { setText(event.target.value); setSendFailed(false) }}

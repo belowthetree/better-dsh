@@ -184,7 +184,7 @@ async function provideVoice(
   return fiber
 }
 
-it('registers the overlay chrome, the chat dialog, the quick setup card, and the system toggle command', async () => {
+it('registers the overlay chrome, the chat dialog, the quick setup card, and the system commands', async () => {
   const b = await bench()
   const overlay = b.runtime.slots.entries('shell.overlay')
   expect(overlay.map(entry => entry.options.id)).toEqual(['orb'])
@@ -207,6 +207,21 @@ it('registers the overlay chrome, the chat dialog, the quick setup card, and the
   if (first?.status === 'handled') first.run()
   await flush()
   expect(b.surface.presentModal).toHaveBeenCalledExactlyOnceWith(ORB_CHAT_MODAL_ID)
+
+  const open = b.commands.get('orb.open')
+  expect(open?.scope).toBe('system')
+  expect(open?.defaults).toEqual({
+    'desktop:windows': { code: 'KeyD', modifiers: ['control', 'alt'] },
+    'desktop:macos': { code: 'KeyD', modifiers: ['control', 'alt'] },
+  })
+  expect(open?.label()).toBe(zh['command.open'])
+  expect(open?.aliases).toEqual(['orb', 'chat', 'open', 'show'])
+  const opened = open?.resolve({ region: 'page', modal: null, target: null })
+  expect(opened?.status).toBe('handled')
+  if (opened?.status === 'handled') opened.run()
+  await flush()
+  expect(b.surface.presentModal).toHaveBeenCalledTimes(2)
+  expect(b.surface.presentModal).toHaveBeenLastCalledWith(ORB_CHAT_MODAL_ID)
 
   const voiceCommand = b.commands.get('voice.pushToTalk')
   expect(voiceCommand?.scope).toBe('system')

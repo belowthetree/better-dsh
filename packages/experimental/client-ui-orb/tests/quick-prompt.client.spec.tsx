@@ -57,6 +57,7 @@ async function click(element: Element): Promise<void> {
 
 it('starts from the held transcript, focuses the input, and submits on Enter', async () => {
   const b = fixture({ transcript: 'dictated text' })
+  expect(document.querySelector('[data-orb-prompt]')?.getAttribute('data-shell-modal-surface')).toBe('bare')
   expect(input().value).toBe('dictated text')
   expect(document.activeElement).toBe(input())
   expect(input().getAttribute('aria-label')).toBe(zh['prompt.label'])

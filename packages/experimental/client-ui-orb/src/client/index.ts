@@ -255,6 +255,20 @@ export function apply(ctx: ClientContext): void {
     },
   }), 'orb: toggle command')
   ctx.effect(() => ctx.shortcuts.register({
+    id: 'orb.open' as ShortcutCommandId,
+    label: () => t('command.open'),
+    // Searchable terms, not rendered copy: the localized label above is what the settings list shows.
+    aliases: ['orb', 'chat', 'open', 'show'],
+    defaults: {
+      'desktop:windows': { code: 'KeyD', modifiers: ['control', 'alt'] },
+      'desktop:macos': { code: 'KeyD', modifiers: ['control', 'alt'] },
+    },
+    regions: ['page'],
+    modals: [ORB_CHAT_MODAL_ID, QUICK_SETUP_MODAL_ID],
+    scope: 'system',
+    resolve: () => ({ status: 'handled', run: openChat }),
+  }), 'orb: open command')
+  ctx.effect(() => ctx.shortcuts.register({
     id: 'voice.pushToTalk' as ShortcutCommandId,
     label: () => t('command.voice'),
     // Searchable terms, not rendered copy: the localized label above is what the settings list shows.

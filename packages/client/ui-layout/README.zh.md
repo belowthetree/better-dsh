@@ -37,7 +37,7 @@ kind: "package-reference"
 
 root 作用域的单一 `shell.bottom` slot 横跨三列下方的整行。占用方控制自身高度与显隐；三列按该高度缩短，空内容不预留空间。切换主面板时保留底部组件。列宽拖拽手柄止于底部内容上方，`shell.overlay` 仍覆盖整个框架。默认组合不占用此 slot。
 
-当存在可选的 `ctx.surface` 服务时，框架跟随载体报告的呈现方式。`classic` 原样渲染普通框架；`orb`、`panel` 与 `modal` 则用仅承载 `shell.overlay` 座的透明根替换三列，其中 `orb` 是形态窗口收起的悬浮球，`panel` 是载体侧正常尺寸的窗口呈现，本身不贡献框架界面。模态呈现追加变暗的背景，并以带焦点陷阱的卡片包住活动的 `shell.modal` 列表条目；条目由快照的 `modal` id 选出，Escape 与点击背景经 `ctx.surface.dismissModal()` 关闭。呈现不是 `classic` 时，同一处理会把它镜像到 `<html data-surface>`，让 Web 外壳不透明的页面背景在无边框窗口中变为透明；回到 `classic` 时移除该属性。没有该服务的 profile 保持 classic 框架。
+当存在可选的 `ctx.surface` 服务时，框架跟随载体报告的呈现方式。`classic` 原样渲染普通框架；`orb`、`panel` 与 `modal` 则用仅承载 `shell.overlay` 座的透明根替换三列，其中 `orb` 是形态窗口收起的悬浮球，`panel` 是载体侧正常尺寸的窗口呈现，本身不贡献框架界面。模态呈现追加变暗的背景，并以带焦点陷阱的卡片包住活动的 `shell.modal` 列表条目；条目由快照的 `modal` id 选出，Escape 与点击背景经 `ctx.surface.dismissModal()` 关闭。条目若自绘表面，会在内容上标记 `data-shell-modal-surface="bare"`，框架随即去掉卡片的背景、阴影、圆角与裁剪，同时保留遮罩、焦点陷阱与关闭行为。呈现不是 `classic` 时，同一处理会把它镜像到 `<html data-surface>`，让 Web 外壳不透明的页面背景在无边框窗口中变为透明；回到 `classic` 时移除该属性。没有该服务的 profile 保持 classic 框架。
 
 <a id="window-chrome-seat"></a>
 ### 窗口 chrome 座

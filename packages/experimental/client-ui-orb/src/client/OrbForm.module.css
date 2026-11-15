@@ -238,15 +238,30 @@
   font: var(--dsw-font-xxs-12);
 }
 
-/* Chat modal content. The frame owns the dimmed backdrop, the centered card,
-   the focus trap, and Escape, so the box contributes one input and its action row. */
+/* Chat modal content. The frame keeps the backdrop, focus trap, and Escape;
+   this entry owns its surface, so the box sits on a soft fill that fades from
+   the box outward instead of a hard card. */
 .prompt {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 10px;
   box-sizing: border-box;
-  width: 100%;
+  width: min(620px, 100%);
+  margin: 0 auto;
   padding: 16px;
+}
+
+.prompt::before {
+  content: '';
+  position: absolute;
+  inset: -32px -40px;
+  z-index: -1;
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-bg-layer-1);
+  filter: blur(28px);
+  pointer-events: none;
 }
 
 .promptInput {
