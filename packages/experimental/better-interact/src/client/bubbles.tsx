@@ -3,12 +3,12 @@
  * the earlier answers on hover, and the workbench behind a click.
  */
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
-import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { AssistantBlock, AssistantMessageNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { NS } from './locales.ts'
 import { workbenchAddress } from './resource.ts'
 import css from './Bubbles.module.css'
@@ -81,15 +81,21 @@ export function assistantText(blocks: readonly AssistantBlock[]): string {
 /**
  * Derive the bubble entries from the Chat target, oldest first.
  * @param chat - current Chat snapshot, or undefined before that target publishes.
- * @returns one entry per answered turn plus the streaming answer as the newest entry.
+ * @returns one entry per finished assistant message plus the streaming answer as the newest entry.
  */
 export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: BubbleOutput[]; live: string } {
   if (chat === undefined) return { entries: [], live: '' }
-  const entries: BubbleOutput[] = []
-  for (const item of chat.navigation.items()) {
-    const text = item.response.trim()
-    if (text !== '') entries.push({ key: `turn-${String(item.turn)}`, text, live: false })
+  const answers: { seq: number; text: string }[] = []
+  for (const node of chat.nodes.values()) {
+    if (node.kind !== 'assistant') continue
+    const message = node.data as AssistantMessageNode
+    const text = assistantText(message.blocks)
+    if (text !== '') answers.push({ seq: message.seq, text })
   }
+  answers.sort((left, right) => left.seq - right.seq)
+  const entries: BubbleOutput[] = answers.map(answer => ({
+    key: `message-${String(answer.seq)}`, text: answer.text, live: false,
+  }))
   const partial = chat.legacy.partial
   const live = partial === null ? '' : assistantText(partial.blocks)
   if (live !== '') entries.push({ key: 'live', text: live, live: true })
@@ -102,8 +108,29 @@ export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: Bubble
  * @returns the bound bubble column, or nothing while the catalog has no Session.
  */
 export function BubblesLayer(props: BubblesLayerProps) {
+  const presentation = props.useSurface(snapshot => snapshot.presentation)
   const target = props.useSessions(state => state.ids[0])
   const resource = props.useResource<'betterinteract'>(workbenchAddress(target))
+  const { show } = props
+
+  // While the carrier shows the orb, the window is the orb itself: the first
+  // pointer activity inside it opens the column that holds the history.
+  useEffect(() => {
+    if (presentation !== 'orb') return
+    let fired = false
+    const enter = (): void => {
+      if (fired) return
+      fired = true
+      show()
+    }
+    document.addEventListener('pointerenter', enter, true)
+    document.addEventListener('pointermove', enter, true)
+    return () => {
+      document.removeEventListener('pointerenter', enter, true)
+      document.removeEventListener('pointermove', enter, true)
+    }
+  }, [presentation, show])
+
   const reference = resource.value?.reference
   if (reference === undefined) return null
   const { SessionProvider, renderSlot } = props
@@ -124,6 +151,7 @@ export function BubbleStack(props: BubbleStackProps) {
   const [expanded, setExpanded] = useState(false)
   const [activity, setActivity] = useState(0)
   const [faded, setFaded] = useState(false)
+  const wasVisible = useRef<boolean | null>(null)
   const { entries, live } = bubbleOutputs(chat)
   const busy = running || live !== ''
   const visible = presentation === 'bubbles'
@@ -145,6 +173,12 @@ export function BubbleStack(props: BubbleStackProps) {
     const collapse = setTimeout(() => { setExpanded(false) }, BUBBLE_COLLAPSE_MS)
     return () => { clearTimeout(collapse) }
   }, [expanded, activity])
+
+  useEffect(() => {
+    const entered = wasVisible.current === false && visible
+    wasVisible.current = visible
+    if (entered && !busy) setExpanded(true)
+  }, [visible, busy])
 
   useEffect(() => {
     if (busy || entries.length === 0 || expanded || !visible) return

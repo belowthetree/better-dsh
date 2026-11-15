@@ -27,7 +27,7 @@ orb 形态的 agent 交互：一个 `shell.overlay` 条目把 agent 输出以气
 
 在形态声明了 orb 呈现的 profile 中加入 `better-interact` 行，并同时挂载 [client-surface](../../client/surface/README.zh.md) 与感知呈现的 [ui-layout](../../client/ui-layout/README.zh.md)。本包注入 `surface`、`slots`、`locale`、`shortcuts`、`resources` 与 `sessions`。
 
-overlay 条目 `better-interact.bubbles` 绑定会话目录中排在第一位的会话，经 `betterinteract` 资源保留它，并且只在载体呈现 `bubbles` 呈现时渲染气泡。agent 流式回答期间，该条目向载体申请该呈现；载体把气泡列放在工作区右侧且不抢占焦点，因此用户在其他应用中操作时它也能出现。气泡列把最新回答画成一张卡片，输出结束后三秒淡出，然后把载体交还给 orb。指针停在气泡列上会向上展开此前的回答并保持展开；指针离开三秒后，气泡列收回为最新回答。点击任一气泡打开工作台，载体把它盖在气泡列之上，关闭时恢复气泡列。
+overlay 条目 `better-interact.bubbles` 绑定会话目录中排在第一位的会话，经 `betterinteract` 资源保留它，并且只在载体呈现 `bubbles` 呈现时渲染气泡。agent 流式回答期间，该条目向载体申请该呈现；载体把气泡列放在工作区右侧且不抢占焦点，因此用户在其他应用中操作时它也能出现。气泡列把最新回答画成一张卡片，输出结束后三秒淡出，然后把载体交还给 orb。指针停在气泡列上会向上展开此前的回答并保持展开；指针离开三秒后，气泡列收回为最新回答。鼠标移到 orb 上会打开同一个气泡列并直接展开历史；气泡列自 orb 向上生长，因此打开它的指针仍停在它显示的气泡上。点击任一气泡打开工作台，载体把它盖在气泡列之上，关闭时恢复气泡列。
 
 模态条目 `better-interact.workbench` 为目录中的当前会话渲染工作台对话框：共享会话内容以 embedded 变体、且只带 Chat 视图，因此没有侧边栏、右面板或标题栏。对话框向载体申请工作区高度的五分之四，并自行滚动转录本。命令 `betterInteract.workbench` 默认绑定 Windows 与 macOS 的 Ctrl+Alt+W，打开同一个对话框，并可在设置中重新绑定。目录为空时对话框渲染空状态而不是会话。
 

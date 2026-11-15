@@ -17,8 +17,22 @@ function chat(input: {
   readonly answers?: readonly { readonly turn: number; readonly response: string }[]
   readonly partial?: readonly AssistantBlock[]
 } = {}): ChatSnapshot {
+  const nodes = (input.answers ?? []).map((answer, index) => ({
+    kind: 'assistant',
+    key: `node-${String(index)}`,
+    id: `message-${String(index)}`,
+    target: 'chat',
+    data: {
+      kind: 'assistant',
+      seq: answer.turn,
+      turn: 1,
+      step: 1,
+      blocks: [{ kind: 'text', text: answer.response }],
+    },
+  }))
   return {
-    navigation: { items: () => input.answers ?? [] },
+    nodes: { values: () => nodes },
+    navigation: { items: () => [] },
     legacy: { partial: input.partial === undefined ? null : { turn: 1, step: 1, blocks: input.partial } },
   } as never
 }
@@ -74,13 +88,13 @@ describe('bubbleOutputs', () => {
     expect(bubbleOutputs(undefined)).toEqual({ entries: [], live: '' })
   })
 
-  it('lists the answered turns with their durable turn identity', () => {
+  it('lists the answered messages in log order with their durable message identity', () => {
     const { entries, live } = bubbleOutputs(chat({
       answers: [{ turn: 2, response: 'first answer' }, { turn: 4, response: '  second answer  ' }],
     }))
     expect(entries).toEqual([
-      { key: 'turn-2', text: 'first answer', live: false },
-      { key: 'turn-4', text: 'second answer', live: false },
+      { key: 'message-2', text: 'first answer', live: false },
+      { key: 'message-4', text: 'second answer', live: false },
     ])
     expect(live).toBe('')
   })
@@ -103,6 +117,7 @@ describe('BubblesLayer', () => {
   function layer(options: { readonly reference?: boolean } = {}) {
     const renderSlot = vi.fn(() => <div data-testid="stack" />)
     const props = {
+      useSurface: (select: (value: SurfaceSnapshot) => unknown) => select(ORB),
       useSessions: (select: (value: { readonly ids: readonly string[] }) => unknown) =>
         select({ ids: ['session-1'] }),
       useResource: () => ({ value: options.reference === false ? {} : { reference: { sessionId: 'session-1' } } }),
@@ -134,6 +149,16 @@ describe('BubbleStack', () => {
     }) })
     render(createElement(BubbleStack, props as never))
     expect(column()).toBeNull()
+  })
+
+  it('expands the history when the column opens over the orb', () => {
+    const answers = [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }]
+    const collapsed = stack({ presentation: 'orb', chat: chat({ answers }) })
+    const view = render(createElement(BubbleStack, collapsed.props as never))
+    expect(column()).toBeNull()
+    const opened = stack({ presentation: 'bubbles', chat: chat({ answers }) })
+    view.rerender(createElement(BubbleStack, opened.props as never))
+    expect(screen.getAllByRole('button')).toHaveLength(2)
   })
 
   it('renders only the newest output while collapsed', () => {

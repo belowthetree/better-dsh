@@ -83,18 +83,20 @@ export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {})
 }
 
 /**
- * Anchor the bubble column to the work area's right edge, inset by the screen margin and vertically centered.
- * The column is tall enough for the expanded history and never covers a whole display, so covered
- * applications keep rendering.
+ * Anchor the bubble column to the orb, inset from the screen margin and growing upward from the orb's bottom edge.
+ * The column overlaps the orb's right edge, so hovering the orb keeps the pointer inside the column it opens,
+ * and its height never covers a whole display, so covered applications keep rendering.
+ * @param layout - current orb layout.
  * @param workArea - target display work area.
  * @returns bubble column bounds inside the work area.
  */
-export function bubblesBounds(workArea: DesktopWorkArea): FormPresentationBounds {
+export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea): FormPresentationBounds {
+  const { orb } = clampFormLayout(layout, workArea)
   const width = Math.min(BUBBLES_WIDTH, workArea.width)
   const height = Math.min(workArea.height - SCREEN_MARGIN * 2, Math.max(ORB_SIZE, Math.round(workArea.height * 0.6)))
   return {
-    x: Math.max(workArea.x, workArea.x + workArea.width - width - SCREEN_MARGIN),
-    y: workArea.y + Math.floor((workArea.height - height) / 2),
+    x: Math.min(Math.max(workArea.x, orb.x + ORB_SIZE - width), workArea.x + workArea.width - width),
+    y: Math.min(Math.max(workArea.y + SCREEN_MARGIN, orb.y + ORB_SIZE - height), workArea.y + workArea.height - height),
     width,
     height,
   }

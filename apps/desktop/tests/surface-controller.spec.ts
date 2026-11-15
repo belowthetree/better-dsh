@@ -340,7 +340,7 @@ describe('DesktopSurfaceController', () => {
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'presentBubbles' })
     expect(controller.snapshot()).toMatchObject({ presentation: 'bubbles', modal: null })
-    expect(window.bounds.at(-1)).toEqual(bubblesBounds(WORK_AREA))
+    expect(window.bounds.at(-1)).toEqual(bubblesBounds(LAYOUT, WORK_AREA))
     expect(window.resizable.at(-1)).toBe(false)
     expect(window.focused).toBe(0)
   })

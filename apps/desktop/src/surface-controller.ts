@@ -261,7 +261,7 @@ export class DesktopSurfaceController {
       case 'orb': return orbBounds(this.#layout, workArea)
       case 'panel': return panelBounds(this.#layout, workArea)
       case 'modal': return modalBounds(workArea, this.#modalSize)
-      case 'bubbles': return bubblesBounds(workArea)
+      case 'bubbles': return bubblesBounds(this.#layout, workArea)
     }
   }
 

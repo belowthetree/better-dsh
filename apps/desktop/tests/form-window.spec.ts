@@ -64,16 +64,18 @@ describe('panel bounds', () => {
 })
 
 describe('bubble bounds', () => {
-  it('anchors the column to the right edge, inset by the screen margin', () => {
-    const bounds = bubblesBounds({ x: 0, y: 0, width: 1920, height: 1080 })
-    expect(bounds.width).toBe(BUBBLES_WIDTH)
-    expect(bounds.x).toBe(1920 - BUBBLES_WIDTH - SCREEN_MARGIN)
-    expect(bounds.height).toBe(648)
-    expect(bounds.y).toBe(216)
+  it('anchors the column to the orb, growing upward from its bottom edge', () => {
+    const bounds = bubblesBounds(
+      { version: 1, orb: { x: 1800, y: 400 }, pinned: false },
+      { x: 0, y: 0, width: 1920, height: 1080 },
+    )
+    expect(bounds).toEqual({ x: 1920 - BUBBLES_WIDTH - 8, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 648 })
   })
 
-  it('shrinks to a work area narrower than the column', () => {
-    expect(bubblesBounds({ x: 0, y: 0, width: 320, height: 400 })).toEqual({ x: 0, y: 80, width: 320, height: 240 })
+  it('keeps the column inside a work area it would overflow', () => {
+    const layout = { version: 1, orb: { x: 0, y: 0 }, pinned: false } as const
+    expect(bubblesBounds(layout, { x: 0, y: 0, width: 320, height: 400 }))
+      .toEqual({ x: 0, y: SCREEN_MARGIN, width: 320, height: 240 })
   })
 })
 
