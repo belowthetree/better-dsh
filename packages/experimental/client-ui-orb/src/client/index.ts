@@ -1,11 +1,10 @@
 /**
  * Browser entry of the orb form. One apply call registers the locale
  * dictionaries, observes the surface carrier and the optional voice services
- * into snapshot stores, contributes the `shell.overlay` chrome and the
- * `shell.modal` quick setup card, and registers the system-scope
- * `orb.toggle` command. The conversation, composer, approvals, and questions
- * keep coming from the classic frame; this package owns orb and panel chrome
- * only.
+ * into snapshot stores, contributes the `shell.overlay` orb, the `shell.modal`
+ * chat box and quick setup card, and registers the system-scope `orb.toggle`
+ * command. The conversation, composer, approvals, and questions keep coming
+ * from the classic frame; this package owns orb and chat chrome only.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
@@ -20,8 +19,11 @@ import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture
 import type {} from '@deepseek-ai/dsh-client-ui-voice-output/client'
 import type { VoiceOutput, VoiceOutputPolicy, VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { OrbLayer, QUICK_SETUP_MODAL_ID } from './OrbLayer.tsx'
+import { ORB_CHAT_MODAL_ID, QUICK_SETUP_MODAL_ID } from './modals.ts'
+import { OrbLayer } from './OrbLayer.tsx'
 import type { OrbOverlayInjected, OrbSurfaceActions } from './OrbLayer.tsx'
+import { QuickPrompt } from './QuickPrompt.tsx'
+import type { OrbChatActions, OrbChatInjected } from './QuickPrompt.tsx'
 import { OrbQuickSetupCard } from './QuickSetupCard.tsx'
 import type { OrbQuickSetupInjected } from './QuickSetupCard.tsx'
 import { nextPolicy } from './state.ts'
@@ -151,11 +153,16 @@ export function apply(ctx: ClientContext): void {
     })
   }
 
-  /** @returns the transcript a collapsed-panel capture held, consumed once. */
+  /** @returns the transcript a capture held for the chat box, consumed once. */
   const takeTranscript = (): string | null => ctx.get('voiceCapture')?.takeTranscript() ?? null
 
+  /** Present the centered chat modal. */
+  const openChat = (): void => { issue(() => ctx.surface.presentModal(ORB_CHAT_MODAL_ID)) }
+  /** Dismiss the active modal presentation and return to the orb. */
+  const dismissModal = (): void => { issue(() => ctx.surface.dismissModal()) }
+
   /**
-   * Start a capture from the collapsed orb, or finish it into the expanded chat box.
+   * Start a capture from the collapsed orb, or finish it into the chat modal.
    * A finished transcript is held by the capture service until the box mounts and takes it.
    */
   const toggleVoice = (): void => {
@@ -164,12 +171,11 @@ export function apply(ctx: ClientContext): void {
     const phase = service.snapshot().phase
     if (phase === 'idle') { service.begin().catch(reportVoiceFailure); return }
     if (phase !== 'capturing') return
-    void service.finish({ hold: true }).then(() => { issue(() => ctx.surface.expand()) }, reportVoiceFailure)
+    void service.finish({ hold: true }).then(() => { openChat() }, reportVoiceFailure)
   }
 
   const actions: OrbSurfaceActions = {
-    expand: () => { issue(() => ctx.surface.expand()) },
-    collapse: () => { issue(() => ctx.surface.collapse()) },
+    openChat,
     setPinned: (pinned) => { issue(() => ctx.surface.setPinned(pinned)) },
     presentModal: (id) => { issue(() => ctx.surface.presentModal(id)) },
     dragBy: (deltaX, deltaY) => { issue(() => ctx.surface.dragBy(deltaX, deltaY)) },
@@ -183,17 +189,42 @@ export function apply(ctx: ClientContext): void {
       if (service !== undefined) service.setPolicy(nextPolicy(service.snapshot().policy))
     },
     toggleVoice,
-    submitPrompt,
-    takeTranscript,
   }
   const overlay: OrbOverlayInjected = { hooks: { surface, capture, voice, reducedMotion }, actions }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'orb', locale: NS, inject: () => overlay,
   }, OrbLayer))
 
+  /** Start recording from the chat box's microphone. */
+  const startDictation = async (): Promise<void> => {
+    const service = ctx.get('voiceCapture')
+    if (service === undefined) return
+    await service.begin()
+  }
+  /** @returns the transcript of the chat box's finished recording. */
+  const finishDictation = async (): Promise<string> => {
+    const service = ctx.get('voiceCapture')
+    if (service === undefined) return ''
+    return (await service.finish()).text
+  }
+  /** Discard the chat box's recording when the box closes while it records. */
+  const cancelDictation = (): void => {
+    const service = ctx.get('voiceCapture')
+    if (service === undefined) return
+    service.cancel().catch(reportVoiceFailure)
+  }
+
+  const chatActions: OrbChatActions = {
+    takeTranscript, submit: submitPrompt, dismiss: dismissModal, startDictation, finishDictation, cancelDictation,
+  }
+  const chat: OrbChatInjected = { hooks: { capture }, actions: chatActions }
+  ctx.slots.inject('shell.modal', () => ctx.slots.register({
+    name: 'shell.modal', id: ORB_CHAT_MODAL_ID, locale: NS, inject: () => chat,
+  }, QuickPrompt))
+
   const quickSetup: OrbQuickSetupInjected = {
     hooks: { voice },
-    dismiss: () => { issue(() => ctx.surface.dismissModal()) },
+    dismiss: dismissModal,
     setMuted: (muted: boolean) => { playback()?.setMuted(muted) },
     setPolicy: (policy: VoiceOutputPolicy) => { playback()?.setPolicy(policy) },
     setVoice: (voiceId: string) => { playback()?.setVoice(voiceId) },
@@ -206,18 +237,22 @@ export function apply(ctx: ClientContext): void {
     id: 'orb.toggle' as ShortcutCommandId,
     label: () => t('command.toggle'),
     // Searchable terms, not rendered copy: the localized label above is what the settings list shows.
-    aliases: ['orb', 'panel', 'toggle'],
+    aliases: ['orb', 'chat', 'toggle'],
     defaults: {},
     regions: ['page'],
-    modals: [QUICK_SETUP_MODAL_ID],
+    modals: [ORB_CHAT_MODAL_ID, QUICK_SETUP_MODAL_ID],
     scope: 'system',
-    resolve: () => ({
-      status: 'handled',
-      run: () => {
-        const collapse = surface.getSnapshot().presentation === 'orb'
-        issue(() => collapse ? ctx.surface.expand() : ctx.surface.collapse())
-      },
-    }),
+    resolve: () => {
+      const presentation = surface.getSnapshot().presentation
+      return {
+        status: 'handled',
+        run: () => {
+          if (presentation === 'orb') { openChat(); return }
+          if (presentation === 'panel') { issue(() => ctx.surface.collapse()); return }
+          dismissModal()
+        },
+      }
+    },
   }), 'orb: toggle command')
   ctx.effect(() => ctx.shortcuts.register({
     id: 'voice.pushToTalk' as ShortcutCommandId,

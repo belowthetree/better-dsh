@@ -12,7 +12,7 @@ Desktop 应用只呈现一个工作区窗口。[apps/desktop/src/main.ts](../../
 
 profile 是组装单元。随附模板为 [official-bundles](../../../../packages/util/official-bundles/src/bundles.ts) 中的 `acp`、`web`、`headless`、`sdk` 与 `sdk-minimal`；Electron 拥有 `$DSH_HOME/profiles/desktop`，并从 [paths.ts](../../../../apps/desktop/src/paths.ts) 的固定路径启动完全等于 `desktop` 的 profile 名称。Desktop 无法启动其他 profile，因此无法通过 profile 选择另一种桌面 form。
 
-本文提出由新的 `better` profile 激活的新 dsh form：桌面侧边悬浮 orb、展开聊天框、桌面模态呈现、OS 全局快捷键，以及基于官方 DeepSeek 接口的语音输入与语音输出。该 form 保持为同一随附运行时、同一 Host↔page 协议之上的 Cordis 组装；它不是应用的分支。
+本文提出由新的 `better` profile 激活的新 dsh form：桌面悬浮 orb、模态呈现上的居中对话框、OS 全局快捷键，以及基于官方 DeepSeek 接口的语音输入与语音输出。该 form 保持为同一随附运行时、同一 Host↔page 协议之上的 Cordis 组装；它不是应用的分支。
 
 
 ## Proposal
@@ -45,12 +45,12 @@ form 使用一个产品窗口并改变其呈现，而不是为每个 surface 创
 | 呈现 | 几何 | 窗口行为 | 内容席位 |
 |---|---|---|---|
 | `orb` | 112×112 逻辑像素，由用户放置，限制在显示器工作区内 | 无边框、透明、置顶、不在任务栏显示、orb 之外点击穿透 | `shell.overlay` |
-| `panel` | 默认 560×160，锚定在 orb 旁或屏幕边缘，可在工作区边界内调整大小 | 无边框、透明卡片，未固定时失焦仍置顶，点击外部或按 Escape 即收起 | 形态自有的聊天框：一个提问输入框与一个发送按钮 |
-| `modal` | 显示器大小的变暗背景上最多 720 像素的居中卡片 | 无边框、透明、置顶、焦点锁定，Escape 关闭顶层 | `shell.modal` |
+| `panel` | 默认 560×160，锚定在 orb 旁或屏幕边缘，可在工作区边界内调整大小 | 无边框、透明卡片，未固定时失焦仍置顶，点击外部或按 Escape 即收起 | 没有形态自有内容；载体为需要正常尺寸 owner 的外壳自有浮层升起它 |
+| `modal` | 显示器大小的变暗背景上最多 720 像素的居中卡片 | 无边框、透明、置顶、焦点锁定，Escape 关闭顶层 | `shell.modal`：形态自有的对话框与各类弹窗 |
 
-单窗口是刻意约束。每个渲染器都会独立消费同一批已认证数据流：审批与用户问题是只有一次回答的 Remote waterfall（瀑布式事件），第二个渲染器会并发认领它们、重复麦克风授权、扩大 cookie 过滤范围，并重复快捷键目录。因此 panel 渲染形态自有的聊天框，而不是第二个分叉的会话实现：提问经注入的 sessions 服务发送到最近的会话，回复、审批与提问因此留在 form 之外，语音朗读是 form 内听到回答的方式。之后拆分为独立 surface 渲染器被记录为后续工作，而不是在此假定。
+单窗口是刻意约束。每个渲染器都会独立消费同一批已认证数据流：审批与用户问题是只有一次回答的 Remote waterfall（瀑布式事件），第二个渲染器会并发认领它们、重复麦克风授权、扩大 cookie 过滤范围，并重复快捷键目录。因此模态呈现以居中卡片渲染形态自有的对话框，而不是第二个分叉的会话实现：提问经注入的 sessions 服务发送到最近的会话，回复、审批与提问因此留在 form 之外，语音朗读是 form 内听到回答的方式。之后拆分为独立 surface 渲染器被记录为后续工作，而不是在此假定。
 
-呈现切换由 Electron 主进程拥有，并由渲染器通过 surface API 请求。点击 orb、按切换命令或收到注意事件会展开聊天框并聚焦其输入框。Escape、收起窗口、点击未固定聊天框的外部、一次被接受的提交或再次按切换命令会回到 orb；固定的聊天框保持可见。`presentModal` 从当前呈现升起模态呈现，关闭后恢复先前呈现与焦点。最后的固定状态与 orb 位置以 schema 版本持久化在 `userData/form-layout.json`；不可读或未来版本文件回退到默认值，窗口在显示指标变化时重新限制。
+呈现切换由 Electron 主进程拥有，并由渲染器通过 surface API 请求。点击 orb、按切换命令或收到注意事件会在模态呈现中升起对话框并聚焦其输入框。Escape、点击背景、一次被接受的提交或再次按切换命令会关闭模态呈现并回到 orb；对话框关闭时会丢弃它发起的录音。`presentModal` 从当前呈现升起模态呈现，关闭后恢复先前呈现与焦点。最后的固定状态与 orb 位置以 schema 版本持久化在 `userData/form-layout.json`；不可读或未来版本文件回退到默认值，窗口在显示指标变化时重新限制。
 
 点击穿透是透明 orb 所必需的：渲染器报告指针是否在范围内，当指针位于 orb 及其拖拽把手之外时，主进程调用 `setIgnoreMouseEvents(true, { forward: true })`。拖动 orb 使用显式指针跟踪和节流的位置 IPC，而不是 CSS app-region 拖动，因为 app-region 拖动区不会投递点击穿透命中测试所需的指针事件。边界写入在主进程中按目标显示器工作区限制；渲染器从不设置原始屏幕坐标。
 
@@ -88,7 +88,7 @@ Electron 适配器调用 preload 产品 API 新增的 `surface` 区块，主进�
 
 ### 感知呈现的 frame
 
-[ui-layout](../../../../packages/client/ui-layout/src/client/index.ts) 仍是 frame 的所有者，并获得感知呈现的分支。它读取可选的 `ctx.get('surface')` 服务，因此没有 surface 条目的 classic profile 精确渲染今天的 frame。对于 `orb` 与 `modal` 呈现，它渲染透明根、既有 `shell.overlay` 席位以及新的 `shell.modal` 列表席位，并设置 `data-surface` 属性供 CSS 使用。对于 `panel`，它以 `data-surface="panel"` 渲染 classic frame，去掉窗口 chrome 留白、收窄内边距并使用既有窄布局行为。因此，已经在文档内使用 `Modal` 原语的产品对话框无需第二套实现即可在 panel 内继续工作。
+[ui-layout](../../../../packages/client/ui-layout/src/client/index.ts) 仍是 frame 的所有者，并获得感知呈现的分支。它读取可选的 `ctx.get('surface')` 服务，因此没有 surface 条目的 classic profile 精确渲染今天的 frame。对于 `orb`、`panel` 与 `modal` 呈现，它渲染透明根、既有 `shell.overlay` 席位以及新的 `shell.modal` 列表席位，并设置 `data-surface` 属性供 CSS 使用；模态呈现追加变暗背景、带焦点锁定的卡片，以及针对活动条目的 Escape 或背景关闭。已经在文档内使用 `Modal` 原语的产品对话框无需为这张卡片再实现一套。
 
 `shell.modal` 是模态内容席位。form 组合包在那里注册模态内容，`ctx.surface.presentModal(id)` 选择活动条目；ui-layout 渲染背景、活动条目与焦点锁定，并把 Escape 与背景点击路由回 `dismissModal()`。这使模态呈现成为组装结果，而不是 shell 的分支。
 
@@ -104,11 +104,11 @@ Electron `globalShortcut` 不暴露按键抬起回调，因此本提案中的 pu
 
 ### 语音输入
 
-采集变成客户端服务，而不再是 composer 组件。新的实验性客户端包承载 `ctx.voiceCapture`：它拥有录音器、麦克风设备偏好、WAV 编码与 `remote.speech.transcribe` 调用，并暴露 begin、cancel 与 finish 以及一个 surface 与测试可观察的快照。既有的 [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) 包成为一个消费方：它的 composer 控件保留当前交互，但录音器生命周期不再随该控件卸载而结束。两个新消费方使用同一服务：orb 语音控件与全局 push-to-talk 命令。
+采集变成客户端服务，而不再是 composer 组件。新的实验性客户端包承载 `ctx.voiceCapture`：它拥有录音器、麦克风设备偏好、WAV 编码与 `remote.speech.transcribe` 调用，并暴露 begin、cancel 与 finish 以及一个 surface 与测试可观察的快照。既有的 [client-ui-voice-input](../../../../packages/experimental/client-ui-voice-input/src/client/mount.ts) 包成为一个消费方：它的 composer 控件保留当前交互，但录音器生命周期不再随该控件卸载而结束。三个新消费方使用同一服务：orb 语音控件、对话框自有的语音开关与全局 push-to-talk 命令。
 
 识别使用官方 DeepSeek 接口，而不是本地模型。外部 `@dsh-external/dsh-deepseek-suite` 组合包在既有 speech-to-text seam 上注册 id 为 `deepseek-cloud` 的 `SpeechProvider`；它把 `remote.speech.transcribe` 送来的规范 16 kHz 单声道 PCM16 WAV 以 multipart 表单提交到 `POST /v1/tools/asr`，并返回响应中的 `text`。该 provider 声明处理位置为 `cloud`、只接受 `auto` 语言提示、不提供 preparation 任务、每次调用经 `ctx.credentials` 按 suite 配置解析 `DEEPSEEK_API_KEY` 凭证并沿用其回退，同时复用 suite 的 `baseUrl`、请求超时与类型化错误分类。凭证缺失、密钥无效、余额不足、限速、音频过大、超时与服务端故障都映射到 seam 的类型化失败；panel 显示本地化文案并提供跳转到模型设置的操作，且不会自动重试，因为每次重试都计费。
 
-投递保持显式。完成的 transcript 在 classic 框架拥有 composer 时经既有 `InputActions.insertText` 路径填入活动会话的草稿；在 orb 形态中，surface 服务展开聊天框，由输入框接收暂存的转写。聊天框以最近编目的会话为目标，目录为空时创建空白会话。免提设置可以选择提交 transcript 而不是预填；该提交走普通 `session.prompt` 路径，因此模型可见文本是普通的持久 `user/message`。仅识别仍然不写 Session 事件，录音从不落盘或进入附件存储，且上传会作为一次到配置的 DeepSeek 端点的计费请求向用户说明。
+投递保持显式。完成的 transcript 在 classic 框架拥有 composer 时经既有 `InputActions.insertText` 路径填入活动会话的草稿；在 orb 形态中，surface 服务在模态呈现中升起居中对话框，由输入框接收暂存的转写。对话框自有的语音开关用同一服务录音，并把完成的转写追加到输入末尾而不提交，因此录音与键入的文字合成同一条提问。对话框以最近编目的会话为目标，目录为空时创建空白会话。免提设置可以选择提交 transcript 而不是预填；该提交走普通 `session.prompt` 路径，因此模型可见文本是普通的持久 `user/message`。仅识别仍然不写 Session 事件，录音从不落盘或进入附件存储，且上传会作为一次到配置的 DeepSeek 端点的计费请求向用户说明。
 
 麦克风授权跟随窗口注册表：form 窗口的 `dsh-app://app` 主 frame 像 classic 主 frame 一样被授权，且仅在 form profile 激活期间。权限拒绝、设备缺失与两分钟采集上限会释放音轨并丢弃录音。由于识别在云端，录音只在用户结束采集并请求转写后才离开本机；取消不会上传。
 
@@ -170,11 +170,11 @@ profile 配方是 web 模板组合包加上 better 组合包，并把仓库之�
 
 ### 交互设计
 
-orb 反映状态而不是文字：空闲时变暗、悬停时响应、采集时显示波形、活动会话运行时旋转、朗读时脉动，并在审批或提问等待时显示注意圆点。拖动移动它，点击展开聊天框，右键菜单提供固定、静音、自动朗读策略、语音开关、语音采集与语音设置；新建会话或退出项仍为后续工作。减少动态效果设置会去掉旋转与脉动动画，每个 orb 状态都有一个本地化无障碍标签。
+orb 反映状态而不是文字：空闲时变暗、悬停时响应、采集时显示波形、活动会话运行时旋转、朗读时脉动，并在审批或提问等待时显示注意圆点。拖动移动它，点击升起对话框，右键菜单提供固定、静音、自动朗读策略、语音开关、语音采集与语音设置；新建会话或退出项仍为后续工作。减少动态效果设置会去掉旋转与脉动动画，每个 orb 状态都有一个本地化无障碍标签。
 
-展开的聊天框只有一个提问输入框与一个发送按钮，没有会话、标题或设置界面：Enter 或按钮把提问发送到最近的会话并折叠聊天框，Shift+Enter 换行，Escape 不发送直接折叠，被拒绝的提交保留在框内并显示本地化文案。orb 上的麦克风按钮无需打开聊天框即可开始采集，并展开聊天框把暂存转写放入输入框。审批与提问卡片留在会话中，既有插件已在那里渲染它们；orb 不为它们加徽标或展开。
+对话框是模态呈现中形态自有的卡片：一个提问输入框、一个语音输入开关与一个发送按钮，没有会话、标题或设置界面。Enter 或按钮把提问发送到最近的会话并关闭卡片，Shift+Enter 换行，Escape 或点击背景不发送直接关闭，被拒绝的提交保留在卡片内并显示本地化文案。语音开关开始采集，显示请求麦克风、录音与转写状态，并把完成的转写追加到输入框而不发送；关闭卡片会丢弃它发起的录音。orb 上的麦克风按钮无需打开卡片即可开始采集，并升起卡片把暂存转写放入输入框。审批与提问卡片留在会话中，既有插件已在那里渲染它们；orb 不为它们加徽标或展开。
 
-模态呈现由 form 拥有：首次使用的凭证或语音设置、权限修复、form 致命错误与快速语音设置卡片使用 `shell.modal`。Escape 与背景会关闭它，焦点回到先前呈现，从 orb 打开的模态以 orb 的屏幕位置为锚点。模态呈现中的任何内容都不替换既有产品对话框；这些对话框保持其在聊天框窗口内的 `Modal` 行为。
+模态呈现由 form 拥有：对话框、首次使用的凭证或语音设置、权限修复、form 致命错误与快速语音设置卡片使用 `shell.modal`。Escape 与背景会关闭它，焦点回到先前呈现，从 orb 打开的模态以 orb 的屏幕位置为锚点。模态呈现中的任何内容都不替换既有产品对话框；这些对话框保持其文档内 `Modal` 行为。
 
 
 ### 日志与持久性
@@ -227,13 +227,13 @@ orb 反映状态而不是文字：空闲时变暗、悬停时响应、采集时�
 
 用该 profile 启动 Desktop 后显示收起的 orb，浮于其他应用之上，不在任务栏显示，且 orb 之外的点击穿透。
 
-点击 orb 或按切换快捷键会展开一个聊天框，其中只有一个提问输入框与一个发送按钮；Enter 或按钮把提问发送到最近的会话并折叠聊天框，Escape 或点击外部不发送直接回到 orb；固定的聊天框保持打开；几何与固定状态在重启后保留，并在显示器变化后仍位于工作区内。
+点击 orb 或按切换快捷键会升起居中对话框，其中有一个提问输入框、一个语音输入开关与一个发送按钮；Enter 或按钮把提问发送到最近的会话并关闭对话框，Escape 或点击背景不发送直接回到 orb；对话框的语音开关把完成的转写追加到输入框而不发送；几何与固定状态在重启后保留，并在显示器变化后仍位于工作区内。
 
 `presentModal` 显示变暗、焦点锁定的模态呈现，在 Escape 或背景点击时关闭，并恢复先前呈现与焦点。
 
 默认 system 快捷键在 Windows 与 macOS 上注册；冲突绑定在 Settings 中报告失败并保留先前绑定；录制期间暂停注册，退出时释放所有 accelerator；classic profile 不注册任何快捷键，Web 保持不变。
 
-push-to-talk 在 orb 收起时采集，经官方 DeepSeek ASR provider `deepseek-cloud` 转写，展开后把 transcript 插入活动会话草稿，仅在免提启用时提交，并在该情况下产生普通 `user/message`；API Key 缺失或无效、余额不足、限速、录音过大与超时都显示本地化、可操作的文案，且不下载任何本地模型。
+push-to-talk 在 orb 收起时采集，经官方 DeepSeek ASR provider `deepseek-cloud` 转写，在升起对话框后把 transcript 插入活动会话草稿，仅在免提启用时提交，并在该情况下产生普通 `user/message`；API Key 缺失或无效、余额不足、限速、录音过大与超时都显示本地化、可操作的文案，且不下载任何本地模型。
 
 回复经官方 DeepSeek TTS provider `deepseek-tts` 使用选定的 `stella` 或 `tide` 音色按配置的自动朗读策略合成，在新轮次或显式停止时停止，从不朗读工具输出，且不在 Session 日志、附件或磁盘上留下音频；合成请求不会自动重试。
 

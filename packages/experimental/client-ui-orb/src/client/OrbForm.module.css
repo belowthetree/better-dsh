@@ -238,23 +238,22 @@
   font: var(--dsw-font-xxs-12);
 }
 
-/* Expanded presentation: one floating chat box with a send button and no frame chrome. */
+/* Chat modal content. The frame owns the dimmed backdrop, the centered card,
+   the focus trap, and Escape, so the box contributes one input and its action row. */
 .prompt {
-  position: fixed;
-  inset: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   box-sizing: border-box;
-  padding: 14px 14px 12px;
-  border-radius: var(--dsw-radius-xl);
-  background: var(--dsw-alias-bg-layer-1);
-  box-shadow: var(--dsw-elevation-prominent);
+  width: 100%;
+  padding: 16px;
 }
 
 .promptInput {
-  flex: 1 1 auto;
-  min-height: 0;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  max-height: 45vh;
   padding: 0;
   border: 0;
   outline: none;
@@ -269,8 +268,76 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+.promptActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.promptStatus {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.promptMic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+@media (hover: hover) {
+  .promptMic:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.promptMic[data-recording] {
+  border-color: transparent;
+  background: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.promptMic:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.promptMic:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.promptSpinner {
+  display: flex;
+  animation: orb-spin 900ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promptSpinner {
+    animation: none;
+  }
+}
+
 .promptSend {
-  align-self: flex-end;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -301,6 +368,7 @@
   color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-secondary));
   font: var(--dsw-font-xxs-12);
 }
+
 .setup {
   display: flex;
   flex-direction: column;

@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-orb",
-  "description": "Orb form client plugins: floating orb overlay, panel top strip, quick voice setup card, and the orb.toggle system command",
+  "description": "Orb form client plugins: floating orb overlay, centered chat dialog, quick voice setup card, and the orb.toggle system command",
   "version": "0.2.2-rc.2",
   "publishConfig": {
     "access": "public"

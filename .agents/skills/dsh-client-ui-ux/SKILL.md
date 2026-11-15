@@ -1,6 +1,6 @@
 ---
 name: dsh-client-ui-ux
-description: "Design and review DSH user-visible UI: alignment, spacing, icons, visual foundation, geometry and interaction. Use before UI changes in client, experimental and app packages; verify affected rendered results before handoff."
+description: "Design and review DSH user-visible UI: alignment, spacing, icons, visual foundation, geometry and interaction. Use before UI changes in client, experimental and app packages; verify affected rendered results before handoff. Real-device verification stays manual."
 ---
 
 # DeepSeek Harness UI development
@@ -28,6 +28,12 @@ These checks apply even to small changes; optional documentation does not make i
 - **Shared components or global styles:** trace affected consumers and inspect distinct assembled layouts and states; one isolated example cannot establish coverage.
 
 If a required scene is unavailable, state what was not checked, why and how it can be verified; a labeled production-component fixture can provide partial evidence, not an actual-page pass. Do not claim verification complete while required checks remain missing. Run the original applicable tests; source inspection and passing tests alone do not establish the rendered result.
+
+### Real-device verification stays manual
+
+Real-device verification — accepting visual or interaction results on the target platform as a user meets it: the Desktop app's native windows, system chrome, physical input, audio hardware, and OS-global behavior — is performed by a person. Agents never produce real-device evidence: they do not launch or drive the Desktop build or its DevTools targets, capture its screen, or claim a real-device result from source review, tests, or an agent-run session.
+
+Agent-side evidence stays automated: unit, component, and integration tests, headless-browser lanes and snapshots, built artifacts, and source review. When a required scene needs the real device, finish those checks, mark the scene unverified, and hand off a short checklist naming the scenes, the steps, the expected result, and remaining gaps. Manual items remain open in the handoff; never report them as passed.
 
 Read unchanged owners once; consult examples for uncertain judgments. Inspect relevant states and actual usage sizes, not a fixed screenshot count or every width × theme × state combination. Batch related edits and reuse a current application instance and valid evidence. Documentation-only changes and refactors with evidence of unchanged rendering need no new UI captures; state that basis.
 

@@ -1,8 +1,9 @@
 /**
- * Overlay entry of the orb form. The `orb` presentation renders the floating
- * orb with its drag gesture and context menu, `panel` renders the expanded
- * chat box, and `classic`/`modal` render nothing: the classic frame needs no
- * form chrome, and the modal layer owns its card.
+ * Overlay entry of the orb form. Only the `orb` presentation draws chrome here:
+ * the floating orb with its drag gesture and context menu. The chat box is a
+ * separate `shell.modal` entry so the carrier renders it in its centered modal
+ * presentation; the classic frame needs no form chrome, and the panel
+ * presentation hosts only shell-owned overlays.
  */
 import { useCallback, useMemo, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -13,24 +14,19 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/client'
+import { QUICK_SETUP_MODAL_ID } from './modals.ts'
 import { activeSession, orbLabelKey, orbVisualState } from './state.ts'
 import type { OrbVisualState } from './state.ts'
 import { OrbMenu } from './OrbMenu.tsx'
 import type { OrbMenuEntryId } from './OrbMenu.tsx'
-import { QuickPrompt } from './QuickPrompt.tsx'
 import { usePointerDrag } from './use-pointer-drag.ts'
 import type { NS } from './locales.ts'
 import css from './OrbForm.module.css'
 
-/** Registered `shell.modal` entry the orb's settings controls raise. */
-export const QUICK_SETUP_MODAL_ID = 'orb.quick-setup'
-
-/** Commands the overlay and the panel strip issue to the surface carrier. */
+/** Commands the orb overlay issues to the surface carrier. */
 export interface OrbSurfaceActions {
-  /** Expand the orb into the panel presentation. */
-  readonly expand: () => void
-  /** Collapse the panel back into the orb. */
-  readonly collapse: () => void
+  /** Present the centered chat modal. */
+  readonly openChat: () => void
   /**
    * Change the panel pin state.
    * @param pinned - whether the presentation stays above other windows.
@@ -56,16 +52,8 @@ export interface OrbSurfaceActions {
   readonly toggleMuted: () => void
   /** Advance the auto-speak policy one step. */
   readonly cyclePolicy: () => void
-  /** Start a collapsed-panel capture, or finish one into the expanded chat box. */
+  /** Start a collapsed-orb capture, or finish one into the chat modal. */
   readonly toggleVoice: () => void
-  /**
-   * Send one prompt to the current conversation.
-   * @param text - trimmed prompt text.
-   * @returns after the Host accepted the prompt.
-   */
-  readonly submitPrompt: (text: string) => Promise<void>
-  /** @returns the transcript a collapsed-panel capture held, consumed once. */
-  readonly takeTranscript: () => string | null
 }
 
 /** Injected face of the `shell.overlay` entry. */
@@ -110,9 +98,9 @@ function OrbGlyph({ state }: { state: OrbVisualState }) {
 }
 
 /**
- * Render the form's overlay chrome for the current presentation.
+ * Render the floating orb of the orb presentation.
  * @param props - carrier presentation, voice observations, commands, and localized copy.
- * @returns the orb, the panel strip, or nothing for presentations this entry does not dress.
+ * @returns the orb chrome, or nothing for presentations this entry does not dress.
  */
 export function OrbLayer(props: OrbLayerProps) {
   const surface = props.useSurface(snapshot => snapshot)
@@ -163,15 +151,8 @@ export function OrbLayer(props: OrbLayerProps) {
     setMenuOpen(false)
   }
 
-  if (surface.presentation === 'classic' || surface.presentation === 'modal') return null
-  if (surface.presentation === 'panel') {
-    return <QuickPrompt
-      takeTranscript={actions.takeTranscript}
-      onSubmit={actions.submitPrompt}
-      onCollapse={actions.collapse}
-      t={t}
-    />
-  }
+  // The chat modal and the frame's modal layer own every other presentation.
+  if (surface.presentation !== 'orb') return null
 
   return <div className={css.orbRoot} data-orb data-state={state}
     data-reduced-motion={reducedMotion || undefined} onKeyDown={onKeyDown}>
@@ -197,7 +178,7 @@ export function OrbLayer(props: OrbLayerProps) {
       onLostPointerCapture={drag.handlers.onPointerCancel}
       onPointerEnter={() => { setHovered(true); actions.pointerInside(true) }}
       onPointerLeave={() => { setHovered(false); actions.pointerInside(false) }}
-      onClick={() => { if (!drag.moved()) actions.expand() }}
+      onClick={() => { if (!drag.moved()) actions.openChat() }}
       onContextMenu={(event) => { event.preventDefault(); setMenuOpen(true) }}>
       <OrbGlyph state={state} />
       <span className={css.grip} data-orb-drag aria-hidden="true"

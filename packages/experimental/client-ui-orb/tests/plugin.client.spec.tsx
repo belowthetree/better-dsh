@@ -13,7 +13,9 @@ import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-t
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import * as plugin from '../src/client/index.ts'
+import { QuickPrompt } from '../src/client/QuickPrompt.tsx'
 import { OrbQuickSetupCard } from '../src/client/QuickSetupCard.tsx'
+import { ORB_CHAT_MODAL_ID, QUICK_SETUP_MODAL_ID } from '../src/client/modals.ts'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
@@ -75,7 +77,7 @@ function surfaceDouble(initial: SurfaceSnapshot = ORB_SURFACE) {
   }
 }
 
-/** Capture observation double with the commands the orb issues. */
+/** Capture observation double with the commands the orb and chat box issue. */
 function captureDouble(initial: VoiceCaptureSnapshot) {
   const snapshots = observable(initial)
   const commands = {
@@ -83,6 +85,7 @@ function captureDouble(initial: VoiceCaptureSnapshot) {
     begin: vi.fn(async () => {}),
     finish: vi.fn(async () => ({ text: 'held transcript', audioSeconds: 1, inferenceSeconds: 0.1 })),
     takeTranscript: vi.fn((): string | null => null),
+    cancel: vi.fn(async () => {}),
   }
   return { publish: snapshots.publish, service: commands }
 }
@@ -181,28 +184,29 @@ async function provideVoice(
   return fiber
 }
 
-it('registers the overlay chrome, the quick setup card, and the system toggle command', async () => {
+it('registers the overlay chrome, the chat dialog, the quick setup card, and the system toggle command', async () => {
   const b = await bench()
   const overlay = b.runtime.slots.entries('shell.overlay')
   expect(overlay.map(entry => entry.options.id)).toEqual(['orb'])
   expect(overlay[0]?.locale).toBe('orb')
   const modal = b.runtime.slots.entries('shell.modal')
-  expect(modal.map(entry => entry.options.id)).toEqual(['orb.quick-setup'])
+  expect(modal.map(entry => entry.options.id)).toEqual([ORB_CHAT_MODAL_ID, QUICK_SETUP_MODAL_ID])
   expect(modal[0]?.locale).toBe('orb')
-  expect(modal[0]?.component).toBe(OrbQuickSetupCard)
+  expect(modal[0]?.component).toBe(QuickPrompt)
+  expect(modal[1]?.component).toBe(OrbQuickSetupCard)
 
   const command = b.commands.get('orb.toggle')
   expect(command).toBeDefined()
   expect(command?.scope).toBe('system')
   expect(command?.defaults).toEqual({})
   expect(command?.label()).toBe(zh['command.toggle'])
-  expect(command?.aliases).toEqual(['orb', 'panel', 'toggle'])
+  expect(command?.aliases).toEqual(['orb', 'chat', 'toggle'])
 
   const first = command?.resolve({ region: 'page', modal: null, target: null })
   expect(first?.status).toBe('handled')
   if (first?.status === 'handled') first.run()
   await flush()
-  expect(b.surface.expand).toHaveBeenCalledOnce()
+  expect(b.surface.presentModal).toHaveBeenCalledExactlyOnceWith(ORB_CHAT_MODAL_ID)
 
   const voiceCommand = b.commands.get('voice.pushToTalk')
   expect(voiceCommand?.scope).toBe('system')
@@ -211,7 +215,7 @@ it('registers the overlay chrome, the quick setup card, and the system toggle co
   expect(voiceCommand?.resolve({ region: 'page', modal: null, target: null })).toEqual({ status: 'pass' })
 })
 
-it('starts a collapsed-panel capture and finishes it into the expanded composer', async () => {
+it('starts a collapsed-orb capture and finishes it into the chat dialog', async () => {
   const surface = surfaceDouble()
   const capture = captureDouble(IDLE_CAPTURE)
   const b = await bench({ surface: surface.service, capture })
@@ -221,7 +225,7 @@ it('starts a collapsed-panel capture and finishes it into the expanded composer'
   face.actions.toggleVoice()
   await flush()
   expect(capture.service.begin).toHaveBeenCalledOnce()
-  expect(surface.service.expand).not.toHaveBeenCalled()
+  expect(surface.service.presentModal).not.toHaveBeenCalled()
 
   capture.publish({ ...CAPTURING, phase: 'starting' })
   await flush()
@@ -233,7 +237,7 @@ it('starts a collapsed-panel capture and finishes it into the expanded composer'
   face.actions.toggleVoice()
   await flush()
   expect(capture.service.finish).toHaveBeenCalledWith({ hold: true })
-  expect(surface.service.expand).toHaveBeenCalledOnce()
+  expect(surface.service.presentModal).toHaveBeenCalledExactlyOnceWith(ORB_CHAT_MODAL_ID)
 
   const command = b.commands.get('voice.pushToTalk')
   const resolution = command?.resolve({ region: 'page', modal: null, target: null })
@@ -262,23 +266,30 @@ it('reports rejected capture commands without interrupting the orb', async () =>
   face.actions.toggleVoice()
   await flush()
   expect(errors).toHaveBeenCalledTimes(2)
-  expect(surface.service.expand).not.toHaveBeenCalled()
+  expect(surface.service.presentModal).not.toHaveBeenCalled()
 })
 
-it('collapses the panel through the toggle command and contains carrier failures', async () => {
+it('closes the chat dialog through the toggle command and contains carrier failures', async () => {
   const surface = surfaceDouble()
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
   const b = await bench({ surface: surface.service })
-  surface.publish({ presentation: 'panel' })
+  surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
   const command = b.commands.get('orb.toggle')
-  const resolution = command?.resolve({ region: 'page', modal: null, target: null })
+  const resolution = command?.resolve({ region: 'page', modal: ORB_CHAT_MODAL_ID, target: null })
   expect(resolution?.status).toBe('handled')
   if (resolution?.status === 'handled') resolution.run()
   await flush()
+  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
+
+  surface.publish({ presentation: 'panel', modal: null })
+  await flush()
+  const panel = command?.resolve({ region: 'page', modal: null, target: null })
+  if (panel?.status === 'handled') panel.run()
+  await flush()
   expect(surface.service.collapse).toHaveBeenCalledOnce()
 
-  surface.service.expand.mockRejectedValueOnce(new Error('carrier closed'))
+  surface.service.presentModal.mockRejectedValueOnce(new Error('carrier closed'))
   surface.publish({ presentation: 'orb' })
   await flush()
   const again = command?.resolve({ region: 'page', modal: null, target: null })
@@ -287,13 +298,14 @@ it('collapses the panel through the toggle command and contains carrier failures
   expect(errors).toHaveBeenCalledWith('orb: surface command failed', expect.any(Error))
 })
 
-it('issues every overlay action through the registered face', async () => {
+it('issues every registered action through the entry faces', async () => {
   const surface = surfaceDouble()
-  const benchResult = await bench({ surface: surface.service })
-  const entry = benchResult.runtime.slots.entries('shell.overlay')[0]
-  const face = entry?.inject?.() as { actions: {
-    expand(): void
-    collapse(): void
+  const capture = captureDouble(IDLE_CAPTURE)
+  const benchResult = await bench({ surface: surface.service, capture })
+  await provideVoice(benchResult.runtime, capture, outputDouble(PLAYBACK))
+  const overlayEntry = benchResult.runtime.slots.entries('shell.overlay')[0]
+  const face = overlayEntry?.inject?.() as { actions: {
+    openChat(): void
     setPinned(pinned: boolean): void
     presentModal(id: string): void
     dragBy(deltaX: number, deltaY: number): void
@@ -301,28 +313,65 @@ it('issues every overlay action through the registered face', async () => {
     toggleMuted(): void
     cyclePolicy(): void
     toggleVoice(): void
-    submitPrompt(text: string): Promise<void>
-    takeTranscript(): string | null
   } }
-  face.actions.expand()
-  face.actions.collapse()
+  face.actions.openChat()
   face.actions.setPinned(true)
-  face.actions.presentModal('orb.quick-setup')
+  face.actions.presentModal(QUICK_SETUP_MODAL_ID)
   face.actions.dragBy(6, -4)
   face.actions.pointerInside(true)
-  // Playback commands are no-ops while its plugin is unmounted.
   face.actions.toggleMuted()
   face.actions.cyclePolicy()
-  // No capture service is mounted, so the voice command is a no-op.
-  face.actions.toggleVoice()
-  expect(face.actions.takeTranscript()).toBeNull()
   await flush()
-  expect(surface.service.expand).toHaveBeenCalledOnce()
-  expect(surface.service.collapse).toHaveBeenCalledOnce()
+  expect(surface.service.presentModal).toHaveBeenCalledWith(ORB_CHAT_MODAL_ID)
+  expect(surface.service.presentModal).toHaveBeenCalledWith(QUICK_SETUP_MODAL_ID)
   expect(surface.service.setPinned).toHaveBeenCalledExactlyOnceWith(true)
-  expect(surface.service.presentModal).toHaveBeenCalledExactlyOnceWith('orb.quick-setup')
   expect(surface.service.dragBy).toHaveBeenCalledExactlyOnceWith(6, -4)
   expect(surface.service.setPointerInside).toHaveBeenCalledExactlyOnceWith(true)
+
+  const chatEntry = benchResult.runtime.slots.entries('shell.modal')[0]
+  const chat = chatEntry?.inject?.() as { actions: {
+    takeTranscript(): string | null
+    dismiss(): void
+    startDictation(): Promise<void>
+    finishDictation(): Promise<string>
+    cancelDictation(): void
+  } }
+  expect(chat.actions.takeTranscript()).toBeNull()
+  await chat.actions.startDictation()
+  expect(capture.service.begin).toHaveBeenCalledOnce()
+  expect(await chat.actions.finishDictation()).toBe('held transcript')
+  chat.actions.cancelDictation()
+  chat.actions.dismiss()
+  await flush()
+  expect(capture.service.cancel).toHaveBeenCalledOnce()
+  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
+})
+
+it('treats playback and capture commands as no-ops while those plugins are unmounted', async () => {
+  const surface = surfaceDouble()
+  const benchResult = await bench({ surface: surface.service })
+  const entry = benchResult.runtime.slots.entries('shell.overlay')[0]
+  const face = entry?.inject?.() as { actions: {
+    toggleMuted(): void
+    cyclePolicy(): void
+    toggleVoice(): void
+  } }
+  face.actions.toggleMuted()
+  face.actions.cyclePolicy()
+  face.actions.toggleVoice()
+  const chatEntry = benchResult.runtime.slots.entries('shell.modal')[0]
+  const chat = chatEntry?.inject?.() as { actions: {
+    takeTranscript(): string | null
+    startDictation(): Promise<void>
+    finishDictation(): Promise<string>
+    cancelDictation(): void
+  } }
+  expect(chat.actions.takeTranscript()).toBeNull()
+  await chat.actions.startDictation()
+  expect(await chat.actions.finishDictation()).toBe('')
+  chat.actions.cancelDictation()
+  await flush()
+  expect(surface.service.presentModal).not.toHaveBeenCalled()
 })
 
 it('reports a failed surface observation', async () => {
@@ -358,9 +407,11 @@ it('follows the carrier presentation and reduced-motion preference', async () =>
   surface.publish({ presentation: 'panel', pinned: true })
   await flush()
   expect(document.querySelector('[data-orb]')).toBeNull()
+
+  surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
+  await flush()
+  expect(document.querySelector('[data-orb]')).toBeNull()
   expect(document.querySelector('[data-orb-prompt-input]')?.getAttribute('aria-label')).toBe(zh['prompt.label'])
-  fireEvent.keyDown(document.querySelector('[data-orb-prompt]') as HTMLElement, { key: 'Escape' })
-  expect(surface.service.collapse).toHaveBeenCalledOnce()
 })
 
 it('sends the chat box prompt to the most recent Session', async () => {
@@ -368,14 +419,14 @@ it('sends the chat box prompt to the most recent Session', async () => {
   const b = await bench({ surface: surface.service })
   const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
   await b.runtime.sessions.add({ id: 'recent', session: { prompt } })
-  surface.publish({ presentation: 'panel' })
+  surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
   const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
   fireEvent.change(input, { target: { value: '  summarize the day  ' } })
   await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }) })
   await flush()
   expect(prompt).toHaveBeenCalledWith([{ type: 'text', text: 'summarize the day' }], 'queue')
-  expect(surface.service.collapse).toHaveBeenCalledOnce()
+  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
 })
 
 it('creates a blank Session when the catalog is empty', async () => {
@@ -383,14 +434,14 @@ it('creates a blank Session when the catalog is empty', async () => {
   const b = await bench({ surface: surface.service })
   const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
   b.runtime.sessions.stubCreate(async () => b.runtime.sessions.add({ id: 'created', session: { prompt } }))
-  surface.publish({ presentation: 'panel' })
+  surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
   const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
   fireEvent.change(input, { target: { value: 'hello' } })
   await act(async () => { fireEvent.click(document.querySelector('[data-orb-prompt-send]') as HTMLElement) })
   await flush()
   expect(prompt).toHaveBeenCalledOnce()
-  expect(surface.service.collapse).toHaveBeenCalledOnce()
+  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
 })
 
 it('reports a rejected prompt inside the chat box', async () => {
@@ -398,14 +449,14 @@ it('reports a rejected prompt inside the chat box', async () => {
   const b = await bench({ surface: surface.service })
   const prompt = vi.fn(async () => ({ ok: false as const, error: new RemoteError('gateway/internal', 'offline', {}) }))
   await b.runtime.sessions.add({ id: 'recent', session: { prompt } })
-  surface.publish({ presentation: 'panel' })
+  surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
   const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
   fireEvent.change(input, { target: { value: 'retry' } })
   await act(async () => { fireEvent.click(document.querySelector('[data-orb-prompt-send]') as HTMLElement) })
   await flush()
   expect(document.querySelector('[role=alert]')?.textContent).toBe(zh['prompt.failed'])
-  expect(surface.service.collapse).not.toHaveBeenCalled()
+  expect(surface.service.dismissModal).not.toHaveBeenCalled()
 })
 
 it('reflects the optional voice services and drives them from the menu', async () => {
