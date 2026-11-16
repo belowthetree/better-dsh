@@ -171,7 +171,7 @@ export const inject = ['slots', 'theme', 'locale', 'shortcuts']
 
 /** Presentation reported until an optional surface carrier publishes its own. */
 const CLASSIC_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
 })
 
 /**

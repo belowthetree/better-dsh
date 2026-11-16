@@ -11,7 +11,7 @@ import {
 } from '../src/client/bubbles.tsx'
 
 /** Orb presentation of the committed form profile. */
-const ORB: SurfaceSnapshot = { form: 'orb', presentation: 'orb', pinned: false, available: true, modal: null }
+const ORB: SurfaceSnapshot = { form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null }
 
 function chat(input: {
   readonly answers?: readonly { readonly turn: number; readonly response: string }[]
@@ -118,10 +118,11 @@ describe('bubbleOutputs', () => {
 })
 
 describe('BubblesLayer', () => {
-  function layer(options: { readonly reference?: boolean } = {}) {
+  function layer(options: { readonly reference?: boolean; readonly surface?: SurfaceSnapshot } = {}) {
     const renderSlot = vi.fn(() => <div data-testid="stack" />)
+    const surface = options.surface ?? ORB
     const props = {
-      useSurface: (select: (value: SurfaceSnapshot) => unknown) => select(ORB),
+      useSurface: (select: (value: SurfaceSnapshot) => unknown) => select(surface),
       useSessions: (select: (value: { readonly ids: readonly string[] }) => unknown) =>
         select({ ids: ['session-1'] }),
       useResource: () => ({ value: options.reference === false ? {} : { reference: { sessionId: 'session-1' } } }),
@@ -143,6 +144,35 @@ describe('BubblesLayer', () => {
     render(createElement(BubblesLayer, props as never))
     expect(screen.getByTestId('bound')).toBeTruthy()
     expect(renderSlot).toHaveBeenCalledWith('better-interact.bubbles.stack', {})
+  })
+
+  it('asks for the column once per pointer entry into the orb window', () => {
+    const show = vi.fn()
+    const { props } = layer()
+    render(createElement(BubblesLayer, { ...props, show } as never))
+    fireEvent.pointerEnter(document)
+    fireEvent.pointerMove(document)
+    expect(show).toHaveBeenCalledOnce()
+    fireEvent.pointerLeave(document)
+    fireEvent.pointerEnter(document)
+    expect(show).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not ask for the column before a Session is bound', () => {
+    const show = vi.fn()
+    const { props } = layer({ reference: false })
+    render(createElement(BubblesLayer, { ...props, show } as never))
+    fireEvent.pointerEnter(document)
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it('ignores pointer activity reported by the surface window', () => {
+    const show = vi.fn()
+    const { props } = layer({ surface: { ...ORB, role: 'surface', presentation: 'bubbles' } })
+    render(createElement(BubblesLayer, { ...props, show } as never))
+    fireEvent.pointerEnter(document)
+    fireEvent.pointerMove(document)
+    expect(show).not.toHaveBeenCalled()
   })
 })
 

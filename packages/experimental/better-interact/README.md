@@ -1,5 +1,5 @@
 ---
-description: "Agent output bubbles and the workbench dialog for the Desktop orb form: live agent text at the right edge, the conversation without shell side panels."
+description: "Agent output bubbles and the workbench dialog for the Desktop orb form: live agent text above the orb, the conversation without shell side panels."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The orb form's agent interactivity: a `shell.overlay` entry that reports agent output as a bubble column at the display's right edge, and a `shell.modal` entry that hosts the current conversation in a workbench dialog without the shell's side panels. The bubble column shows the answer being written, keeps the newest answer for three seconds after the output settles, and expands the earlier answers while the pointer rests on it. The workbench renders the shared Conversation content with the Chat view alone, plus a rebindable command that opens it.
+The orb form's agent interactivity: a `shell.overlay` entry that reports agent output as a bubble column above the orb, and a `shell.modal` entry that hosts the current conversation in a workbench dialog without the shell's side panels. The bubble column shows the answer being written, keeps the newest answer for three seconds after the output settles, and expands the earlier answers while the pointer rests on it. The workbench renders the shared Conversation content with the Chat view alone, plus a rebindable command that opens it.
 
 ## Table of Contents
 
@@ -27,13 +27,13 @@ The orb form's agent interactivity: a `shell.overlay` entry that reports agent o
 
 Add the `better-interact` row to a profile whose form declares the orb presentation, together with [client-surface](../../client/surface/README.md) and the surface-aware [ui-layout](../../client/ui-layout/README.md). The package injects `surface`, `slots`, `locale`, `shortcuts`, `resources`, and `sessions`.
 
-The overlay entry `better-interact.bubbles` binds the Session the catalog lists first, retains it through the `betterinteract` resource, and renders its bubbles only while the carrier presents the `bubbles` presentation. While the agent streams an answer, the entry asks the carrier for that presentation; the carrier places the column at the work area's right edge without taking focus, so it can appear while the user works in another application. The column draws the newest answer as one card and fades three seconds after the output settles, then returns the carrier to the orb. Resting the pointer on the column expands the earlier answers upward and keeps them open; three seconds after the pointer leaves, the column collapses back to the newest answer. Hovering the orb opens the same column with its history expanded; the carrier keeps the orb on screen beside the column, so neither surface replaces the other while the history is up. Each bubble opens the workbench, which the carrier raises over the column and restores on dismissal.
+The overlay entry `better-interact.bubbles` binds the Session the catalog lists first, retains it through the `betterinteract` resource, and renders its bubbles only while the carrier presents the `bubbles` presentation. While the agent streams an answer, the entry asks the carrier for that presentation; the carrier places the column above the orb's own window without taking focus, so it can appear while the user works in another application. The column draws the newest answer as one card and fades three seconds after the output settles, then asks the carrier to dismiss it. Resting the pointer on the column expands the earlier answers upward and keeps them open; three seconds after the pointer leaves, the column collapses back to the newest answer. Pointer activity over the resident orb window asks the carrier for the same column with its history expanded; the column renders in the surface window while the orb keeps its own window, so neither surface replaces the other. Each bubble opens the workbench, which the carrier raises over the surface window and restores on dismissal.
 
 The modal entry `better-interact.workbench` renders the workbench dialog for the catalog's current Session: the shared Conversation content in its embedded variant with the Chat view alone, so no sidebar, right panel, or title bar appears. The dialog asks the carrier for four fifths of the work area height and scrolls its own transcript. The `betterInteract.workbench` command, bound by default to Ctrl+Alt+W on Windows and macOS, opens the same dialog and is rebindable in Settings. An empty catalog renders the dialog's empty state instead of a conversation.
 
 ## Understand the implementation
 
-The bubble text comes from the Chat target of the bound Session: one entry per loaded Turn from its navigation previews, plus the streaming prefix from the partial accumulator while the agent writes. The stack owns its timers inside one component: two effects keep the column on screen while output is in progress and schedule the fade and the dismissal after it settles, and a third schedules the collapse after the pointer leaves. `surface.presentBubbles()` and `surface.dismissBubbles()` are the only carrier commands the entry issues, so a profile without a form carrier keeps the classic presentation.
+The bubble text comes from the Chat target of the bound Session: one entry per loaded Turn from its navigation previews, plus the streaming prefix from the partial accumulator while the agent writes. The stack owns its timers inside one component: two effects keep the column on screen while output is in progress and schedule the fade and the dismissal after it settles, and a third schedules the collapse after the pointer leaves. `surface.presentBubbles()` and `surface.dismissBubbles()` are the only carrier commands the entry issues, so a profile without a form carrier keeps the classic presentation. The hover request comes from the orb window's renderer, which reports pointer activity only for the snapshot's `orb` role; main routes the command to the surface window's presentation, and the column never replaces an open panel or modal.
 
 The workbench reuses `conversation.content` through `renderFactorySlot` rather than composing transcript parts itself; only the View ring is replaced with the Chat view, which is what removes the side panels without forking the conversation. The `bubbles` presentation, its window geometry, and its click-through live in `apps/desktop`; the plugin only asks for it.
 
@@ -60,5 +60,6 @@ No direct effect; the bubbles and the workbench only read Session events the tra
 ## Known Limitations and Deferred Work
 
 - The column reports the Session the catalog lists first, so a second Session that produces output while another is ahead in the catalog is not reported.
-- The `bubbles` presentation replaces the orb while it is visible; the orb returns when the column fades or is dismissed.
+- The column renders in the surface window; a panel or modal presented there is not replaced by a hovered orb.
+- The hover request re-arms only when the pointer leaves the orb window, so a pointer resting on the orb does not reopen a column that has just faded.
 - History is limited to the Turn previews in the loaded window, so scrolling further back in the transcript does not extend it.

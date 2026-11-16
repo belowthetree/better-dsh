@@ -81,7 +81,7 @@ import {
   clampFormLayout, defaultFormLayout, DesktopFormLayoutStore, formLayoutPath,
   type DesktopFormLayout, type DesktopWorkArea,
 } from './form-layout.ts'
-import { formWindowOptions } from './form-window.ts'
+import { formWindowOptions, type DesktopFormRole } from './form-window.ts'
 import type { DesktopBootPayload } from './ipc.ts'
 import type { DshProfileForm } from '@deepseek-ai/dsh-package-manifest'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
@@ -105,6 +105,8 @@ let backendReady = false
 const rendererConsole = new RendererConsoleTail()
 /** Product-window registry every native capability resolves its owner from. */
 const productWindows = new DesktopProductWindow()
+/** Resident orb window of a form profile; it never hosts another presentation. */
+const orbWindows = new DesktopProductWindow()
 /** Launch-selected profile, resolved by main() before recovery can need it. */
 let launch: DesktopLaunchSelection | undefined
 /** Deep link the operating system delivered before main() chose a profile. */
@@ -130,7 +132,7 @@ function acceptDeepLink(url: string): void {
 app.on('open-url', (event, url) => { event.preventDefault(); acceptDeepLink(url) })
 /** Presentation a renderer boots with when its profile presents the classic workspace window. */
 const CLASSIC_SURFACE_SNAPSHOT: SurfaceSnapshot = {
-  form: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
 }
 
 /**
@@ -323,8 +325,9 @@ function platformLoginUrl(authorizeUrl: string): string {
   return url.href
 }
 
-/** Form geometry a product window is constructed with; absent for the classic workspace window. */
+/** Form window a product window is constructed with; absent for the classic workspace window. */
 interface DesktopFormWindowInput {
+  readonly role: DesktopFormRole
   readonly layout: DesktopFormLayout
   readonly workArea: DesktopWorkArea
 }
@@ -362,7 +365,7 @@ function createWindow(preload: string, show = false, primary = false, form?: Des
       webviewTag: primary,
       devTools: true,
     },
-  } : formWindowOptions({ preload, layout: form.layout, workArea: form.workArea }))
+  } : formWindowOptions({ preload, role: form.role, layout: form.layout, workArea: form.workArea }))
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -487,22 +490,34 @@ async function main(): Promise<void> {
       void formLayoutStore.save(formLayout).catch(() => undefined)
     }
   }
+  /** Display work area the form windows occupy: the orb window anchors the form. */
   const surfaceWorkArea = (): DesktopWorkArea => {
-    const window = productWindows.current()
+    const window = orbWindows.current() ?? productWindows.current()
     return window === undefined ? screen.getPrimaryDisplay().workArea : screen.getDisplayMatching(window.getBounds()).workArea
   }
+  /** Native window for one form role; undefined while that window is absent. */
+  const formWindow = (role: DesktopFormRole): BrowserWindow | undefined =>
+    role === 'orb' ? orbWindows.current() : productWindows.current()
+  /** Snapshot one product renderer boots or reads with, falling back to the classic descriptor. */
+  const snapshotFor = (formRole: DesktopFormRole | undefined): SurfaceSnapshot =>
+    formRole === undefined ? CLASSIC_SURFACE_SNAPSHOT : surfaceController?.snapshot(formRole) ?? CLASSIC_SURFACE_SNAPSHOT
   const surfaceEffects: SurfaceWindowEffects = {
-    setBounds: (bounds) => { productWindows.current()?.setBounds(bounds) },
-    setResizable: (resizable) => {
-      const window = productWindows.current()
+    setBounds: (role, bounds) => { formWindow(role)?.setBounds(bounds) },
+    setResizable: (role, resizable) => {
+      const window = formWindow(role)
       if (window !== undefined && window.isResizable() !== resizable) window.setResizable(resizable)
     },
-    setIgnoreMouseEvents: (ignore) => { productWindows.current()?.setIgnoreMouseEvents(ignore, { forward: true }) },
-    focus: () => {
+    setIgnoreMouseEvents: (role, ignore) => {
+      formWindow(role)?.setIgnoreMouseEvents(ignore, { forward: true })
+    },
+    revealSurface: () => { productWindows.current()?.showInactive() },
+    focusSurface: () => {
       const window = productWindows.current()
       if (window !== undefined) { window.show(); window.focus() }
     },
-    publish: (snapshot) => { productWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
+    hideSurface: () => { productWindows.current()?.hide() },
+    publishOrb: (snapshot) => { orbWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
+    publishSurface: (snapshot) => { productWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
     persist: saveFormLayout,
     workArea: surfaceWorkArea,
   }
@@ -636,22 +651,52 @@ async function main(): Promise<void> {
   let returnedAttempt: string | undefined
   let pendingWelcomeNotice: WelcomeNotice | undefined
   let previousAccountStatus: string | undefined
-  const assertProductSender = (event: IpcMainInvokeEvent): BrowserWindow => productWindows.assertSender(event)
-  let navigation: { window: BrowserWindow; url: string; promise: Promise<void> } | undefined
-  const navigateMain = (url: string): Promise<void> => {
-    const window = productWindows.current()
-    if (quitting || window === undefined || window.isDestroyed()) return Promise.resolve()
-    if (navigation?.window === window && navigation.url === url) return navigation.promise
-    const next = { window, url, promise: Promise.resolve() }
+  /** One product window that owns an event, with its form role when the profile presents a form. */
+  interface ProductWindowOwner {
+    readonly window: BrowserWindow
+    /** Form role of the owning window; absent for the classic workspace window. */
+    readonly formRole?: DesktopFormRole
+  }
+  /** Resolve the product window that owns one main-process event. */
+  const productWindowOwner = (event: Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>): ProductWindowOwner | undefined => {
+    const orb = orbWindows.current()
+    if (orb !== undefined && orbWindows.owns(event)) return { window: orb, formRole: 'orb' }
+    const surface = productWindows.current()
+    if (surface !== undefined && productWindows.owns(event)) {
+      return { window: surface, ...(requestedForm.kind === 'orb' ? { formRole: 'surface' as const } : {}) }
+    }
+    return undefined
+  }
+  const assertProductOwner = (event: IpcMainInvokeEvent): ProductWindowOwner => {
+    assertDesktopSender(event, ['app'])
+    const owner = productWindowOwner(event)
+    if (owner === undefined) throw new Error('dsh desktop: rejected IPC from an unowned renderer')
+    return owner
+  }
+  const assertProductSender = (event: IpcMainInvokeEvent): BrowserWindow => assertProductOwner(event).window
+  /** Every live product window, orb first so owner-independent broadcasts reach both. */
+  const productWindowList = (): BrowserWindow[] => [orbWindows.current(), productWindows.current()]
+    .filter((window): window is BrowserWindow => window !== undefined)
+  const navigations = new Map<BrowserWindow, { url: string; promise: Promise<void> }>()
+  /** Navigate one product window, joining a navigation already in flight for the same document. */
+  const navigateWindow = (window: BrowserWindow, url: string): Promise<void> => {
+    if (quitting || window.isDestroyed()) return Promise.resolve()
+    const current = navigations.get(window)
+    if (current?.url === url) return current.promise
+    const next = { url, promise: Promise.resolve() }
     next.promise = window.loadURL(url).catch((error: unknown) => {
-      if (quitting || shuttingDown || window.isDestroyed() || navigation !== next
+      if (quitting || shuttingDown || window.isDestroyed() || navigations.get(window) !== next
         || (error instanceof Error && 'code' in error && error.code === 'ERR_ABORTED')) return
-      navigation = undefined
+      navigations.delete(window)
       throw error
     })
-    navigation = next
+    navigations.set(window, next)
     return next.promise
   }
+  /** Load the workspace document in every product window; each renderer boots against the same Host. */
+  const navigateMain = (url: string): Promise<void> => Promise.all(productWindowList().map(async (window) => {
+    await navigateWindow(window, url)
+  })).then(() => {})
   const platformView = new DesktopPlatformView(join(app.getAppPath(), 'lib', 'preload-platform-account.cjs'),
     () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', process.platform === 'win32' ? 'win32' : 'darwin',
     owner => isMandatory() || updateOverlays.input(owner).blocked)
@@ -780,7 +825,7 @@ async function main(): Promise<void> {
         const recovery = hostReady.then(async () => {
           if (quitting) return
           // A replacement Host can have a new port, cookie, or boot injections even at the same URL.
-          navigation = undefined
+          navigations.clear()
           await navigateMain(applicationUrl)
           if (backend.host !== undefined) updateJournal?.action('workspace-ready')
         })
@@ -940,42 +985,44 @@ async function main(): Promise<void> {
     return Promise.resolve(new Response(null, { status: 404 }))
   })
 
-  installDesktopDirectoryPicker(() => productWindows.current())
-  installMicrophonePermissions(session.defaultSession, () => productWindows.webContents())
-  const shortcuts = installDesktopShortcuts(() => productWindows.current(), app.getPath('userData'),
+  installDesktopDirectoryPicker(() => productWindowList())
+  installMicrophonePermissions(session.defaultSession, () => productWindowList().map(window => window.webContents))
+  const shortcuts = installDesktopShortcuts(() => productWindowList(), app.getPath('userData'),
     process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux', () => { refreshApplicationMenu() }, window => updateOverlays.input(window))
   app.on('will-quit', () => { shortcuts.dispose() })
 
   ipcMain.handle(DESKTOP_IPC.surfaceSnapshot, (event): SurfaceSnapshot => {
-    productWindows.assertSender(event)
-    return surfaceController?.snapshot() ?? CLASSIC_SURFACE_SNAPSHOT
+    return snapshotFor(assertProductOwner(event).formRole)
   })
   ipcMain.handle(DESKTOP_IPC.surfaceCommand, (event, payload: unknown) => {
-    productWindows.assertSender(event)
+    const { formRole } = assertProductOwner(event)
     const command = parseSurfaceCommand(payload)
     if (command === undefined) throw new Error('dsh desktop: rejected an invalid surface command')
-    if (surfaceController === undefined) throw new Error('dsh desktop: the classic presentation has no surface commands')
-    surfaceController.dispatch(command)
+    if (formRole === undefined || surfaceController === undefined) {
+      throw new Error('dsh desktop: the classic presentation has no surface commands')
+    }
+    surfaceController.dispatch(command, formRole)
   })
   ipcMain.on(DESKTOP_IPC.surfacePointer, (event, inside: unknown) => {
-    if (!productWindows.owns(event) || typeof inside !== 'boolean') return
-    surfaceController?.dispatch({ kind: 'pointerInside', inside })
+    const formRole = productWindowOwner(event)?.formRole
+    if (formRole === undefined || typeof inside !== 'boolean') return
+    surfaceController?.dispatch({ kind: 'pointerInside', inside }, formRole)
   })
 
   ipcMain.handle(DESKTOP_IPC.boot, async (event): Promise<DesktopBootPayload> => {
-    productWindows.assertSender(event)
+    const { formRole } = assertProductOwner(event)
     await startup
     if (backend.host === undefined || hostUrl === undefined) throw new Error('Desktop Host is unavailable')
     return {
       injections,
       streamBaseUrl: new URL(hostUrl).origin,
-      surface: surfaceController?.snapshot() ?? CLASSIC_SURFACE_SNAPSHOT,
+      surface: snapshotFor(formRole),
     }
   })
 
   ipcMain.handle(DESKTOP_IPC.bootFailed, (event, message: unknown) => {
     assertDesktopSender(event, ['app'])
-    if (!productWindows.owns(event)) {
+    if (productWindowOwner(event) === undefined) {
       throw new Error('dsh desktop: rejected startup failure from a non-primary frame')
     }
     if (typeof message !== 'string') throw new Error('dsh desktop: startup failure must be text')
@@ -992,7 +1039,8 @@ async function main(): Promise<void> {
   })
 
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*', 'wss://127.0.0.1/*'] }, (details, callback) => {
-    if (hostUrl === undefined || hostCookie === undefined || details.webContentsId !== productWindows.webContents()?.id) {
+    if (hostUrl === undefined || hostCookie === undefined
+      || !productWindowList().some(window => window.webContents.id === details.webContentsId)) {
       callback({})
       return
     }
@@ -1005,9 +1053,9 @@ async function main(): Promise<void> {
   })
 
   const assertMainApplication = (event: IpcMainInvokeEvent): BrowserWindow => {
-    const owner = productWindows.assertSender(event)
+    const { window } = assertProductOwner(event)
     if (event.senderFrame === null || !event.senderFrame.url.startsWith('dsh-app://app/')) throw new Error('Rejected Platform command')
-    return owner
+    return window
   }
   installFileActions(assertMainApplication, () => hostUrl)
   ipcMain.on(PLATFORM_IPC.bootstrap, (event) => {
@@ -1024,15 +1072,15 @@ async function main(): Promise<void> {
     platformView.setBounds(platformBounds(bounds))
   })
   ipcMain.handle(PLATFORM_IPC.close, (event) => { assertMainApplication(event); platformView.close() })
-  // Only the main window may synchronize its palette with the native material.
+  // Only a product window may synchronize its palette with the native material.
   ipcMain.on(DESKTOP_IPC.nativeThemeSet, (event, source: unknown) => {
-    if (!productWindows.owns(event) || event.senderFrame === null
+    if (productWindowOwner(event) === undefined || event.senderFrame === null
       || !event.senderFrame.url.startsWith(`${SCHEME}://app/`)) return
     if (source !== 'light' && source !== 'dark' && source !== 'system') return
     nativeTheme.themeSource = source
   })
   ipcMain.handle(DESKTOP_IPC.localeBootstrap, async (event) => {
-    if (!productWindows.owns(event) || event.senderFrame === null
+    if (productWindowOwner(event) === undefined || event.senderFrame === null
       || new URL(event.senderFrame.url).origin !== new URL(applicationUrl).origin) {
       throw new Error('desktop welcome: rejected locale request from an unowned frame')
     }
@@ -1040,8 +1088,7 @@ async function main(): Promise<void> {
     return { languages: systemLanguages, preference: await welcomeBackend.readLocalePreference() }
   })
   ipcMain.on(DESKTOP_IPC.localeChanged, (event, next: unknown) => {
-    const window = productWindows.current()
-    if (window === undefined || !productWindows.owns(event) || typeof next !== 'string') return
+    if (productWindowOwner(event) === undefined || typeof next !== 'string') return
     const current = resolveDesktopStartupLocale(next, systemLanguages)
     writeDesktopLocaleCache(app.getPath('userData'), current.id)
     if (current.id === locale.id) return
@@ -1093,9 +1140,10 @@ async function main(): Promise<void> {
     return (await readWelcomeState()).hasApiKey
   })
   ipcMain.on(DESKTOP_IPC.onboardingActive, (event, active: unknown) => {
-    const window = productWindows.current()
-    if (window === undefined || !productWindows.owns(event) || event.senderFrame === null
+    const owner = productWindowOwner(event)
+    if (owner === undefined || owner.formRole === 'orb' || event.senderFrame === null
       || !event.senderFrame.url.startsWith(`${SCHEME}://app/`) || typeof active !== 'boolean') return
+    const window = owner.window
     window.setMinimumSize(active ? 960 : 520, 600)
     if (active) {
       const { width, height } = window.getBounds()
@@ -1463,16 +1511,72 @@ async function main(): Promise<void> {
       window.hide()
     }
   }
+  /** Attach renderer diagnostics shared by the orb and surface windows. */
+  const trackRenderer = (window: BrowserWindow): void => {
+    window.webContents.on('console-message', (details) => {
+      if (details.level !== 'error') return
+      rendererConsole.push(`${details.sourceId}:${String(details.lineNumber)} ${details.message}`)
+    })
+    window.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+      if (isMainFrame && code !== -3 && !quitting && !window.isDestroyed()) {
+        reportFatal(new Error(`Desktop page failed to load: ${url} (${String(code)}: ${description})`), 'renderer')
+      }
+    })
+    window.webContents.on('preload-error', (_event, _path, error) => {
+      if (!quitting && !window.isDestroyed()) reportFatal(error, 'renderer')
+    })
+    window.webContents.on('render-process-gone', (_event, details) => {
+      navigations.delete(window)
+      if (!quitting && !window.isDestroyed() && details.reason !== 'clean-exit') {
+        reportFatal(new Error(`Desktop renderer exited: ${details.reason}`), 'renderer')
+      }
+    })
+  }
+  /**
+   * Dismiss an unpinned panel or the modal only when the whole form lost focus.
+   * Moving between the orb and surface windows stays inside the application, so
+   * the decision waits for both focus states to settle.
+   */
+  const formFocusLost = (): void => {
+    setImmediate(() => {
+      if (quitting) return
+      const surface = productWindows.current()
+      if (surface === undefined || surface.isDestroyed() || surface.isFocused()) return
+      if (orbWindows.current()?.isFocused() === true) return
+      surfaceController?.blurred()
+    })
+  }
+  /** The resident orb window; presentations in the surface window never replace it. */
+  const createOrbWindow = (): BrowserWindow => {
+    const window = createWindow(appPreload, false, false,
+      { role: 'orb', layout: formLayout ?? defaultFormLayout(surfaceWorkArea()), workArea: surfaceWorkArea() })
+    orbWindows.attach(window)
+    shortcuts.attach(window)
+    // Closing the orb would leave no way back to the form, so only an application quit closes it.
+    window.on('close', (event) => {
+      if (quitting || shellInstallerOwnsQuit || sessionEnding) return
+      event.preventDefault()
+    })
+    if (process.platform === 'win32') {
+      window.on('session-end', () => { sessionEnding = true })
+    } else {
+      window.on('focus', () => { sessionEnding = false })
+      window.on('show', () => { sessionEnding = false })
+    }
+    window.on('blur', formFocusLost)
+    window.on('closed', () => { navigations.delete(window); orbWindows.detach(window) })
+    trackRenderer(window)
+    return window
+  }
   const createMainWindow = (): BrowserWindow => {
     const window = createWindow(appPreload, false, true,
-      requestedForm.kind === 'orb' ? { layout: formLayout ?? defaultFormLayout(surfaceWorkArea()), workArea: surfaceWorkArea() } : undefined)
+      requestedForm.kind === 'orb'
+        ? { role: 'surface', layout: formLayout ?? defaultFormLayout(surfaceWorkArea()), workArea: surfaceWorkArea() }
+        : undefined)
     productWindows.attach(window)
     if (requestedForm.kind === 'orb') {
-      // An unpinned panel collapses when the user moves to another application.
-      window.on('blur', () => { surfaceController?.blurred() })
-      surfaceController ??= new DesktopSurfaceController({
-        layout: formLayout ?? defaultFormLayout(surfaceWorkArea()), effects: surfaceEffects,
-      })
+      // An unpinned panel collapses when the whole form loses focus.
+      window.on('blur', formFocusLost)
     }
     browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
     shortcuts.attach(window)
@@ -1498,46 +1602,47 @@ async function main(): Promise<void> {
       window.on('focus', () => { sessionEnding = false })
       window.on('show', () => { sessionEnding = false })
     }
-    window.on('closed', () => { productWindows.detach(window) })
-    window.webContents.on('console-message', (details) => {
-      if (details.level !== 'error') return
-      rendererConsole.push(`${details.sourceId}:${String(details.lineNumber)} ${details.message}`)
-    })
-    window.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
-      if (isMainFrame && code !== -3 && !quitting && !window.isDestroyed()) {
-        reportFatal(new Error(`Desktop page failed to load: ${url} (${String(code)}: ${description})`), 'renderer')
-      }
-    })
-    window.webContents.on('preload-error', (_event, _path, error) => {
-      if (!quitting && !window.isDestroyed()) reportFatal(error, 'renderer')
-    })
-    window.webContents.on('render-process-gone', (_event, details) => {
-      navigation = undefined
-      if (!quitting && !window.isDestroyed() && details.reason !== 'clean-exit') {
-        reportFatal(new Error(`Desktop renderer exited: ${details.reason}`), 'renderer')
-      }
-    })
+    window.on('closed', () => { navigations.delete(window); productWindows.detach(window) })
+    trackRenderer(window)
     return window
+  }
+  /** Create whichever product windows this launch needs, and the controller that drives a form profile's two windows. */
+  const ensureProductWindows = (): void => {
+    if (requestedForm.kind !== 'orb') {
+      if (productWindows.current() === undefined) createMainWindow()
+      return
+    }
+    if (orbWindows.current() === undefined) createOrbWindow()
+    if (productWindows.current() === undefined) createMainWindow()
+    surfaceController ??= new DesktopSurfaceController({
+      layout: formLayout ?? defaultFormLayout(surfaceWorkArea()), effects: surfaceEffects,
+    })
   }
   const enterWorkspace = async ({ activate = true }: { activate?: boolean } = {}): Promise<void> => {
     if (quitting) return
-    const window = productWindows.current() ?? createMainWindow()
+    ensureProductWindows()
+    const window = productWindows.current()
     await navigateMain(applicationUrl)
-    if (isQuitting() || recovery.active || window.isDestroyed()) return
-    if (process.platform === 'win32' && requestedForm.kind !== 'orb') window.setBackgroundColor(chromeFallbackFill())
-    // A form window floats above other applications; revealing it must not take their focus.
-    if (activate && requestedForm.kind !== 'orb') window.show()
-    else window.showInactive()
-    surfaceController?.restore()
+    if (isQuitting() || recovery.active || window === undefined || window.isDestroyed()) return
+    if (requestedForm.kind === 'orb') {
+      // The orb is the resident form; the surface window appears only for panel, bubbles, and modal.
+      orbWindows.current()?.showInactive()
+      surfaceController?.restore()
+    } else {
+      if (process.platform === 'win32') window.setBackgroundColor(chromeFallbackFill())
+      if (activate) window.show()
+      else window.showInactive()
+    }
     enteredWorkspace = true
     if (welcomeWindow !== undefined) {
       welcomeWindow.close()
-      window.webContents.send(DESKTOP_IPC.enterWorkspace)
+      for (const productWindow of productWindowList()) productWindow.webContents.send(DESKTOP_IPC.enterWorkspace)
     }
     welcomeWindow = undefined
     if (raiseAfterUpdate) {
       raiseAfterUpdate = false
-      window.moveTop()
+      const target = requestedForm.kind === 'orb' ? orbWindows.current() : window
+      target?.moveTop()
       if (requestedForm.kind !== 'orb') window.focus()
     }
     if (activate && development && process.env.DSH_DESKTOP_OPEN_DEVTOOLS !== '0') {
@@ -1597,12 +1702,17 @@ async function main(): Promise<void> {
         if (welcomeWindow === window) welcomeWindow = undefined
         if (enteredWorkspace || recovery.active) return
         // Nothing runs before the workspace opens. macOS keeps the Dock convention and drops the
-        // unused main window so the next activation rebuilds the welcome; elsewhere the close quits.
-        if (process.platform === 'darwin') productWindows.current()?.destroy()
-        else app.quit()
+        // unused product windows so the next activation rebuilds the welcome; elsewhere the close quits.
+        if (process.platform === 'darwin') {
+          productWindows.current()?.destroy()
+          orbWindows.current()?.destroy()
+        } else app.quit()
       })
       if (isQuitting() || recovery.active || enteredWorkspace) window.close()
-      else productWindows.current()?.hide()
+      else {
+        productWindows.current()?.hide()
+        orbWindows.current()?.hide()
+      }
     })().finally(() => { openingWelcome = undefined })
     return openingWelcome
   }
@@ -1626,14 +1736,16 @@ async function main(): Promise<void> {
   focusPrimaryWindow = () => {
     if (quitting) return
     if (isMandatory()) { mandatoryUI?.focus(); return }
-    const window = welcomeWindow ?? productWindows.current()
+    const surface = productWindows.current()
+    // Reveal what the workspace is already showing: a visible surface presentation, otherwise the resident orb.
+    const window = welcomeWindow ?? (surface !== undefined && surface.isVisible() ? surface : orbWindows.current() ?? surface)
     if (window === undefined || window.isDestroyed()) {
-      try { createMainWindow() } catch (error) { reportFatal(error, 'main'); return }
+      try { ensureProductWindows() } catch (error) { reportFatal(error, 'main'); return }
       void (backend.state.phase === 'ready' ? openInitialWindow() : navigateMain(applicationUrl)).catch((error: unknown) => { reportFatal(error, 'main') })
       return
     }
     // Startup and sign-out select the visible window before activation may reveal the workspace.
-    if (window === productWindows.current() && !enteredWorkspace) return
+    if (window !== welcomeWindow && !enteredWorkspace) return
     if (window.isMinimized()) window.restore()
     window.show()
     window.focus()
@@ -1657,6 +1769,7 @@ async function main(): Promise<void> {
     stopAccount?.()
     if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.hide()
     productWindows.current()?.hide()
+    orbWindows.current()?.hide()
     flushFormLayout()
     updateSchedule.dispose()
     updateDialog.dispose()
@@ -1695,7 +1808,7 @@ async function main(): Promise<void> {
     }).catch((error: unknown) => { console.error(error); if (!quitting && !shellInstallerOwnsQuit) finishQuit() })
   })
 
-  productWindows.attach(createMainWindow())
+  ensureProductWindows()
   if (typeof manifest !== 'object' || manifest === null) throw new Error('desktop policy: invalid application manifest')
   const developmentPolicy = app.isPackaged ? undefined : process.env.DSH_DESKTOP_MANDATORY_UPDATE_CONFIG
   const policyInput: unknown = app.isPackaged

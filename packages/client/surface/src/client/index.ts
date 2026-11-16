@@ -5,7 +5,7 @@ import { SurfaceRuntime } from './service.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** One product window's form and presentation state. */
+    /** One renderer window's role, form, and presentation state. */
     surface: import('./service.ts').SurfaceService
   }
 }

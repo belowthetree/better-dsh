@@ -80,6 +80,7 @@ vi.mock('electron', () => ({
     on() { return this }
     isDestroyed() { return false }
     isMinimized() { return false }
+    isVisible() { return false }
     restore = vi.fn()
     focus = state.focusWorkspace
     moveTop = state.moveTopWorkspace

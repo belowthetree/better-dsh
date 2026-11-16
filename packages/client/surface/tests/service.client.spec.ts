@@ -6,7 +6,7 @@ import { SurfaceRuntime } from '../src/client/service.ts'
 
 /** Committed classic presentation used as the comparison baseline. */
 const BASE: SurfaceSnapshot = Object.freeze({
-  form: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
 })
 
 interface FakeAdapter {
@@ -73,6 +73,7 @@ describe('SurfaceRuntime snapshot', () => {
     expect(runtime.snapshot()).toBe(BASE)
     const changes: SurfaceSnapshot[] = [
       { ...BASE, form: 'orb' },
+      { ...BASE, role: 'orb' },
       { ...BASE, presentation: 'panel' },
       { ...BASE, pinned: true },
       { ...BASE, available: false },

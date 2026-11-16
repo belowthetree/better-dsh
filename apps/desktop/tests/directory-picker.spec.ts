@@ -11,7 +11,7 @@ const { installDesktopDirectoryPicker } = await import('../src/directory-picker.
 
 beforeEach(() => { vi.resetAllMocks() })
 
-function fixture() {
+function fakeWindow() {
   const frame = { url: 'dsh-app://app/' }
   const window = {
     webContents: { mainFrame: frame },
@@ -21,12 +21,26 @@ function fixture() {
     show: vi.fn(),
     focus: vi.fn(),
   }
-  let current: BrowserWindow | undefined = window as unknown as BrowserWindow
-  installDesktopDirectoryPicker(() => current)
+  const event = { sender: window.webContents, senderFrame: frame } as unknown as IpcMainInvokeEvent
+  return { window, frame, event }
+}
+
+function fixture() {
+  const first = fakeWindow()
+  const windows: BrowserWindow[] = [first.window as unknown as BrowserWindow]
+  installDesktopDirectoryPicker(() => windows)
   expect(electron.handle.mock.calls[0]?.[0]).toBe(DESKTOP_IPC.directoryPick)
   const handler = electron.handle.mock.calls[0]![1]
-  const event = { sender: window.webContents, senderFrame: frame } as unknown as IpcMainInvokeEvent
-  return { window, frame, event, handler, detach: () => { current = undefined } }
+  return {
+    ...first,
+    handler,
+    addWindow() {
+      const next = fakeWindow()
+      windows.push(next.window as unknown as BrowserWindow)
+      return next
+    },
+    detach: () => { windows.length = 0 },
+  }
 }
 
 describe('Desktop directory picker', () => {
@@ -54,6 +68,16 @@ describe('Desktop directory picker', () => {
     await expect(f.handler(f.event)).rejects.toThrow('chooser failed')
     electron.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [] })
     await expect(f.handler(f.event)).resolves.toBeNull()
+  })
+
+  it('opens the dialog for the product window that requested it', async () => {
+    const f = fixture()
+    const second = f.addWindow()
+    electron.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['/second'] })
+    await expect(f.handler(second.event)).resolves.toBe('/second')
+    expect(electron.showOpenDialog).toHaveBeenCalledExactlyOnceWith(second.window,
+      { properties: ['openDirectory', 'createDirectory'] })
+    expect(second.window.focus).toHaveBeenCalledOnce()
   })
 
   it('discards the selected path after the parent is destroyed', async () => {

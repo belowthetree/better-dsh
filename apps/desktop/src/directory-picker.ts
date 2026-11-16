@@ -5,16 +5,14 @@ import { DESKTOP_IPC, assertDesktopSender } from './ipc.ts'
 
 /**
  * Install the application-lifetime directory picker IPC handler.
- * @param getWindow - Current local application window; shell pages and subframes cannot open dialogs.
+ * @param getWindows - Current local application windows; shell pages and subframes cannot open dialogs.
  */
-export function installDesktopDirectoryPicker(getWindow: () => BrowserWindow | undefined): void {
+export function installDesktopDirectoryPicker(getWindows: () => readonly BrowserWindow[]): void {
   const pending = new WeakMap<BrowserWindow, Promise<string | null>>()
   ipcMain.handle(DESKTOP_IPC.directoryPick, async (event) => {
-    const window = getWindow()
-    if (window === undefined || window.isDestroyed() || event.sender !== window.webContents
-      || event.senderFrame !== window.webContents.mainFrame) {
-      throw new Error('dsh desktop: rejected directory picker from an unowned renderer')
-    }
+    const window = getWindows().find(candidate => !candidate.isDestroyed()
+      && event.sender === candidate.webContents && event.senderFrame === candidate.webContents.mainFrame)
+    if (window === undefined) throw new Error('dsh desktop: rejected directory picker from an unowned renderer')
     assertDesktopSender(event, ['app'])
     const existing = pending.get(window)
     if (existing !== undefined) return existing

@@ -1,5 +1,5 @@
 ---
-description: "Agent output bubbles and the workbench dialog for the Desktop orb form: live agent text at the right edge, the conversation without shell side panels."
+description: "Agent output bubbles and the workbench dialog for the Desktop orb form: live agent text above the orb, the conversation without shell side panels."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-orb 形态的 agent 交互：一个 `shell.overlay` 条目把 agent 输出以气泡列的形式报在屏幕右侧，一个 `shell.modal` 条目把当前会话托管在工作台对话框中、不带 shell 的侧边面板。气泡列显示正在书写的回答，输出结束后保留最新回答三秒，指针停留时向上展开此前的回答。工作台只渲染共享会话内容的 Chat 视图，另有一条可重新绑定的命令打开它。
+orb 形态的 agent 交互：一个 `shell.overlay` 条目把 agent 输出以悬浮球上方的气泡列形式呈现，一个 `shell.modal` 条目把当前会话托管在工作台对话框中、不带 shell 的侧边面板。气泡列显示正在书写的回答，输出结束后保留最新回答三秒，指针停留时向上展开此前的回答。工作台只渲染共享会话内容的 Chat 视图，另有一条可重新绑定的命令打开它。
 
 ## 目录
 
@@ -27,14 +27,14 @@ orb 形态的 agent 交互：一个 `shell.overlay` 条目把 agent 输出以气
 
 在形态声明了 orb 呈现的 profile 中加入 `better-interact` 行，并同时挂载 [client-surface](../../client/surface/README.zh.md) 与感知呈现的 [ui-layout](../../client/ui-layout/README.zh.md)。本包注入 `surface`、`slots`、`locale`、`shortcuts`、`resources` 与 `sessions`。
 
-overlay 条目 `better-interact.bubbles` 绑定会话目录中排在第一位的会话，经 `betterinteract` 资源保留它，并且只在载体呈现 `bubbles` 呈现时渲染气泡。agent 流式回答期间，该条目向载体申请该呈现；载体把气泡列放在工作区右侧且不抢占焦点，因此用户在其他应用中操作时它也能出现。气泡列把最新回答画成一张卡片，输出结束后三秒淡出，然后把载体交还给 orb。指针停在气泡列上会向上展开此前的回答并保持展开；指针离开三秒后，气泡列收回为最新回答。鼠标移到 orb 上会打开同一个气泡列并直接展开历史；载体让 orb 留在列的旁边，两者在历史显示期间互不取代。点击任一气泡打开工作台，载体把它盖在气泡列之上，关闭时恢复气泡列。
+overlay 条目 `better-interact.bubbles` 绑定会话目录中排在第一位的会话，经 `betterinteract` 资源保留它，并且只在载体呈现 `bubbles` 呈现时渲染气泡。agent 流式回答期间，该条目向载体申请该呈现；载体把气泡列放在悬浮球自有窗口的上方且不抢占焦点，因此用户在其他应用中操作时它也能出现。气泡列把最新回答画成一张卡片，输出结束后三秒淡出，然后请求载体关闭它。指针停在气泡列上会向上展开此前的回答并保持展开；指针离开三秒后，气泡列收回为最新回答。指针在常驻悬浮球窗口上的活动会向载体申请同一个气泡列并直接展开历史；气泡列渲染在 surface 窗口中，而悬浮球保有自己的窗口，两者互不取代。点击任一气泡打开工作台，载体把它盖在 surface 窗口之上，关闭时恢复原来的呈现。
 
 模态条目 `better-interact.workbench` 为目录中的当前会话渲染工作台对话框：共享会话内容以 embedded 变体、且只带 Chat 视图，因此没有侧边栏、右面板或标题栏。对话框向载体申请工作区高度的五分之四，并自行滚动转录本。命令 `betterInteract.workbench` 默认绑定 Windows 与 macOS 的 Ctrl+Alt+W，打开同一个对话框，并可在设置中重新绑定。目录为空时对话框渲染空状态而不是会话。
 
 <a id="understand-the-implementation"></a>
 ## 了解实现
 
-气泡文本来自绑定会话的 Chat 目标：每个已加载轮次一条，取自它的导航预览；agent 书写时追加部分累加器中的流式前缀。气泡列在单个组件内持有定时器：两个 effect 在输出进行时保持气泡列在屏、并在输出结束后安排淡出与收起，第三个在指针离开后安排折叠。`surface.presentBubbles()` 与 `surface.dismissBubbles()` 是该条目发出的唯一载体命令，因此没有形态载体的 profile 保持 classic 呈现。
+气泡文本来自绑定会话的 Chat 目标：每个已加载轮次一条，取自它的导航预览；agent 书写时追加部分累加器中的流式前缀。气泡列在单个组件内持有定时器：两个 effect 在输出进行时保持气泡列在屏、并在输出结束后安排淡出与收起，第三个在指针离开后安排折叠。`surface.presentBubbles()` 与 `surface.dismissBubbles()` 是该条目发出的唯一载体命令，因此没有形态载体的 profile 保持 classic 呈现。悬停请求来自悬浮球窗口的渲染进程，它只为快照的 `orb` 角色报告指针活动；主进程把命令路由到 surface 窗口的呈现，气泡列不会取代已打开的 panel 或模态呈现。
 
 工作台经 `renderFactorySlot` 复用 `conversation.content`，而不是自行拼装转录各部分；只有视图环被替换为 Chat 视图，这正是去掉侧边面板而不分叉会话的原因。`bubbles` 呈现、它的窗口几何与点击穿透都在 `apps/desktop` 中，插件只负责申请它。
 
@@ -65,5 +65,6 @@ overlay 条目 `better-interact.bubbles` 绑定会话目录中排在第一位的
 ## 已知限制与后续工作
 
 - 气泡列只报告会话目录中排在第一位的会话；若另一个会话在目录中排在其后产出输出，不会被报告。
-- `bubbles` 呈现可见期间取代 orb；气泡列淡出或被关闭后 orb 返回。
+- 气泡列渲染在 surface 窗口中；该窗口中的 panel 或模态呈现不会被悬停的悬浮球取代。
+- 悬停请求只在指针离开悬浮球窗口时重新武装，因此停在悬浮球上的指针不会重新打开刚刚淡出的气泡列。
 - 历史只覆盖已加载窗口中的轮次预览，因此在转录本中继续向前滚动不会扩充它。

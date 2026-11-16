@@ -18,7 +18,7 @@ import { zh } from '../src/client/locales.ts'
 afterEach(cleanup)
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
 })
 
 /** One Session row; only the current main-view row is retained. */
@@ -352,11 +352,16 @@ it('walks the menu rows with the arrow keys and closes on Escape or the backdrop
   expect(screen.queryByRole('menu')).toBeNull()
 })
 
-it('renders no overlay chrome outside the orb presentation', () => {
-  for (const presentation of ['classic', 'panel', 'modal'] as const) {
+it('draws no orb in the surface window role', () => {
+  fixture({ surface: { role: 'surface' } })
+  expect(document.querySelector('[data-orb]')).toBeNull()
+  expect(document.querySelector('[data-orb-prompt]')).toBeNull()
+})
+
+it('keeps the orb while the surface window presents another presentation', () => {
+  for (const presentation of ['classic', 'panel', 'modal', 'bubbles'] as const) {
     fixture({ surface: { presentation } })
-    expect(document.querySelector('[data-orb]')).toBeNull()
-    expect(document.querySelector('[data-orb-prompt]')).toBeNull()
+    expect(document.querySelector('[data-orb]')).not.toBeNull()
     cleanup()
   }
 })

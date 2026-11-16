@@ -21,7 +21,7 @@ import { zh } from '../src/client/locales.ts'
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
 })
 
 /** Observable double with identity-stable snapshots and signal-scoped observation. */
@@ -421,11 +421,11 @@ it('follows the carrier presentation and reduced-motion preference', async () =>
 
   surface.publish({ presentation: 'panel', pinned: true })
   await flush()
-  expect(document.querySelector('[data-orb]')).toBeNull()
+  expect(document.querySelector('[data-orb]')).not.toBeNull()
 
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
-  expect(document.querySelector('[data-orb]')).toBeNull()
+  expect(document.querySelector('[data-orb]')).not.toBeNull()
   expect(document.querySelector('[data-orb-prompt-input]')?.getAttribute('aria-label')).toBe(zh['prompt.label'])
 })
 

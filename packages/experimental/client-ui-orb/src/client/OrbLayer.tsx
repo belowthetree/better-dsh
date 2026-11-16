@@ -1,9 +1,9 @@
 /**
- * Overlay entry of the orb form. Only the `orb` presentation draws chrome here:
- * the floating orb with its drag gesture and context menu. The chat box is a
- * separate `shell.modal` entry so the carrier renders it in its centered modal
- * presentation; the classic frame needs no form chrome, and the panel
- * presentation hosts only shell-owned overlays.
+ * Overlay entry of the orb form. Only the resident orb window draws chrome
+ * here: the floating orb with its drag gesture and context menu. The chat box
+ * is a separate `shell.modal` entry hosted by the surface window; the classic
+ * frame needs no form chrome, and the panel presentation hosts only
+ * shell-owned overlays.
  */
 import { useCallback, useMemo, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -98,9 +98,9 @@ function OrbGlyph({ state }: { state: OrbVisualState }) {
 }
 
 /**
- * Render the floating orb of the orb presentation.
+ * Render the floating orb of the resident orb window.
  * @param props - carrier presentation, voice observations, commands, and localized copy.
- * @returns the orb chrome, or nothing for presentations this entry does not dress.
+ * @returns the orb chrome in the orb window, or nothing in the surface window.
  */
 export function OrbLayer(props: OrbLayerProps) {
   const surface = props.useSurface(snapshot => snapshot)
@@ -151,14 +151,12 @@ export function OrbLayer(props: OrbLayerProps) {
     setMenuOpen(false)
   }
 
-  // The chat modal and the frame's modal layer own every other presentation.
-  // The bubbles presentation keeps the orb on screen beside its column.
-  if (surface.presentation !== 'orb' && surface.presentation !== 'bubbles') return null
-  const anchor = surface.presentation === 'bubbles' ? surface.anchor : undefined
+  // The surface window hosts panel, bubbles, and modal presentations; only the
+  // resident orb window draws the orb.
+  if (surface.role !== 'orb') return null
 
   return <div
-    className={anchor === undefined ? css.orbRoot : css.orbAnchor}
-    style={anchor === undefined ? undefined : { left: anchor.x, top: anchor.y }}
+    className={css.orbRoot}
     data-orb
     data-state={state}
     data-reduced-motion={reducedMotion || undefined}

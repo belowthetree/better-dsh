@@ -40,7 +40,7 @@ let foldedLandscape: SnapshotStore<boolean>
 let surfaceState: SnapshotStore<SurfaceSnapshot>
 /** Presentation without a carrier: the classic profile. */
 const CLASSIC_SURFACE: SurfaceSnapshot = {
-  form: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
 }
 const restoreProperties: (() => void)[] = []
 
@@ -810,7 +810,7 @@ describe('sidebar drawer', () => {
 describe('AppFrame surface presentations', () => {
   /** Presentation used by a form profile's collapsed and expanded states. */
   const ORB: SurfaceSnapshot = {
-    form: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+    form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
   }
 
   it('keeps the classic frame unchanged without a carrier presentation', () => {

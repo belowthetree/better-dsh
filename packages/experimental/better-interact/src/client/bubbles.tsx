@@ -116,30 +116,34 @@ export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: Bubble
  * @returns the bound bubble column, or nothing while the catalog has no Session.
  */
 export function BubblesLayer(props: BubblesLayerProps) {
-  const presentation = props.useSurface(snapshot => snapshot.presentation)
+  const role = props.useSurface(snapshot => snapshot.role)
   const target = props.useSessions(state => state.ids[0])
   const resource = props.useResource<'betterinteract'>(workbenchAddress(target))
+  const reference = resource.value?.reference
   const { show } = props
 
-  // While the carrier shows the orb, the window is the orb itself: the first
-  // pointer activity inside it opens the column that holds the history.
+  // The carrier runs the orb window beside the surface window. Pointer activity
+  // inside the resident orb asks the carrier to present the column in the
+  // surface window; leaving the orb re-arms the request for the next hover.
   useEffect(() => {
-    if (presentation !== 'orb') return
+    if (role !== 'orb' || reference === undefined) return
     let fired = false
     const enter = (): void => {
       if (fired) return
       fired = true
       show()
     }
+    const leave = (): void => { fired = false }
     document.addEventListener('pointerenter', enter, true)
     document.addEventListener('pointermove', enter, true)
+    document.addEventListener('pointerleave', leave, true)
     return () => {
       document.removeEventListener('pointerenter', enter, true)
       document.removeEventListener('pointermove', enter, true)
+      document.removeEventListener('pointerleave', leave, true)
     }
-  }, [presentation, show])
+  }, [role, reference, show])
 
-  const reference = resource.value?.reference
   if (reference === undefined) return null
   const { SessionProvider, renderSlot } = props
   return <SessionProvider session={reference}>{renderSlot('better-interact.bubbles.stack', {})}</SessionProvider>

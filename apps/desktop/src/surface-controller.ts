@@ -1,17 +1,17 @@
-/** Presentation state machine and validated command surface for a form profile's product window. */
+/** Presentation state machine and validated command surface for a form profile's orb and surface windows. */
 import type { ModalSizeHint, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { DesktopFormLayout, DesktopWorkArea } from './form-layout.ts'
 import { clampFormLayout } from './form-layout.ts'
-import type { FormPresentationBounds } from './form-window.ts'
+import type { DesktopFormRole, FormPresentationBounds } from './form-window.ts'
 import { bubblesBounds, modalBounds, orbBounds, panelBounds, presentationResizable } from './form-window.ts'
 
-/** Window presentations the controller drives inside the product window. */
-type FormPresentation = 'orb' | 'panel' | 'modal' | 'bubbles'
+/** Presentations the surface window hosts; the orb window always presents the orb. */
+type SurfacePresentation = 'orb' | 'panel' | 'modal' | 'bubbles'
 
 /** Longest accepted `shell.modal` entry id. */
 export const MAX_MODAL_ID_CHARS = 128
 
-/** One validated command from the product renderer. */
+/** One validated command from a form renderer. */
 export type SurfaceCommand =
   | { readonly kind: 'expand' }
   | { readonly kind: 'collapse' }
@@ -23,22 +23,35 @@ export type SurfaceCommand =
   | { readonly kind: 'dragBy'; readonly deltaX: number; readonly deltaY: number }
   | { readonly kind: 'pointerInside'; readonly inside: boolean }
 
-/** Native effects the controller applies through its window owner. */
+/** Native effects the controller applies to one or both form windows. */
 export interface SurfaceWindowEffects {
-  /** Apply presentation bounds to the product window. */
-  setBounds(bounds: FormPresentationBounds): void
-  /** Allow or forbid user resizing for the current presentation. */
-  setResizable(resizable: boolean): void
-  /** Pass clicks through to the desktop when the pointer is outside the orb. */
-  setIgnoreMouseEvents(ignore: boolean): void
-  /** Reveal and focus the product window. */
-  focus(): void
-  /** Publish the current snapshot to the product renderer. */
-  publish(snapshot: SurfaceSnapshot): void
+  /** Apply presentation bounds to one window. */
+  setBounds(role: DesktopFormRole, bounds: FormPresentationBounds): void
+  /** Allow or forbid user resizing for one window's current presentation. */
+  setResizable(role: DesktopFormRole, resizable: boolean): void
+  /** Pass clicks through one window when the pointer is outside its content. */
+  setIgnoreMouseEvents(role: DesktopFormRole, ignore: boolean): void
+  /** Reveal the surface window without taking focus. */
+  revealSurface(): void
+  /** Reveal and focus the surface window for the modal presentation. */
+  focusSurface(): void
+  /** Hide the surface window while its presentation is the orb. */
+  hideSurface(): void
+  /** Publish the resident orb window's snapshot. */
+  publishOrb(snapshot: SurfaceSnapshot): void
+  /** Publish the surface window's snapshot. */
+  publishSurface(snapshot: SurfaceSnapshot): void
   /** Persist the orb position and pinning. */
   persist(layout: DesktopFormLayout): void
-  /** Work area of the display the product window currently occupies. */
+  /** Work area of the display the orb window currently occupies. */
   workArea(): DesktopWorkArea
+}
+
+/** Pointer presence reported by one window's renderer. */
+interface PointerState {
+  /** Whether the renderer reported pointer presence at least once. */
+  reported: boolean
+  inside: boolean
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -46,13 +59,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Presentations that take keyboard focus when they appear. */
-function focusable(presentation: FormPresentation): boolean {
-  return presentation === 'panel' || presentation === 'modal'
-}
-
-/** Presentations that stay out of the user's way: they never take focus, and empty pixels pass clicks through. */
-function passive(presentation: FormPresentation): boolean {
-  return presentation === 'orb' || presentation === 'bubbles'
+function focusable(presentation: SurfacePresentation): boolean {
+  return presentation === 'modal'
 }
 
 /**
@@ -113,20 +121,24 @@ export function parseSurfaceCommand(raw: unknown): SurfaceCommand | undefined {
 /**
  * Owns one form profile's presentation, pinning, modal selection, and orb position.
  * The controller is the only writer of presentation state and asks its window
- * owner to apply the resulting native effects.
+ * owner to apply the resulting native effects to the orb window or the surface
+ * window. Commands may arrive from either window: presentation commands always
+ * apply to the surface window, while pointer and drag commands stay with the
+ * window that reported them.
  */
 export class DesktopSurfaceController {
   readonly #effects: SurfaceWindowEffects
   #layout: DesktopFormLayout
-  #presentation: FormPresentation = 'orb'
+  #presentation: SurfacePresentation = 'orb'
   /** Presentation restored when the modal presentation dismisses. */
-  #restore: Exclude<FormPresentation, 'modal'> = 'orb'
+  #restore: Exclude<SurfacePresentation, 'modal'> = 'orb'
   #modal: string | null = null
   /** Size hint of the active modal entry; undefined keeps the dialog size. */
   #modalSize: ModalSizeHint | undefined
-  /** Whether the renderer reported pointer presence at least once. */
-  #pointerReported = false
-  #pointerInside = false
+  readonly #pointer: Record<DesktopFormRole, PointerState> = {
+    orb: { reported: false, inside: false },
+    surface: { reported: false, inside: false },
+  }
 
   /**
    * @param input - persisted layout and the native effects owner.
@@ -137,35 +149,29 @@ export class DesktopSurfaceController {
   }
 
   /**
-   * Current presentation state for the product renderer.
-   * @returns the snapshot the service and the modal seat consume.
+   * Current snapshot for one window's renderer.
+   * @param role - window role receiving the snapshot; the orb window always reports the orb presentation.
+   * @returns the snapshot published to that window.
    */
-  snapshot(): SurfaceSnapshot {
-    const anchor = this.#presentation === 'bubbles' ? this.#anchor() : undefined
+  snapshot(role: DesktopFormRole = 'surface'): SurfaceSnapshot {
     return {
-      form: 'orb', presentation: this.#presentation, pinned: this.#layout.pinned,
-      available: true, modal: this.#modal,
-      ...(anchor === undefined ? {} : { anchor }),
+      form: 'orb',
+      role,
+      presentation: role === 'orb' ? 'orb' : this.#presentation,
+      pinned: this.#layout.pinned,
+      available: true,
+      modal: role === 'orb' ? null : this.#modal,
     }
   }
 
   /**
-   * Position of the orb inside the window that shows the bubble column beside it.
-   * @returns orb offset in logical pixels from the window's top-left corner.
-   */
-  #anchor(): { x: number; y: number } {
-    const workArea = this.#effects.workArea()
-    const bounds = bubblesBounds(this.#layout, workArea)
-    const orb = orbBounds(this.#layout, workArea)
-    return { x: orb.x - bounds.x, y: orb.y - bounds.y }
-  }
-
-  /**
-   * Apply one command. Commands that do not apply to the current presentation
-   * are ignored rather than failed, because the renderer can race a transition.
+   * Apply one command from one window. Commands that do not apply to the current
+   * presentation are ignored rather than failed, because the renderer can race a
+   * transition.
    * @param command - validated renderer command.
+   * @param origin - window that reported the command.
    */
-  dispatch(command: SurfaceCommand): void {
+  dispatch(command: SurfaceCommand, origin: DesktopFormRole = 'surface'): void {
     switch (command.kind) {
       case 'expand':
         if (this.#presentation === 'orb') this.#show('panel')
@@ -178,8 +184,10 @@ export class DesktopSurfaceController {
           this.#modal = command.id
           if (!sameModalSize(this.#modalSize, command.size)) {
             this.#modalSize = command.size
-            this.#effects.setBounds(this.#bounds())
+            this.#effects.setBounds('surface', this.#bounds())
           }
+          // The orb window asked for the dialog, so the surface window takes the pointer back.
+          if (origin === 'orb') this.#effects.focusSurface()
           this.#publish()
         } else {
           this.#restore = this.#presentation
@@ -192,7 +200,8 @@ export class DesktopSurfaceController {
         if (this.#presentation === 'modal') { this.#modal = null; this.#show(this.#restore) }
         return
       case 'presentBubbles':
-        if (this.#presentation !== 'bubbles') this.#show('bubbles')
+        // The column belongs to the idle orb; it never replaces an open panel or modal.
+        if (this.#presentation === 'orb') this.#show('bubbles')
         return
       case 'dismissBubbles':
         if (this.#presentation === 'bubbles') this.#show('orb')
@@ -203,16 +212,15 @@ export class DesktopSurfaceController {
         this.#publish()
         return
       case 'dragBy':
-        if (this.#presentation !== 'orb') return
+        if (origin !== 'orb') return
         this.#layout = clampFormLayout({ ...this.#layout,
           orb: { x: this.#layout.orb.x + command.deltaX, y: this.#layout.orb.y + command.deltaY } }, this.#effects.workArea())
-        this.#effects.setBounds(orbBounds(this.#layout, this.#effects.workArea()))
+        this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
         this.#effects.persist(this.#layout)
         return
       case 'pointerInside':
-        this.#pointerReported = true
-        this.#pointerInside = command.inside
-        this.#effects.setIgnoreMouseEvents(this.#ignoreMouse())
+        this.#pointer[origin] = { reported: true, inside: command.inside }
+        this.#effects.setIgnoreMouseEvents(origin, this.#ignoreMouse(origin))
         return
       default:
         command satisfies never
@@ -231,10 +239,10 @@ export class DesktopSurfaceController {
   }
 
   /**
-   * Collapse an unpinned panel, and dismiss the modal, when the window loses focus.
-   * The modal window covers only the dialog, so leaving it is how the user dismisses
-   * the presentation by activating another application. The bubble column and the orb
-   * stay: both are passive and never owned the focus they lose.
+   * Collapse an unpinned panel, and dismiss the modal, when the surface window
+   * loses focus. The modal window covers only the dialog, so leaving it is how
+   * the user dismisses the presentation by activating another application. The
+   * orb window never owns this focus and keeps presenting the orb.
    */
   blurred(): void {
     if (this.#presentation === 'modal') {
@@ -246,27 +254,46 @@ export class DesktopSurfaceController {
     if (this.#presentation === 'panel' && !this.#layout.pinned) this.#show('orb', false)
   }
 
-  /** Re-clamp the orb position and current bounds after a display change. */
+  /** Re-clamp the orb position and both windows' bounds after a display change. */
   reflow(): void {
     this.#layout = clampFormLayout(this.#layout, this.#effects.workArea())
     this.#effects.persist(this.#layout)
-    this.#effects.setBounds(this.#bounds())
+    this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
+    if (this.#presentation !== 'orb') this.#effects.setBounds('surface', this.#bounds())
   }
 
-  /** Re-apply bounds, resizing, and click-through after the product window is created or shown. */
+  /** Re-apply bounds, resizing, visibility, and click-through after a window is created or shown. */
   restore(): void {
-    this.#effects.setBounds(this.#bounds())
-    this.#effects.setResizable(presentationResizable(this.#presentation))
-    this.#effects.setIgnoreMouseEvents(this.#ignoreMouse())
+    const workArea = this.#effects.workArea()
+    this.#effects.setBounds('orb', orbBounds(this.#layout, workArea))
+    this.#effects.setResizable('orb', false)
+    this.#effects.setIgnoreMouseEvents('orb', this.#ignoreMouse('orb'))
+    if (this.#presentation === 'orb') {
+      this.#effects.hideSurface()
+    } else {
+      this.#effects.setBounds('surface', this.#bounds())
+      this.#effects.setResizable('surface', presentationResizable(this.#presentation))
+      this.#effects.setIgnoreMouseEvents('surface', this.#ignoreMouse('surface'))
+      if (focusable(this.#presentation)) this.#effects.focusSurface()
+      else this.#effects.revealSurface()
+    }
     this.#publish()
   }
 
-  #show(presentation: FormPresentation, focus = true): void {
+  #show(presentation: SurfacePresentation, focus = true): void {
     this.#presentation = presentation
-    this.#effects.setBounds(this.#bounds())
-    this.#effects.setResizable(presentationResizable(presentation))
-    this.#effects.setIgnoreMouseEvents(this.#ignoreMouse())
-    if (focus && focusable(presentation)) this.#effects.focus()
+    this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
+    this.#effects.setResizable('orb', false)
+    this.#effects.setIgnoreMouseEvents('orb', this.#ignoreMouse('orb'))
+    if (presentation === 'orb') {
+      this.#effects.hideSurface()
+    } else {
+      this.#effects.setBounds('surface', this.#bounds())
+      this.#effects.setResizable('surface', presentationResizable(presentation))
+      this.#effects.setIgnoreMouseEvents('surface', this.#ignoreMouse('surface'))
+      if (focus && focusable(presentation)) this.#effects.focusSurface()
+      else this.#effects.revealSurface()
+    }
     this.#publish()
   }
 
@@ -280,13 +307,16 @@ export class DesktopSurfaceController {
     }
   }
 
-  #ignoreMouse(): boolean {
+  #ignoreMouse(role: DesktopFormRole): boolean {
+    const pointer = this.#pointer[role]
     // The renderer owns the hit test; until it reports pointer presence the window
     // stays interactive so a first click is never lost to click-through.
-    return passive(this.#presentation) && this.#pointerReported && !this.#pointerInside
+    if (role === 'orb') return pointer.reported && !pointer.inside
+    return this.#presentation === 'bubbles' && pointer.reported && !pointer.inside
   }
 
   #publish(): void {
-    this.#effects.publish(this.snapshot())
+    this.#effects.publishOrb(this.snapshot('orb'))
+    this.#effects.publishSurface(this.snapshot('surface'))
   }
 }

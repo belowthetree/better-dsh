@@ -2,8 +2,11 @@
 
 import type { BrowserWindowConstructorOptions } from 'electron'
 import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/protocol'
-import { FORM_WINDOW_ARGUMENT } from './ipc.ts'
+import { FORM_WINDOW_ARGUMENT, FORM_WINDOW_ROLE_ARGUMENT } from './ipc.ts'
 import { clampFormLayout, type DesktopFormLayout, type DesktopWorkArea } from './form-layout.ts'
+
+/** Role of one form window: the resident orb, or the surface window that hosts the other presentations. */
+export type DesktopFormRole = 'orb' | 'surface'
 
 /** Orb width and height in logical pixels. */
 export const ORB_SIZE = 112
@@ -86,12 +89,12 @@ export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {})
 }
 
 /**
- * Stack the bubble column above the orb and span one window that holds both.
- * The column shrinks to the room above the orb, so it never covers it, and the
- * window never covers a whole display, so covered applications keep rendering.
+ * Stack the bubble column above the orb. The column shrinks to the room above
+ * the orb and never covers a whole display, so covered applications keep
+ * rendering; the orb lives in its own window.
  * @param layout - current orb layout.
  * @param workArea - target display work area.
- * @returns bubble window bounds inside the work area, covering the column and the orb below it.
+ * @returns bubble column bounds inside the work area.
  */
 export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea): FormPresentationBounds {
   const orb = orbBounds(layout, workArea)
@@ -101,22 +104,20 @@ export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkAr
   const height = Math.min(Math.max(ORB_SIZE, Math.round(workArea.height * 0.6)), room)
   const x = Math.min(Math.max(workArea.x, orb.x + ORB_SIZE - width), workArea.x + workArea.width - width)
   const y = Math.max(top, orb.y - BUBBLES_GAP - height)
-  return {
-    x,
-    y,
-    width: Math.max(x + width, orb.x + ORB_SIZE) - x,
-    height: Math.max(y + height, orb.y + ORB_SIZE) - y,
-  }
+  return { x, y, width, height }
 }
 
 /**
- * Build the Electron options for the form product window.
- * One window hosts every presentation: frameless, transparent, always on top, absent from the taskbar, created at the orb bounds.
- * @param input - preload bundle path, current layout, and the display work area.
- * @returns Electron options for the form product window.
+ * Build the Electron options for one form product window.
+ * Both roles are frameless, transparent, always on top, and absent from the
+ * taskbar. The surface window starts at the orb square and is moved to each
+ * presentation's bounds; the orb window keeps the orb bounds for its lifetime.
+ * @param input - preload bundle path, window role, current layout, and the display work area.
+ * @returns Electron options for the form window.
  */
 export function formWindowOptions(input: {
   preload: string
+  role: DesktopFormRole
   layout: DesktopFormLayout
   workArea: DesktopWorkArea
 }): BrowserWindowConstructorOptions {
@@ -142,7 +143,7 @@ export function formWindowOptions(input: {
     webPreferences: {
       preload: input.preload,
       // The page skips titlebar chrome that only the classic workspace window owns.
-      additionalArguments: [FORM_WINDOW_ARGUMENT],
+      additionalArguments: [FORM_WINDOW_ARGUMENT, `${FORM_WINDOW_ROLE_ARGUMENT}${input.role}`],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,

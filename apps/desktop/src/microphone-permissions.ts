@@ -9,20 +9,24 @@ function applicationFrame(url: string): boolean {
 }
 
 /**
- * Handle microphone requests from the owned application window; other permissions retain Electron's defaults.
+ * Handle microphone requests from the owned application windows; other permissions retain Electron's defaults.
  * @param session - application's browser session.
- * @param primary - current primary window contents, absent while no window is open.
+ * @param primaries - current application windows' contents; the orb and surface windows may both capture audio.
  */
-export function installMicrophonePermissions(session: Pick<Session, 'setPermissionCheckHandler' | 'setPermissionRequestHandler'>, primary: () => WebContents | undefined): void {
+export function installMicrophonePermissions(
+  session: Pick<Session, 'setPermissionCheckHandler' | 'setPermissionRequestHandler'>,
+  primaries: () => readonly WebContents[],
+): void {
+  const owned = (contents: WebContents | null): boolean => contents !== null && primaries().includes(contents)
   session.setPermissionCheckHandler((contents, permission, origin, details) => {
     if (permission !== 'media') return true
-    return contents != null && contents === primary() && details.isMainFrame
+    return owned(contents) && details.isMainFrame
       && applicationFrame(origin) && details.mediaType === 'audio'
       && (process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('microphone') === 'granted')
   })
   session.setPermissionRequestHandler((contents, permission, callback, details) => {
     if (permission !== 'media') { callback(true); return }
-    const allowed = contents === primary() && details.isMainFrame && applicationFrame(details.requestingUrl)
+    const allowed = owned(contents) && details.isMainFrame && applicationFrame(details.requestingUrl)
       && 'mediaTypes' in details && details.mediaTypes.length === 1 && details.mediaTypes[0] === 'audio'
     if (!allowed) { callback(false); return }
     if (process.platform !== 'darwin') { callback(true); return }

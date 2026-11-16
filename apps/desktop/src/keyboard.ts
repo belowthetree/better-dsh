@@ -9,15 +9,15 @@ import { DESKTOP_IPC, assertDesktopSender } from './ipc.ts'
 
 /**
  * Install application-owned configuration handlers and attach each product window's input lifecycle.
- * @param getWindow - current product window.
+ * @param getWindows - current product windows; a form profile runs the orb and surface windows.
  * @param userData - Electron-resolved device preference directory.
  * @param platform - local device platform.
  * @param updateMenu - rebuild the application menu when the close accelerator or availability changes.
- * @param overlayInput - Current shell-owned input blocking state for the product window.
+ * @param overlayInput - Current shell-owned input blocking state for one product window.
  * @returns menu construction, editor key delivery, window attachment, and teardown operations.
  */
 export function installDesktopShortcuts(
-  getWindow: () => BrowserWindow | undefined, userData: string, platform: ShortcutPlatform, updateMenu: () => void,
+  getWindows: () => readonly BrowserWindow[], userData: string, platform: ShortcutPlatform, updateMenu: () => void,
   overlayInput: (window: BrowserWindow) => { readonly revision: number; readonly blocked: boolean },
 ): {
   fileMenu(labels: { fileMenu: string; closePage: string }): MenuItemConstructorOptions
@@ -43,6 +43,10 @@ export function installDesktopShortcuts(
   let revision: ShortcutRevision | undefined
   let closeBinding: NormalizedBinding | null = null
   let editingInput: BrowserWindow['webContents'] | undefined
+  const productWindows = (): BrowserWindow[] => getWindows().filter(window => !window.isDestroyed())
+  /** Window that owns an application-level action: the focused product window, otherwise the first. */
+  const focusedWindow = (): BrowserWindow | undefined => productWindows().find(window => window.isFocused())
+    ?? productWindows()[0]
   // OS-global accelerators are owned by this installer beside the focused-window
   // interception, so suspension, release, and revision tagging have one owner.
   const globals = new DesktopGlobalShortcuts({
@@ -50,15 +54,15 @@ export function installDesktopShortcuts(
     revision: () => revision,
     recording: () => recording,
     send: (commandId, accepted) => {
-      const window = getWindow()
-      if (window === undefined || window.isDestroyed()) return
+      const window = focusedWindow()
+      if (window === undefined) return
       window.webContents.send(DESKTOP_IPC.shortcutsInput, { kind: 'global', commandId, revision: accepted })
     },
     publish: (state) => {
-      const window = getWindow()
-      if (window === undefined || window.isDestroyed()
-        || !window.webContents.mainFrame.url.startsWith('dsh-app://app/')) return
-      window.webContents.send(DESKTOP_IPC.shortcutsGlobalChanged, state)
+      for (const window of productWindows()) {
+        if (!window.webContents.mainFrame.url.startsWith('dsh-app://app/')) continue
+        window.webContents.send(DESKTOP_IPC.shortcutsGlobalChanged, state)
+      }
     },
   })
   const scopedDesktop = platform === 'windows' || platform === 'macos'
@@ -67,8 +71,8 @@ export function installDesktopShortcuts(
   const closeAccelerator = (): string | undefined => presentBinding(closeBinding, platform).aria
     ?.replace('Meta+', 'Command+').replace(/Arrow(Up|Down|Left|Right)$/u, '$1')
   const sendMenuClose = (): void => {
-    const window = getWindow()
-    if (window === undefined || window.isDestroyed() || !window.isFocused() || !window.isEnabled()
+    const window = focusedWindow()
+    if (window === undefined || !window.isFocused() || !window.isEnabled()
       || revision === undefined || recording || overlayInput(window).blocked) return
     window.webContents.send(DESKTOP_IPC.shortcutsInput, { kind: 'menu', commandId: 'page.close', revision })
   }
@@ -84,16 +88,16 @@ export function installDesktopShortcuts(
     closeBinding = close?.issue === null && close.conflicts.length === 0 ? close.binding : null
     globals.sync(definitions, snapshot.document)
     if (wasEnabled !== (revision !== undefined) || previousAccelerator !== closeAccelerator()) updateMenu()
-    const window = getWindow()
-    if (window !== undefined && !window.isDestroyed() && window.webContents.mainFrame.url.startsWith('dsh-app://app/')) {
+    for (const window of productWindows()) {
+      if (!window.webContents.mainFrame.url.startsWith('dsh-app://app/')) continue
       window.webContents.send(DESKTOP_IPC.shortcutsChanged, snapshot)
     }
   }
   const persistence = desktopKeybindings(userData, platform, publish)
   const assertSender = (event: IpcMainInvokeEvent): BrowserWindow => {
-    const window = getWindow()
-    if (window === undefined || window.isDestroyed() || event.sender !== window.webContents
-      || event.senderFrame !== window.webContents.mainFrame) throw new Error('desktop shortcuts: rejected sender')
+    const window = productWindows().find(candidate => event.sender === candidate.webContents
+      && event.senderFrame === candidate.webContents.mainFrame)
+    if (window === undefined) throw new Error('desktop shortcuts: rejected sender')
     assertDesktopSender(event, ['app'])
     return window
   }
@@ -162,7 +166,7 @@ export function installDesktopShortcuts(
         contents.setIgnoreMenuShortcuts(true)
         return
       }
-      if (window !== getWindow() || !window.isFocused() || !window.isEnabled() || revision === undefined
+      if (!productWindows().includes(window) || !window.isFocused() || !window.isEnabled() || revision === undefined
         || (guestName !== undefined && !contents.isFocused())) {
         contents.setIgnoreMenuShortcuts(false)
         held.clear()
@@ -249,8 +253,8 @@ export function installDesktopShortcuts(
 
   return {
     sendEditingKey(keyCode, modifiers) {
-      const window = getWindow()
-      if (window === undefined || window.isDestroyed() || overlayInput(window).blocked) return
+      const window = focusedWindow()
+      if (window === undefined || overlayInput(window).blocked) return
       const contents = [...guestInputs].find(([guest, owner]) => owner.window === window && !guest.isDestroyed() && guest.isFocused())?.[0]
         ?? window.webContents
       contents.focus()

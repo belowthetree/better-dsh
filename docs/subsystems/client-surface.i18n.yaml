@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/client-surface.md
 /client-surface:
-  en: e9cbdcf3667d4d97
-  zh: 6e6721691f5799ba
+  en: a13dc06c3f98db1a
+  zh: 9b050684861aeb26
 /client-surface/presentation-state:
-  en: c5911fca4d06875d
-  zh: 1a203a8f812f7346
+  en: f7890503def951fc
+  zh: 013f89c3975bb30d
 /client-surface/carrier-ownership:
-  en: 53e0d7498ac9342e
-  zh: 303f212b7a566336
+  en: e611094d36c42bdd
+  zh: b257f959c7b8b52b

@@ -7,6 +7,13 @@
 /** Shell forms a desktop carrier can present. */
 export type SurfaceForm = 'classic' | 'orb'
 
+/**
+ * Window role that owns one renderer. A form profile runs the resident orb and
+ * the surface window beside it as separate renderers; the classic workspace has
+ * no orb and reports itself.
+ */
+export type SurfaceWindowRole = 'classic' | 'orb' | 'surface'
+
 /** Optional size of one modal presentation. */
 export interface ModalSizeHint {
   /**
@@ -27,6 +34,8 @@ export type SurfacePresentation = 'classic' | 'orb' | 'panel' | 'modal' | 'bubbl
 export interface SurfaceSnapshot {
   /** Shell form this window was created for. */
   readonly form: SurfaceForm
+  /** Window role this snapshot was published to. */
+  readonly role: SurfaceWindowRole
   /** Current window presentation. */
   readonly presentation: SurfacePresentation
   /** Whether the panel presentation stays above other windows. */
@@ -39,11 +48,6 @@ export interface SurfaceSnapshot {
    * carries its id instead of rendering content itself.
    */
   readonly modal: string | null
-  /**
-   * Orb position inside the product window, in logical pixels, while the
-   * bubbles presentation keeps the orb beside the column; absent otherwise.
-   */
-  readonly anchor?: { readonly x: number; readonly y: number }
 }
 
 /** Boot descriptor the carrier publishes before Client plugins load. */

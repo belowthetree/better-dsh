@@ -65,27 +65,26 @@ describe('panel bounds', () => {
 })
 
 describe('bubble bounds', () => {
-  it('stacks the column above the orb in one window', () => {
+  it('places the column above the orb without the orb in the same window', () => {
     const bounds = bubblesBounds(
       { version: 1, orb: { x: 1800, y: 400 }, pinned: false },
       { x: 0, y: 0, width: 1920, height: 1080 },
     )
-    expect(bounds).toEqual({ x: 1532, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 488 })
-    // The orb owns the window's bottom 112 pixels, so the column ends 12px above its top edge.
-    expect(bounds.y + bounds.height - ORB_SIZE).toBe(400)
-    expect(bounds.y + bounds.height - ORB_SIZE - BUBBLES_GAP).toBe(388)
+    expect(bounds).toEqual({ x: 1532, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 364 })
+    // The column ends just above the orb, which lives in its own resident window.
+    expect(bounds.y + bounds.height).toBe(400 - BUBBLES_GAP)
   })
 
   it('shrinks the column to the room above an orb near the top edge', () => {
     const layout = { version: 1, orb: { x: 1800, y: 160 }, pinned: false } as const
     const bounds = bubblesBounds(layout, { x: 0, y: 0, width: 1920, height: 1080 })
-    expect(bounds).toEqual({ x: 1532, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 248 })
+    expect(bounds).toEqual({ x: 1532, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 124 })
   })
 
   it('keeps the column inside a work area it would overflow', () => {
     const layout = { version: 1, orb: { x: 0, y: 0 }, pinned: false } as const
     expect(bubblesBounds(layout, { x: 0, y: 0, width: 320, height: 400 }))
-      .toEqual({ x: 0, y: SCREEN_MARGIN, width: 320, height: 112 })
+      .toEqual({ x: 0, y: SCREEN_MARGIN, width: 320, height: ORB_SIZE })
   })
 })
 
@@ -118,7 +117,7 @@ describe('modal bounds', () => {
 
 describe('form window options', () => {
   it('builds the transparent always-on-top product window at the orb bounds', () => {
-    const options = formWindowOptions({ preload: '/app/preload-app.js', layout: LAYOUT, workArea: WORK_AREA })
+    const options = formWindowOptions({ preload: '/app/preload-app.js', role: 'orb', layout: LAYOUT, workArea: WORK_AREA })
     expect(options).toMatchObject({
       show: false,
       frame: false,
@@ -141,7 +140,7 @@ describe('form window options', () => {
     })
     expect(options.webPreferences).toEqual({
       preload: '/app/preload-app.js',
-      additionalArguments: ['--dsh-desktop-form-window'],
+      additionalArguments: ['--dsh-desktop-form-window', '--dsh-desktop-form-role=orb'],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -152,9 +151,20 @@ describe('form window options', () => {
     if (process.platform !== 'darwin') expect(options.titleBarStyle).toBeUndefined()
   })
 
+  it('marks the surface window with its role and keeps the same native options', () => {
+    const orbit = formWindowOptions({ preload: '/app/preload-app.js', role: 'orb', layout: LAYOUT, workArea: WORK_AREA })
+    const surface = formWindowOptions({ preload: '/app/preload-app.js', role: 'surface', layout: LAYOUT, workArea: WORK_AREA })
+    expect(surface.webPreferences).toMatchObject({
+      additionalArguments: ['--dsh-desktop-form-window', '--dsh-desktop-form-role=surface'],
+    })
+    const nativeOptions = ({ webPreferences: _webPreferences, ...rest }: typeof orbit): Omit<typeof orbit, 'webPreferences'> => rest
+    expect(nativeOptions(surface)).toEqual(nativeOptions(orbit))
+  })
+
   it('clamps the constructed bounds into the work area', () => {
     const options = formWindowOptions({
       preload: '/app/preload-app.js',
+      role: 'surface',
       layout: { version: 1, orb: { x: -40, y: 5000 }, pinned: true },
       workArea: WORK_AREA,
     })
@@ -165,7 +175,7 @@ describe('form window options', () => {
     const platform = Object.getOwnPropertyDescriptor(process, 'platform')
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
     try {
-      expect(formWindowOptions({ preload: '/app/preload-app.js', layout: LAYOUT, workArea: WORK_AREA }).titleBarStyle)
+      expect(formWindowOptions({ preload: '/app/preload-app.js', role: 'orb', layout: LAYOUT, workArea: WORK_AREA }).titleBarStyle)
         .toBe('hidden')
     } finally {
       if (platform !== undefined) Object.defineProperty(process, 'platform', platform)

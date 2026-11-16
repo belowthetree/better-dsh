@@ -79,7 +79,7 @@ type KeyboardFixture = Omit<ReturnType<typeof installDesktopShortcuts>, 'attach'
 }
 // Electron is substituted at module load; fixtures implement the native members exercised by this installer.
 const installFixture = installDesktopShortcuts as (
-  getWindow: () => WindowFixture | undefined, userData: string,
+  getWindows: () => readonly (WindowFixture | BrowserWindow)[], userData: string,
   platform: Parameters<typeof installDesktopShortcuts>[2], updateMenu: () => void,
   overlayInput: (window: WindowFixture) => { readonly revision: number; readonly blocked: boolean },
 ) => KeyboardFixture
@@ -103,30 +103,45 @@ function browserGuest(reservation: DesktopBrowserReservation) {
   return { frame, guest }
 }
 
-async function fixture(platform: 'macos' | 'windows' | 'linux' = 'macos') {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-keyboard-'))
-  onTestFinished(async () => { await rm(root, { recursive: true, force: true }) })
+/** One product window fixture with its main frame and the matching invoke event. */
+function productWindow() {
   const frame: FrameFixture = { url: 'dsh-app://app/', name: '', parent: null }
   const contents = Object.assign(new EventEmitter(), { mainFrame: frame, focusedFrame: frame,
     isDestroyed: () => false, isFocused: () => true, send: vi.fn(),
     setIgnoreMenuShortcuts: vi.fn(), focus: vi.fn(), sendInputEvent: vi.fn() })
   const window = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: vi.fn(() => false),
     isFocused: vi.fn(() => true), isEnabled: vi.fn(() => true), close: vi.fn() })
-  let current: WindowFixture | undefined = window
+  const event: InvokeFixture = { sender: contents, senderFrame: frame }
+  return { window, contents, frame, event }
+}
+
+async function fixture(platform: 'macos' | 'windows' | 'linux' = 'macos') {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-keyboard-'))
+  onTestFinished(async () => { await rm(root, { recursive: true, force: true }) })
+  const first = productWindow()
+  const { frame, contents, window, event } = first
+  const windows: WindowFixture[] = [window]
   const updateMenu = vi.fn()
   const updateOverlays = new DesktopUpdateOverlays()
-  const keyboard = installFixture(() => current, root, platform, updateMenu, window => updateOverlays.input(window))
-  keyboard.attach(current)
+  const keyboard = installFixture(() => windows, root, platform, updateMenu,
+    window => updateOverlays.input(window))
+  keyboard.attach(window)
   onTestFinished(() => { keyboard.dispose() })
   const handlers = new Map<string, (event: InvokeFixture, ...args: unknown[]) => unknown>(
     ipc.handle.mock.calls.map(([channel, handler]) => [channel, handler]))
-  const event: InvokeFixture = { sender: contents, senderFrame: frame }
   const call = async <T>(channel: string, ...args: unknown[]): Promise<T> => await handlers.get(channel)!(event, ...args) as T
   const definitions: readonly ShortcutDefinition[] = [
     { id: 'sidebar.left.toggle' as ShortcutCommandId, defaults: desktopDefaults({ code: 'KeyB', modifiers: ['primary'] }) },
   ]
   return { keyboard, window, updateOverlays, contents, frame, event, handlers, call, definitions, updateMenu,
-    detach: () => { current = undefined } }
+    /** Attach one more product window and make it reachable by the installer. */
+    addWindow() {
+      const next = productWindow()
+      windows.push(next.window)
+      keyboard.attach(next.window)
+      return next
+    },
+    detach: () => { windows.length = 0 } }
 }
 
 function updateOverlayFixture(f: Awaited<ReturnType<typeof fixture>>) {
@@ -273,6 +288,19 @@ it.each([false, true])('blocks approved browser guest input across update overla
   expect(f.contents.send).toHaveBeenCalledTimes(2)
   f.keyboard.sendEditingKey('C', ['control'])
   expect(guest.sendInputEvent).toHaveBeenCalledTimes(2)
+})
+
+it('serves both product windows and broadcasts accepted bindings to each', async () => {
+  const f = await fixture()
+  const second = f.addWindow()
+  const initial = await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet, f.definitions)
+  expect(initial.status).toBe('ready')
+  expect(second.contents.send).toHaveBeenCalledWith(DESKTOP_IPC.shortcutsChanged, initial)
+  second.contents.send.mockClear()
+  const fromSecond = await f.handlers.get(DESKTOP_IPC.shortcutsGet)!(
+    { sender: second.contents, senderFrame: second.frame }, f.definitions) as ShortcutConfigSnapshot
+  expect(fromSecond.status).toBe('ready')
+  expect(f.contents.send).toHaveBeenCalledWith(DESKTOP_IPC.shortcutsChanged, fromSecond)
 })
 
 it('rejects other windows, subframes, remote/shell pages, and malformed edits', async () => {

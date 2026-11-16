@@ -12,6 +12,13 @@ import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
 /** Renderer argument that marks a form product window; the web page reads it from `process.argv`. */
 export const FORM_WINDOW_ARGUMENT = '--dsh-desktop-form-window'
 
+/**
+ * Renderer argument that names the form window's role. The resident orb window
+ * and the surface window beside it run the same client, so the boot payload's
+ * snapshot carries the role and this argument identifies it before boot.
+ */
+export const FORM_WINDOW_ROLE_ARGUMENT = '--dsh-desktop-form-role='
+
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
   fileSave: 'dsh-desktop:file-save',
