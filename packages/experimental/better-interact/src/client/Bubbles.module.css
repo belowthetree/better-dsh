@@ -44,8 +44,8 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 7;
   cursor: pointer;
-  /* The component sets animation-delay per bubble so the column enters and
-     leaves in sequence from the newest answer outward. */
+  /* The component sets animation-delay (230ms apart) per bubble so the column
+     pops in and out from the right, newest answer first. */
   animation: bubble-in 180ms cubic-bezier(0.2, 0, 0, 1) backwards;
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
@@ -60,14 +60,14 @@
 @keyframes bubble-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateX(24px) scale(0.98);
   }
 }
 
 @keyframes bubble-out {
   to {
     opacity: 0;
-    transform: translateY(-6px) scale(0.98);
+    transform: translateX(24px) scale(0.98);
   }
 }
 

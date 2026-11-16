@@ -13,14 +13,20 @@ import type { NS } from './locales.ts'
 import { workbenchAddress } from './resource.ts'
 import css from './Bubbles.module.css'
 
-/** Quiet time after the output settles before a column the pointer never entered leaves. */
-export const BUBBLE_IDLE_MS = 3000
-
 /** Delay between two bubbles entering or leaving in sequence. */
-export const BUBBLE_STAGGER_MS = 60
+export const BUBBLE_STAGGER_MS = 230
 
 /** One bubble's enter or leave animation duration. */
 export const BUBBLE_MOTION_MS = 180
+
+/** Grace after the pointer leaves the orb window before the column is dismissed. */
+export const BUBBLE_ORB_LEAVE_MS = 400
+
+/** Lines a collapsed bubble may preview before the rest is omitted with an ellipsis. */
+export const BUBBLE_PREVIEW_LINES = 7
+
+/** Character budget for one collapsed preview; keeps a wrapped paragraph inside the line clamp. */
+export const BUBBLE_PREVIEW_CHARS = 190
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -79,6 +85,24 @@ export function assistantText(blocks: readonly AssistantBlock[]): string {
 }
 
 /**
+ * Omit the part of an answer the bubble cannot show, marking it with an ellipsis.
+ * The CSS line clamp hides wrapped overflow, but it does not add an ellipsis when
+ * the preview ends on an explicit line break.
+ * @param text - complete answer text.
+ * @returns the text up to the bubble's preview budget, ending in `…` when anything was omitted.
+ */
+export function bubblePreview(text: string): string {
+  const lines = text.split('\n')
+  let preview = lines.slice(0, BUBBLE_PREVIEW_LINES).join('\n')
+  let omitted = lines.length > BUBBLE_PREVIEW_LINES
+  if (preview.length > BUBBLE_PREVIEW_CHARS) {
+    preview = preview.slice(0, BUBBLE_PREVIEW_CHARS)
+    omitted = true
+  }
+  return omitted ? `${preview.trimEnd()}…` : preview
+}
+
+/**
  * Derive the bubble entries from the Chat target, oldest first.
  * @param chat - current Chat snapshot, or undefined before that target publishes.
  * @returns one entry per finished assistant message plus the streaming answer as the newest entry.
@@ -120,29 +144,45 @@ export function BubblesLayer(props: BubblesLayerProps) {
   const target = props.useSessions(state => state.ids[0])
   const resource = props.useResource<'betterinteract'>(workbenchAddress(target))
   const reference = resource.value?.reference
-  const { show } = props
+  const { show, hide } = props
 
   // The carrier runs the orb window beside the surface window. Pointer activity
   // inside the resident orb asks the carrier to present the column in the
-  // surface window; leaving the orb re-arms the request for the next hover.
+  // surface window; leaving the orb re-arms the request and dismisses a column
+  // the pointer did not move onto.
   useEffect(() => {
     if (role !== 'orb' || reference === undefined) return
     let fired = false
+    let leaveTimer: ReturnType<typeof setTimeout> | null = null
+    const clearLeave = (): void => {
+      if (leaveTimer === null) return
+      clearTimeout(leaveTimer)
+      leaveTimer = null
+    }
     const enter = (): void => {
+      clearLeave()
       if (fired) return
       fired = true
       show()
     }
-    const leave = (): void => { fired = false }
+    const leave = (): void => {
+      fired = false
+      clearLeave()
+      leaveTimer = setTimeout(() => {
+        leaveTimer = null
+        hide()
+      }, BUBBLE_ORB_LEAVE_MS)
+    }
     document.addEventListener('pointerenter', enter, true)
     document.addEventListener('pointermove', enter, true)
     document.addEventListener('pointerleave', leave, true)
     return () => {
+      clearLeave()
       document.removeEventListener('pointerenter', enter, true)
       document.removeEventListener('pointermove', enter, true)
       document.removeEventListener('pointerleave', leave, true)
     }
-  }, [role, reference, show])
+  }, [role, reference, show, hide])
 
   if (reference === undefined) return null
   const { SessionProvider, renderSlot } = props
@@ -151,10 +191,10 @@ export function BubblesLayer(props: BubblesLayerProps) {
 
 /**
  * Render the bubble column of one Session: the newest output while the agent
- * works, the earlier answers while the pointer rests on it. Bubbles enter and
- * leave in sequence from the newest output outward; the column leaves after the
- * pointer that entered it leaves, or after the quiet period when the pointer
- * never entered.
+ * works, the earlier answers while the pointer rests on it. Bubbles pop in and
+ * out from the right in sequence from the newest output outward; the column
+ * leaves after the pointer that entered it leaves, and the orb window dismisses
+ * a column the pointer did not move onto.
  * @param props - bound Session state, its Chat target, and the carrier commands.
  * @returns the column while the carrier presents it, nothing otherwise.
  */
@@ -169,20 +209,11 @@ export function BubbleStack(props: BubbleStackProps) {
   const wasVisible = useRef<boolean | null>(null)
   /** Whether the pointer has entered this showing, which makes leaving decide the exit. */
   const hovered = useRef(false)
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { entries, live } = bubbleOutputs(chat)
   const busy = running || live !== ''
   const visible = presentation === 'bubbles'
   const shown = expanded ? entries : entries.slice(-1)
-
-  /** Drop a pending quiet-period exit. */
-  const clearIdle = useCallback((): void => {
-    if (idleTimer.current !== null) {
-      clearTimeout(idleTimer.current)
-      idleTimer.current = null
-    }
-  }, [])
 
   /** Stop a running exit, if any, and keep every bubble on screen. */
   const cancelExit = useCallback((): void => {
@@ -195,7 +226,6 @@ export function BubbleStack(props: BubbleStackProps) {
 
   /** Leave in sequence from the newest bubble, then dismiss the column. */
   const startExit = useCallback((): void => {
-    clearIdle()
     if (exitTimer.current !== null || !visible || shown.length === 0) return
     setExiting(true)
     const total = (shown.length - 1) * BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS
@@ -205,7 +235,7 @@ export function BubbleStack(props: BubbleStackProps) {
       hovered.current = false
       hide()
     }, total)
-  }, [clearIdle, visible, shown.length, hide])
+  }, [visible, shown.length, hide])
 
   // The column starts transparent to clicks; the carrier forwards pointer moves
   // to the page, so the first move over the stack asks for clicks back.
@@ -214,7 +244,6 @@ export function BubbleStack(props: BubbleStackProps) {
   }, [pointerInside])
 
   useEffect(() => () => {
-    if (idleTimer.current !== null) clearTimeout(idleTimer.current)
     if (exitTimer.current !== null) clearTimeout(exitTimer.current)
   }, [])
 
@@ -227,12 +256,11 @@ export function BubbleStack(props: BubbleStackProps) {
       hovered.current = false
       setInside(false)
       setExpanded(false)
-      clearIdle()
       cancelExit()
       return
     }
     if (entered && !busy) setExpanded(true)
-  }, [visible, busy, cancelExit, clearIdle])
+  }, [visible, busy, cancelExit])
 
   useEffect(() => {
     if (!busy) return
@@ -241,22 +269,16 @@ export function BubbleStack(props: BubbleStackProps) {
   }, [busy, visible, show, cancelExit])
 
   useEffect(() => {
-    if (!visible || exiting || busy || shown.length === 0 || inside) return
-    // A pointer that entered the column decides when the bubbles leave; a
-    // column the pointer never entered stays for the quiet period.
-    const timer = setTimeout(startExit, hovered.current ? 0 : BUBBLE_IDLE_MS)
-    idleTimer.current = timer
-    return () => {
-      clearTimeout(timer)
-      if (idleTimer.current === timer) idleTimer.current = null
-    }
+    if (!visible || exiting || busy || shown.length === 0 || inside || !hovered.current) return
+    // Only a pointer that entered the column can leave it: an untouched column
+    // stays on screen instead of disappearing on a timer.
+    startExit()
   }, [visible, exiting, busy, shown.length, inside, startExit])
 
   /** Show the history and keep the column while the pointer rests on it. */
   const enter = (): void => {
     setInside(true)
     hovered.current = true
-    clearIdle()
     cancelExit()
     setExpanded(true)
     pointerInside(true)
@@ -287,7 +309,7 @@ export function BubbleStack(props: BubbleStackProps) {
         title={t('command.open')}
         onClick={() => { open() }}
       >
-        {entry.text}
+        {bubblePreview(entry.text)}
       </button>)}
     </div>
   </div>

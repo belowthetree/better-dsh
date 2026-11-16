@@ -7,7 +7,8 @@ import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import {
-  BUBBLE_IDLE_MS, BUBBLE_MOTION_MS, BUBBLE_STAGGER_MS, assistantText, bubbleOutputs, BubblesLayer, BubbleStack,
+  BUBBLE_MOTION_MS, BUBBLE_ORB_LEAVE_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
+  assistantText, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack,
 } from '../src/client/bubbles.tsx'
 
 /** Orb presentation of the committed form profile. */
@@ -82,6 +83,25 @@ describe('assistantText', () => {
   })
 })
 
+describe('bubblePreview', () => {
+  it('keeps text inside the line and character budget unchanged', () => {
+    expect(bubblePreview('short answer')).toBe('short answer')
+  })
+
+  it('omits lines past the preview budget with an ellipsis', () => {
+    const text = Array.from({ length: BUBBLE_PREVIEW_LINES + 2 }, (_, index) => `line ${String(index)}`).join('\n')
+    const preview = bubblePreview(text)
+    expect(preview.endsWith('…')).toBe(true)
+    expect(preview.split('\n')).toHaveLength(BUBBLE_PREVIEW_LINES)
+    expect(preview).not.toContain('line 8')
+  })
+
+  it('omits a wrapped paragraph past the character budget with an ellipsis', () => {
+    const preview = bubblePreview('x'.repeat(BUBBLE_PREVIEW_CHARS + 10))
+    expect(preview).toBe(`${'x'.repeat(BUBBLE_PREVIEW_CHARS)}…`)
+  })
+})
+
 describe('bubbleOutputs', () => {
   it('reports nothing before the Chat target publishes', () => {
     expect(bubbleOutputs(undefined)).toEqual({ entries: [], live: '' })
@@ -121,6 +141,8 @@ describe('BubblesLayer', () => {
   function layer(options: { readonly reference?: boolean; readonly surface?: SurfaceSnapshot } = {}) {
     const renderSlot = vi.fn(() => <div data-testid="stack" />)
     const surface = options.surface ?? ORB
+    const show = vi.fn()
+    const hide = vi.fn()
     const props = {
       useSurface: (select: (value: SurfaceSnapshot) => unknown) => select(surface),
       useSessions: (select: (value: { readonly ids: readonly string[] }) => unknown) =>
@@ -128,8 +150,10 @@ describe('BubblesLayer', () => {
       useResource: () => ({ value: options.reference === false ? {} : { reference: { sessionId: 'session-1' } } }),
       SessionProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="bound">{children}</div>,
       renderSlot,
+      show,
+      hide,
     }
-    return { props, renderSlot }
+    return { props, renderSlot, show, hide }
   }
 
   it('renders nothing while the catalog retains no Session', () => {
@@ -147,9 +171,8 @@ describe('BubblesLayer', () => {
   })
 
   it('asks for the column once per pointer entry into the orb window', () => {
-    const show = vi.fn()
-    const { props } = layer()
-    render(createElement(BubblesLayer, { ...props, show } as never))
+    const { props, show } = layer()
+    render(createElement(BubblesLayer, props as never))
     fireEvent.pointerEnter(document)
     fireEvent.pointerMove(document)
     expect(show).toHaveBeenCalledOnce()
@@ -158,18 +181,38 @@ describe('BubblesLayer', () => {
     expect(show).toHaveBeenCalledTimes(2)
   })
 
+  it('dismisses the column after the pointer leaves the orb window', () => {
+    const { props, hide } = layer()
+    render(createElement(BubblesLayer, props as never))
+    fireEvent.pointerEnter(document)
+    fireEvent.pointerLeave(document)
+    act(() => { vi.advanceTimersByTime(BUBBLE_ORB_LEAVE_MS - 1) })
+    expect(hide).not.toHaveBeenCalled()
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(hide).toHaveBeenCalledOnce()
+  })
+
+  it('cancels the orb-leave dismissal when the pointer comes back', () => {
+    const { props, hide } = layer()
+    render(createElement(BubblesLayer, props as never))
+    fireEvent.pointerEnter(document)
+    fireEvent.pointerLeave(document)
+    act(() => { vi.advanceTimersByTime(BUBBLE_ORB_LEAVE_MS - 100) })
+    fireEvent.pointerEnter(document)
+    act(() => { vi.advanceTimersByTime(BUBBLE_ORB_LEAVE_MS * 2) })
+    expect(hide).not.toHaveBeenCalled()
+  })
+
   it('does not ask for the column before a Session is bound', () => {
-    const show = vi.fn()
-    const { props } = layer({ reference: false })
-    render(createElement(BubblesLayer, { ...props, show } as never))
+    const { props, show } = layer({ reference: false })
+    render(createElement(BubblesLayer, props as never))
     fireEvent.pointerEnter(document)
     expect(show).not.toHaveBeenCalled()
   })
 
   it('ignores pointer activity reported by the surface window', () => {
-    const show = vi.fn()
-    const { props } = layer({ surface: { ...ORB, role: 'surface', presentation: 'bubbles' } })
-    render(createElement(BubblesLayer, { ...props, show } as never))
+    const { props, show } = layer({ surface: { ...ORB, role: 'surface', presentation: 'bubbles' } })
+    render(createElement(BubblesLayer, props as never))
     fireEvent.pointerEnter(document)
     fireEvent.pointerMove(document)
     expect(show).not.toHaveBeenCalled()
@@ -273,23 +316,15 @@ describe('BubbleStack', () => {
     expect(labels()).toEqual(['older answer', 'newest answer'])
   })
 
-  it('keeps a single bubble when the pointer arrives before the quiet timer', () => {
+  it('stays on screen until a pointer that entered it leaves', () => {
     const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
     render(createElement(BubbleStack, props as never))
-    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS - 100) })
-    fireEvent.pointerOver(screen.getByRole('log'))
-    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS * 2) })
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(60_000) })
     expect(column()?.dataset.exiting).toBe('false')
     expect(hide).not.toHaveBeenCalled()
-  })
-
-  it('leaves after the quiet period when the pointer never entered', () => {
-    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
-    render(createElement(BubbleStack, props as never))
-    expect(column()?.dataset.exiting).toBe('false')
-    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS - 1) })
-    expect(column()?.dataset.exiting).toBe('false')
-    act(() => { vi.advanceTimersByTime(1) })
+    fireEvent.pointerOver(screen.getByRole('log'))
+    fireEvent.pointerOut(screen.getByRole('log'))
     expect(column()?.dataset.exiting).toBe('true')
     act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
     expect(hide).toHaveBeenCalledTimes(1)
@@ -302,7 +337,7 @@ describe('BubbleStack', () => {
     fireEvent.pointerOver(screen.getByRole('log'))
     const settled = stack({ running: false, chat: chat({ answers }) })
     view.rerender(createElement(BubbleStack, settled.props as never))
-    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS * 2) })
+    act(() => { vi.advanceTimersByTime(60_000) })
     expect(settled.hide).not.toHaveBeenCalled()
     fireEvent.pointerOut(screen.getByRole('log'))
     act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
@@ -312,7 +347,8 @@ describe('BubbleStack', () => {
   it('cancels the exit when new output starts streaming', () => {
     const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
     const view = render(createElement(BubbleStack, props as never))
-    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS) })
+    fireEvent.pointerOver(screen.getByRole('log'))
+    fireEvent.pointerOut(screen.getByRole('log'))
     expect(column()?.dataset.exiting).toBe('true')
     const resumed = stack({
       running: true,

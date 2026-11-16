@@ -204,7 +204,11 @@ export class DesktopSurfaceController {
         if (this.#presentation === 'orb') this.#show('bubbles')
         return
       case 'dismissBubbles':
-        if (this.#presentation === 'bubbles') this.#show('orb')
+        if (this.#presentation !== 'bubbles') return
+        // The orb window reports its pointer leaving; a pointer that moved onto
+        // the column keeps it, and only leaving the column dismisses it.
+        if (origin === 'orb' && this.#pointer.surface.inside) return
+        this.#show('orb')
         return
       case 'setPinned':
         this.#layout = { ...this.#layout, pinned: command.pinned }

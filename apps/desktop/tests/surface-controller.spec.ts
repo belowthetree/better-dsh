@@ -451,6 +451,18 @@ describe('DesktopSurfaceController', () => {
     expect(window.focused).toBe(0)
   })
 
+  it('keeps the bubble column when the pointer has moved onto it', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' }, 'orb')
+    controller.dispatch({ kind: 'pointerInside', inside: true }, 'surface')
+    controller.dispatch({ kind: 'dismissBubbles' }, 'orb')
+    expect(controller.snapshot('surface').presentation).toBe('bubbles')
+    controller.dispatch({ kind: 'pointerInside', inside: false }, 'surface')
+    controller.dispatch({ kind: 'dismissBubbles' }, 'orb')
+    expect(controller.snapshot('surface').presentation).toBe('orb')
+  })
+
   it('dismisses the bubble column back to the orb window and hides the surface window', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
