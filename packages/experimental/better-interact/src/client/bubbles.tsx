@@ -3,7 +3,7 @@
  * the earlier answers on hover, and the workbench behind a click.
  */
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
-import type { AssistantBlock, AssistantMessageNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -86,11 +86,19 @@ export function assistantText(blocks: readonly AssistantBlock[]): string {
 export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: BubbleOutput[]; live: string } {
   if (chat === undefined) return { entries: [], live: '' }
   const answers: { seq: number; text: string }[] = []
-  for (const node of chat.nodes.values()) {
+  // The assembled transcript holds one node per assistant message, whether or
+  // not a transcript is rendered in this window; the Turn previews are the
+  // fallback for a snapshot that has not assembled nodes yet.
+  for (const node of chat.legacy.nodes) {
     if (node.kind !== 'assistant') continue
-    const message = node.data as AssistantMessageNode
-    const text = assistantText(message.blocks)
-    if (text !== '') answers.push({ seq: message.seq, text })
+    const text = assistantText(node.blocks)
+    if (text !== '') answers.push({ seq: node.seq, text })
+  }
+  if (answers.length === 0) {
+    for (const item of chat.navigation.items()) {
+      const text = item.response.trim()
+      if (text !== '') answers.push({ seq: item.turn, text })
+    }
   }
   answers.sort((left, right) => left.seq - right.seq)
   const entries: BubbleOutput[] = answers.map(answer => ({

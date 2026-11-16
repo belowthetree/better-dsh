@@ -16,24 +16,23 @@ const ORB: SurfaceSnapshot = { form: 'orb', presentation: 'orb', pinned: false, 
 function chat(input: {
   readonly answers?: readonly { readonly turn: number; readonly response: string }[]
   readonly partial?: readonly AssistantBlock[]
+  readonly turnsOnly?: boolean
 } = {}): ChatSnapshot {
-  const nodes = (input.answers ?? []).map((answer, index) => ({
+  const nodes = (input.answers ?? []).map(answer => ({
     kind: 'assistant',
-    key: `node-${String(index)}`,
-    id: `message-${String(index)}`,
-    target: 'chat',
-    data: {
-      kind: 'assistant',
-      seq: answer.turn,
-      turn: 1,
-      step: 1,
-      blocks: [{ kind: 'text', text: answer.response }],
-    },
+    seq: answer.turn,
+    turn: 1,
+    step: 1,
+    blocks: [{ kind: 'text', text: answer.response }],
   }))
   return {
-    nodes: { values: () => nodes },
-    navigation: { items: () => [] },
-    legacy: { partial: input.partial === undefined ? null : { turn: 1, step: 1, blocks: input.partial } },
+    legacy: {
+      nodes: input.turnsOnly === true ? [] : nodes,
+      partial: input.partial === undefined ? null : { turn: 1, step: 1, blocks: input.partial },
+    },
+    navigation: {
+      items: () => (input.answers ?? []).map(answer => ({ turn: answer.turn, anchorKey: 'a', prompt: '', response: answer.response })),
+    },
   } as never
 }
 
@@ -97,6 +96,11 @@ describe('bubbleOutputs', () => {
       { key: 'message-4', text: 'second answer', live: false },
     ])
     expect(live).toBe('')
+  })
+
+  it('falls back to the turn previews until the transcript assembles nodes', () => {
+    const { entries } = bubbleOutputs(chat({ answers: [{ turn: 2, response: 'turn preview' }], turnsOnly: true }))
+    expect(entries).toEqual([{ key: 'message-2', text: 'turn preview', live: false }])
   })
 
   it('yields no entry for a turn preview that carries no answer yet', () => {
