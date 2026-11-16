@@ -11,6 +11,7 @@ import {
   BUBBLES_WIDTH,
   BUBBLES_WINDOW_MARGIN,
   bubblesBounds,
+  containsPoint,
   modalBounds,
   orbBounds,
   panelBounds,
@@ -211,5 +212,22 @@ describe('presentation resizing', () => {
     expect(presentationResizable('panel')).toBe(true)
     expect(presentationResizable('orb')).toBe(false)
     expect(presentationResizable('modal')).toBe(false)
+  })
+})
+
+describe('containsPoint', () => {
+  const RECT = { x: 100, y: 200, width: 40, height: 20 }
+
+  it('accepts the left and top edges and rejects the right and bottom edges', () => {
+    expect(containsPoint(RECT, { x: 100, y: 200 })).toBe(true)
+    expect(containsPoint(RECT, { x: 139, y: 219 })).toBe(true)
+    expect(containsPoint(RECT, { x: 140, y: 210 })).toBe(false)
+    expect(containsPoint(RECT, { x: 110, y: 220 })).toBe(false)
+  })
+
+  it('rejects points outside on either axis', () => {
+    expect(containsPoint(RECT, { x: 99, y: 210 })).toBe(false)
+    expect(containsPoint(RECT, { x: 110, y: 199 })).toBe(false)
+    expect(containsPoint({ x: 0, y: 0, width: 0, height: 0 }, { x: 0, y: 0 })).toBe(false)
   })
 })

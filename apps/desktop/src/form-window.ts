@@ -57,6 +57,20 @@ export interface FormPresentationBounds {
 }
 
 /**
+ * Whether one screen point lies inside a presentation rectangle.
+ * @param rect - presentation bounds in logical screen coordinates.
+ * @param point - pointer position in the same coordinates.
+ * @returns true when the point is at or inside the left/top edges and before the right/bottom edges.
+ */
+export function containsPoint(
+  rect: FormPresentationBounds,
+  point: { readonly x: number; readonly y: number },
+): boolean {
+  return point.x >= rect.x && point.x < rect.x + rect.width
+    && point.y >= rect.y && point.y < rect.y + rect.height
+}
+
+/**
  * Place the orb square at the layout's orb position after clamping it into the work area.
  * @param layout - current orb layout.
  * @param workArea - target work area; it must be at least ORB_SIZE wide and tall.

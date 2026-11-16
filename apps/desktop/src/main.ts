@@ -81,7 +81,7 @@ import {
   clampFormLayout, defaultFormLayout, DesktopFormLayoutStore, formLayoutPath,
   type DesktopFormLayout, type DesktopWorkArea,
 } from './form-layout.ts'
-import { formWindowOptions, type DesktopFormRole } from './form-window.ts'
+import { BUBBLES_WINDOW_MARGIN, containsPoint, formWindowOptions, type DesktopFormRole } from './form-window.ts'
 import type { DesktopBootPayload } from './ipc.ts'
 import type { DshProfileForm } from '@deepseek-ai/dsh-package-manifest'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
@@ -1018,9 +1018,12 @@ async function main(): Promise<void> {
     }
     surfaceController.dispatch(command, formRole)
   })
+  /** Last pointer presence each renderer reported; the cursor watchdog corrects a dropped leave. */
+  const pointerReports = new Map<DesktopFormRole, boolean>()
   ipcMain.on(DESKTOP_IPC.surfacePointer, (event, inside: unknown) => {
     const formRole = productWindowOwner(event)?.formRole
     if (formRole === undefined || typeof inside !== 'boolean') return
+    pointerReports.set(formRole, inside)
     surfaceController?.dispatch({ kind: 'pointerInside', inside }, formRole)
   })
 
@@ -1852,6 +1855,41 @@ async function main(): Promise<void> {
   })
 
   ensureProductWindows()
+  /**
+   * Correct a click-through hover state the OS cursor contradicts. The renderer
+   * owns the hit test; when a leave report is lost (a topmost click-through
+   * window loses the pointer while another window appears), the column would
+   * otherwise stay up. Only a reported-inside state is corrected, so a real
+   * hover is never invented.
+   */
+  const watchCursor = (): void => {
+    if (requestedForm.kind !== 'orb' || surfaceController === undefined) return
+    const point = screen.getCursorScreenPoint()
+    const orb = orbWindows.current()
+    if (orb !== undefined && orb.isVisible() && pointerReports.get('orb') === true
+      && !containsPoint(orb.getBounds(), point)) {
+      pointerReports.set('orb', false)
+      surfaceController.dispatch({ kind: 'pointerInside', inside: false }, 'orb')
+    }
+    const bubbles = bubblesWindows.current()
+    if (bubbles === undefined || !bubbles.isVisible() || pointerReports.get('bubbles') !== true) return
+    const bounds = bubbles.getBounds()
+    const column = {
+      x: bounds.x + BUBBLES_WINDOW_MARGIN,
+      y: bounds.y + BUBBLES_WINDOW_MARGIN,
+      width: bounds.width - 2 * BUBBLES_WINDOW_MARGIN,
+      height: bounds.height - 2 * BUBBLES_WINDOW_MARGIN,
+    }
+    if (!containsPoint(column, point)) {
+      pointerReports.set('bubbles', false)
+      surfaceController.dispatch({ kind: 'pointerInside', inside: false }, 'bubbles')
+    }
+  }
+  if (requestedForm.kind === 'orb') {
+    // The classic presentation has no click-through window to keep in sync.
+    const cursorWatch = setInterval(watchCursor, 250)
+    app.on('will-quit', () => { clearInterval(cursorWatch) })
+  }
   if (typeof manifest !== 'object' || manifest === null) throw new Error('desktop policy: invalid application manifest')
   const developmentPolicy = app.isPackaged ? undefined : process.env.DSH_DESKTOP_MANDATORY_UPDATE_CONFIG
   const policyInput: unknown = app.isPackaged

@@ -35,9 +35,11 @@
   max-height: 160px;
   overflow: hidden;
   padding: 10px 12px;
-  border: 0;
+  border: 0.5px solid var(--dsw-alias-border-l1);
   border-radius: var(--dsw-radius-lg);
-  background: var(--dsw-alias-bg-base);
+  /* An elevated fill rather than the page background: the column floats over an
+     arbitrary desktop, where the near-black page base has no edge of its own. */
+  background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-elevation-panel);
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xs-13);
