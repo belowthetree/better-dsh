@@ -263,7 +263,7 @@
   padding: 16px;
   border-radius: var(--dsw-radius-xl);
   background: var(--dsw-alias-bg-base);
-  box-shadow: var(--dsw-elevation-panel);
+  box-shadow: var(--dsw-elevation-window);
 }
 
 .promptInput {

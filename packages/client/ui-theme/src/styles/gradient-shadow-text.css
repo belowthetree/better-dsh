@@ -37,6 +37,11 @@ body * {
     var(--dsw-elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.04), 0 0 20px 0 rgba(0, 0, 0, 0.05);
   --dsw-elevation-soft:
     var(--dsw-elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.03), 0 0 24px 0 rgba(0, 0, 0, 0.03);
+  /* A free-floating window over the desktop: the broad, soft shadow macOS gives
+     its windows, for surfaces the form carrier renders frameless. */
+  --dsw-elevation-window:
+    var(--dsw-elevation-stroke), 0 1px 2px 0 rgba(0, 0, 0, 0.12), 0 12px 32px 0 rgba(0, 0, 0, 0.18),
+    0 32px 72px 0 rgba(0, 0, 0, 0.22);
 }
 
 body[data-ds-dark-theme] {
