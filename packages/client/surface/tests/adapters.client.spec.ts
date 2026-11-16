@@ -6,7 +6,9 @@ import {
 } from '../src/client/adapters.ts'
 
 /** Desktop presentation used by the committed form profiles. */
-const ORB: SurfaceSnapshot = Object.freeze({ form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null })
+const ORB: SurfaceSnapshot = Object.freeze({
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+})
 
 interface FakeBridge {
   readonly api: DesktopSurfaceApi
@@ -64,7 +66,7 @@ describe('inert carrier', () => {
   it('reports classic and resolves every command without a bridge', async () => {
     expect(desktopSurfaceApi(window)).toBeUndefined()
     const adapter = createSurfaceAdapter(window)
-    expect(adapter.initial()).toEqual({ form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null })
+    expect(adapter.initial()).toEqual({ form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbHovered: false })
     const unsubscribe = adapter.subscribe(() => { throw new Error('the inert carrier never publishes') })
     unsubscribe()
     expect(await adapter.read()).toBe(adapter.initial())
@@ -83,7 +85,7 @@ describe('inert carrier', () => {
     Object.defineProperty(window, 'dshDesktop', { configurable: true, value: {} })
     expect(desktopSurfaceApi(window)).toBeUndefined()
     expect(createSurfaceAdapter(window).initial()).toEqual({
-      form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+      form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbHovered: false,
     })
   })
 })
@@ -101,7 +103,7 @@ describe('desktop carrier', () => {
   it('starts classic but available when the preload has no boot descriptor', () => {
     installBridge(fakeBridge(ORB).api)
     expect(createSurfaceAdapter(window).initial()).toEqual({
-      form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
+      form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null, orbHovered: false,
     })
   })
 

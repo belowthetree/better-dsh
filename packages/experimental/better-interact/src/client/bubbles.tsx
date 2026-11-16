@@ -19,8 +19,8 @@ export const BUBBLE_STAGGER_MS = 230
 /** One bubble's enter or leave animation duration. */
 export const BUBBLE_MOTION_MS = 180
 
-/** Grace after the pointer leaves the orb window before the column is dismissed. */
-export const BUBBLE_ORB_LEAVE_MS = 400
+/** Quiet time after the pointer leaves the orb and the column before the bubbles leave. */
+export const BUBBLE_HOVER_LEAVE_MS = 500
 
 /** Lines a collapsed bubble may preview before the rest is omitted with an ellipsis. */
 export const BUBBLE_PREVIEW_LINES = 7
@@ -144,45 +144,30 @@ export function BubblesLayer(props: BubblesLayerProps) {
   const target = props.useSessions(state => state.ids[0])
   const resource = props.useResource<'betterinteract'>(workbenchAddress(target))
   const reference = resource.value?.reference
-  const { show, hide } = props
+  const { show } = props
 
   // The carrier runs the orb window beside the surface window. Pointer activity
   // inside the resident orb asks the carrier to present the column in the
-  // surface window; leaving the orb re-arms the request and dismisses a column
-  // the pointer did not move onto.
+  // surface window; leaving the orb re-arms the request for the next hover.
+  // The column decides its own exit from the snapshot's orb-hover fact.
   useEffect(() => {
     if (role !== 'orb' || reference === undefined) return
     let fired = false
-    let leaveTimer: ReturnType<typeof setTimeout> | null = null
-    const clearLeave = (): void => {
-      if (leaveTimer === null) return
-      clearTimeout(leaveTimer)
-      leaveTimer = null
-    }
     const enter = (): void => {
-      clearLeave()
       if (fired) return
       fired = true
       show()
     }
-    const leave = (): void => {
-      fired = false
-      clearLeave()
-      leaveTimer = setTimeout(() => {
-        leaveTimer = null
-        hide()
-      }, BUBBLE_ORB_LEAVE_MS)
-    }
+    const leave = (): void => { fired = false }
     document.addEventListener('pointerenter', enter, true)
     document.addEventListener('pointermove', enter, true)
     document.addEventListener('pointerleave', leave, true)
     return () => {
-      clearLeave()
       document.removeEventListener('pointerenter', enter, true)
       document.removeEventListener('pointermove', enter, true)
       document.removeEventListener('pointerleave', leave, true)
     }
-  }, [role, reference, show, hide])
+  }, [role, reference, show])
 
   if (reference === undefined) return null
   const { SessionProvider, renderSlot } = props
@@ -193,25 +178,22 @@ export function BubblesLayer(props: BubblesLayerProps) {
  * Render the bubble column of one Session: the newest output while the agent
  * works, the earlier answers while the pointer rests on it. Bubbles pop in and
  * out from the right in sequence from the newest output outward; the column
- * leaves after the pointer that entered it leaves, and the orb window dismisses
- * a column the pointer did not move onto.
+ * leaves after the pointer has been off both the orb and the column for half a
+ * second.
  * @param props - bound Session state, its Chat target, and the carrier commands.
  * @returns the column while the carrier presents it, nothing otherwise.
  */
 export function BubbleStack(props: BubbleStackProps) {
-  const { show, hide, open, pointerInside, t } = props
+  const { hide, open, pointerInside, t } = props
   const presentation = props.useSurface(snapshot => snapshot.presentation)
-  const running = props.useSession(value => value.running)
+  const orbHovered = props.useSurface(snapshot => snapshot.orbHovered)
   const chat = props.useConversation(state => state.views.get('chat'))
   const [expanded, setExpanded] = useState(false)
   const [exiting, setExiting] = useState(false)
   const [inside, setInside] = useState(false)
   const wasVisible = useRef<boolean | null>(null)
-  /** Whether the pointer has entered this showing, which makes leaving decide the exit. */
-  const hovered = useRef(false)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { entries, live } = bubbleOutputs(chat)
-  const busy = running || live !== ''
+  const { entries } = bubbleOutputs(chat)
   const visible = presentation === 'bubbles'
   const shown = expanded ? entries : entries.slice(-1)
 
@@ -232,7 +214,6 @@ export function BubbleStack(props: BubbleStackProps) {
     exitTimer.current = setTimeout(() => {
       exitTimer.current = null
       setExiting(false)
-      hovered.current = false
       hide()
     }, total)
   }, [visible, shown.length, hide])
@@ -247,48 +228,47 @@ export function BubbleStack(props: BubbleStackProps) {
     if (exitTimer.current !== null) clearTimeout(exitTimer.current)
   }, [])
 
-  // A fresh column opens with the newest answer; reopening it after output
-  // settled expands to the history while the pointer asks for it.
+  // A fresh column opens on the orb hover with its history expanded.
   useEffect(() => {
     const entered = wasVisible.current === false && visible
     wasVisible.current = visible
     if (!visible) {
-      hovered.current = false
       setInside(false)
       setExpanded(false)
       cancelExit()
       return
     }
-    if (entered && !busy) setExpanded(true)
-  }, [visible, busy, cancelExit])
+    if (entered) setExpanded(true)
+  }, [visible, cancelExit])
 
   useEffect(() => {
-    if (!busy) return
-    cancelExit()
-    if (!visible) show()
-  }, [busy, visible, show, cancelExit])
-
-  useEffect(() => {
-    if (!visible || exiting || busy || shown.length === 0 || inside || !hovered.current) return
-    // Only a pointer that entered the column can leave it: an untouched column
-    // stays on screen instead of disappearing on a timer.
-    startExit()
-  }, [visible, exiting, busy, shown.length, inside, startExit])
+    if (!visible) {
+      cancelExit()
+      return
+    }
+    // The orb or the column under the pointer keeps the bubbles. Otherwise the
+    // column leaves after half a second; returning to either cancels the exit.
+    if (orbHovered || inside) {
+      cancelExit()
+      return
+    }
+    if (exiting) return
+    const timer = setTimeout(startExit, BUBBLE_HOVER_LEAVE_MS)
+    return () => { clearTimeout(timer) }
+  }, [visible, orbHovered, inside, exiting, startExit, cancelExit])
 
   /** Show the history and keep the column while the pointer rests on it. */
   const enter = (): void => {
     setInside(true)
-    hovered.current = true
     cancelExit()
     setExpanded(true)
     pointerInside(true)
   }
 
-  /** Let the carrier pass clicks through and leave the column once nothing streams. */
+  /** Let the carrier pass clicks through; the leave timer decides the exit. */
   const leave = (): void => {
     setInside(false)
     pointerInside(false)
-    if (!busy && visible) startExit()
   }
 
   if (!visible || entries.length === 0) return null

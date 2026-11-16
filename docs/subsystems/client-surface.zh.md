@@ -6,7 +6,7 @@
 
 ## 呈现状态
 
-`SurfaceSnapshot` 携带窗口角色（`classic`、常驻 `orb` 或 `surface` 窗口）、壳形态（`classic` 或 `orb`）、呈现（`classic`、`orb`、`panel`、`modal` 或 `bubbles`）、面板固定状态、载体可用性与当前 `shell.modal` 条目 id。形态 profile 把悬浮球窗口与 surface 窗口作为两个渲染进程运行：悬浮球窗口始终报告 `orb` 呈现，surface 窗口报告真实呈现。`snapshot()` 在字段变化前保持同一引用，`follow(signal)` 先产出当前快照，再在信号中止前产出每次变化。classic 框架报告 `classic` 呈现，因此形态 profile 可以收起回到它；没有载体的页面报告 `available: false`，且永远无法改变呈现。
+`SurfaceSnapshot` 携带窗口角色（`classic`、常驻 `orb` 或 `surface` 窗口）、壳形态（`classic` 或 `orb`）、呈现（`classic`、`orb`、`panel`、`modal` 或 `bubbles`）、面板固定状态、载体可用性、当前 `shell.modal` 条目 id，以及 `orbHovered`（指针是否位于常驻悬浮球窗口上）。形态 profile 把悬浮球窗口与 surface 窗口作为两个渲染进程运行：悬浮球窗口始终报告 `orb` 呈现，surface 窗口报告真实呈现。`snapshot()` 在字段变化前保持同一引用，`follow(signal)` 先产出当前快照，再在信号中止前产出每次变化。classic 框架报告 `classic` 呈现，因此形态 profile 可以收起回到它；没有载体的页面报告 `available: false`，且永远无法改变呈现。
 
 ## 载体归属
 

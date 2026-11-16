@@ -6,7 +6,7 @@ import { SurfaceRuntime } from '../src/client/service.ts'
 
 /** Committed classic presentation used as the comparison baseline. */
 const BASE: SurfaceSnapshot = Object.freeze({
-  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null, orbHovered: false,
 })
 
 interface FakeAdapter {
@@ -78,6 +78,7 @@ describe('SurfaceRuntime snapshot', () => {
       { ...BASE, pinned: true },
       { ...BASE, available: false },
       { ...BASE, modal: 'voice-setup' },
+      { ...BASE, orbHovered: true },
     ]
     for (const change of changes) {
       fake.push(change)

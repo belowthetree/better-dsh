@@ -48,6 +48,12 @@ export interface SurfaceSnapshot {
    * carries its id instead of rendering content itself.
    */
   readonly modal: string | null
+  /**
+   * Whether the pointer is over the resident orb window. A form profile's
+   * surface window keeps the bubble column while the orb is hovered, even when
+   * the pointer is not on the column itself.
+   */
+  readonly orbHovered: boolean
 }
 
 /** Boot descriptor the carrier publishes before Client plugins load. */

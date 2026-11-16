@@ -129,10 +129,10 @@ describe('DesktopSurfaceController', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, pinned: true }, effects: window })
     expect(controller.snapshot('orb')).toEqual({
-      form: 'orb', role: 'orb', presentation: 'orb', pinned: true, available: true, modal: null,
+      form: 'orb', role: 'orb', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
     })
     expect(controller.snapshot('surface')).toEqual({
-      form: 'orb', role: 'surface', presentation: 'orb', pinned: true, available: true, modal: null,
+      form: 'orb', role: 'surface', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
     })
   })
 
@@ -175,7 +175,7 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'orb.quick-setup' })
     expect(controller.ensurePanel()).toBe(false)
     expect(controller.snapshot('surface')).toEqual({ form: 'orb', role: 'surface', presentation: 'modal', pinned: false,
-      available: true, modal: 'orb.quick-setup' })
+      available: true, modal: 'orb.quick-setup', orbHovered: false })
   })
 
   it('ignores expand while already expanded and collapse while collapsed', () => {
@@ -315,7 +315,7 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'settings-card' })
     controller.blurred()
     expect(controller.snapshot('surface')).toEqual({
-      form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null,
+      form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
     })
   })
 
@@ -451,16 +451,18 @@ describe('DesktopSurfaceController', () => {
     expect(window.focused).toBe(0)
   })
 
-  it('keeps the bubble column when the pointer has moved onto it', () => {
+  it('publishes the orb hover fact so the surface window can time the bubble exit', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'presentBubbles' }, 'orb')
-    controller.dispatch({ kind: 'pointerInside', inside: true }, 'surface')
-    controller.dispatch({ kind: 'dismissBubbles' }, 'orb')
-    expect(controller.snapshot('surface').presentation).toBe('bubbles')
+    controller.dispatch({ kind: 'pointerInside', inside: true }, 'orb')
+    expect(window.publishedSurface.at(-1)).toMatchObject({ orbHovered: true })
+    expect(window.publishedOrb.at(-1)).toMatchObject({ orbHovered: true })
+    const published = window.publishedSurface.length
+    controller.dispatch({ kind: 'pointerInside', inside: true }, 'orb')
     controller.dispatch({ kind: 'pointerInside', inside: false }, 'surface')
-    controller.dispatch({ kind: 'dismissBubbles' }, 'orb')
-    expect(controller.snapshot('surface').presentation).toBe('orb')
+    expect(window.publishedSurface.length).toBe(published)
+    controller.dispatch({ kind: 'pointerInside', inside: false }, 'orb')
+    expect(window.publishedSurface.at(-1)).toMatchObject({ orbHovered: false })
   })
 
   it('dismisses the bubble column back to the orb window and hides the surface window', () => {

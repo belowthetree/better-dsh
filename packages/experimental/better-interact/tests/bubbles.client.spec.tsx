@@ -7,12 +7,14 @@ import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import {
-  BUBBLE_MOTION_MS, BUBBLE_ORB_LEAVE_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
+  BUBBLE_HOVER_LEAVE_MS, BUBBLE_MOTION_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
   assistantText, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack,
 } from '../src/client/bubbles.tsx'
 
 /** Orb presentation of the committed form profile. */
-const ORB: SurfaceSnapshot = { form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null }
+const ORB: SurfaceSnapshot = {
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+}
 
 function chat(input: {
   readonly answers?: readonly { readonly turn: number; readonly response: string }[]
@@ -39,23 +41,24 @@ function chat(input: {
 
 function stack(options: {
   readonly presentation?: SurfaceSnapshot['presentation']
-  readonly running?: boolean
+  readonly orbHovered?: boolean
   readonly chat?: ChatSnapshot
 } = {}) {
-  const show = vi.fn()
   const hide = vi.fn()
   const open = vi.fn()
   const pointerInside = vi.fn()
   const props = {
-    useSurface: (select: (value: SurfaceSnapshot) => unknown) =>
-      select({ ...ORB, presentation: options.presentation ?? 'bubbles' }),
-    useSession: (select: (value: { readonly running: boolean }) => unknown) => select({ running: options.running === true }),
+    useSurface: (select: (value: SurfaceSnapshot) => unknown) => select({
+      ...ORB,
+      presentation: options.presentation ?? 'bubbles',
+      orbHovered: options.orbHovered ?? true,
+    }),
     useConversation: (select: (value: { readonly views: { get: () => ChatSnapshot | undefined } }) => unknown) =>
       select({ views: { get: () => options.chat } }),
-    show, hide, open, pointerInside,
+    hide, open, pointerInside,
     t: (key: string) => key,
   }
-  return { props, show, hide, open, pointerInside }
+  return { props, hide, open, pointerInside }
 }
 
 function column(): HTMLElement | null {
@@ -181,28 +184,6 @@ describe('BubblesLayer', () => {
     expect(show).toHaveBeenCalledTimes(2)
   })
 
-  it('dismisses the column after the pointer leaves the orb window', () => {
-    const { props, hide } = layer()
-    render(createElement(BubblesLayer, props as never))
-    fireEvent.pointerEnter(document)
-    fireEvent.pointerLeave(document)
-    act(() => { vi.advanceTimersByTime(BUBBLE_ORB_LEAVE_MS - 1) })
-    expect(hide).not.toHaveBeenCalled()
-    act(() => { vi.advanceTimersByTime(1) })
-    expect(hide).toHaveBeenCalledOnce()
-  })
-
-  it('cancels the orb-leave dismissal when the pointer comes back', () => {
-    const { props, hide } = layer()
-    render(createElement(BubblesLayer, props as never))
-    fireEvent.pointerEnter(document)
-    fireEvent.pointerLeave(document)
-    act(() => { vi.advanceTimersByTime(BUBBLE_ORB_LEAVE_MS - 100) })
-    fireEvent.pointerEnter(document)
-    act(() => { vi.advanceTimersByTime(BUBBLE_ORB_LEAVE_MS * 2) })
-    expect(hide).not.toHaveBeenCalled()
-  })
-
   it('does not ask for the column before a Session is bound', () => {
     const { props, show } = layer({ reference: false })
     render(createElement(BubblesLayer, props as never))
@@ -227,7 +208,7 @@ describe('BubbleStack', () => {
   const delays = (): string[] => screen.queryAllByRole('button').map(button => button.style.animationDelay)
 
   it('renders nothing while the carrier presents another presentation', () => {
-    const { props } = stack({ presentation: 'panel', running: true, chat: chat({
+    const { props } = stack({ presentation: 'panel', chat: chat({
       answers: [{ turn: 1, response: 'answer' }],
     }) })
     render(createElement(BubbleStack, props as never))
@@ -269,95 +250,85 @@ describe('BubbleStack', () => {
     ])
   })
 
-  it('asks for the column while the agent streams output', () => {
-    const { props, show } = stack({ presentation: 'orb', running: true, chat: chat({
-      partial: [{ kind: 'text', text: 'working' }],
-    }) })
+  it('keeps the column while the orb is hovered', () => {
+    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
     render(createElement(BubbleStack, props as never))
-    expect(show).toHaveBeenCalledTimes(1)
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(column()?.dataset.exiting).toBe('false')
+    expect(hide).not.toHaveBeenCalled()
   })
 
-  it('stays quiet while no output is in progress', () => {
-    const { props, show } = stack({ presentation: 'orb' })
-    render(createElement(BubbleStack, props as never))
-    expect(show).not.toHaveBeenCalled()
+  it('leaves half a second after the pointer leaves the orb', () => {
+    const answers = [{ turn: 1, response: 'answer' }]
+    const onOrb = stack({ chat: chat({ answers }), orbHovered: true })
+    const view = render(createElement(BubbleStack, onOrb.props as never))
+    const away = stack({ chat: chat({ answers }), orbHovered: false })
+    view.rerender(createElement(BubbleStack, away.props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS - 1) })
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(column()?.dataset.exiting).toBe('true')
+    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
+    expect(away.hide).toHaveBeenCalledTimes(1)
   })
 
-  it('expands the history on hover and leaves in sequence after the pointer leaves', () => {
-    const { props, hide } = stack({ chat: chat({
-      answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
-    }) })
+  it('keeps the column while the pointer is on it without orb hover', () => {
+    const { props, hide } = stack({
+      chat: chat({ answers: [{ turn: 1, response: 'answer' }] }),
+      orbHovered: false,
+    })
+    render(createElement(BubbleStack, props as never))
+    fireEvent.pointerOver(screen.getByRole('log'))
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(column()?.dataset.exiting).toBe('false')
+    expect(hide).not.toHaveBeenCalled()
+    fireEvent.pointerOut(screen.getByRole('log'))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS) })
+    expect(column()?.dataset.exiting).toBe('true')
+  })
+
+  it('cancels the pending leave when the pointer returns to the orb', () => {
+    const answers = [{ turn: 1, response: 'answer' }]
+    const away = stack({ chat: chat({ answers }), orbHovered: false })
+    const view = render(createElement(BubbleStack, away.props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS - 100) })
+    const back = stack({ chat: chat({ answers }), orbHovered: true })
+    view.rerender(createElement(BubbleStack, back.props as never))
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(column()?.dataset.exiting).toBe('false')
+    expect(back.hide).not.toHaveBeenCalled()
+  })
+
+  it('cancels a running exit when the pointer returns to the column', () => {
+    const { props, hide } = stack({
+      chat: chat({ answers: [{ turn: 1, response: 'answer' }] }),
+      orbHovered: false,
+    })
+    render(createElement(BubbleStack, props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS) })
+    expect(column()?.dataset.exiting).toBe('true')
+    fireEvent.pointerOver(screen.getByRole('log'))
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(hide).not.toHaveBeenCalled()
+  })
+
+  it('expands the history on hover and leaves in sequence after the pointer leaves both', () => {
+    const { props, hide } = stack({
+      chat: chat({ answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }] }),
+      orbHovered: false,
+    })
     render(createElement(BubbleStack, props as never))
     const log = screen.getByRole('log')
     fireEvent.pointerOver(log)
     expect(labels()).toEqual(['older answer', 'newest answer'])
     fireEvent.pointerOut(log)
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS) })
     expect(column()?.dataset.exiting).toBe('true')
     expect(delays()).toEqual([`${String(BUBBLE_STAGGER_MS)}ms`, '0ms'])
     expect(hide).not.toHaveBeenCalled()
     act(() => { vi.advanceTimersByTime(BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS) })
     expect(hide).toHaveBeenCalledTimes(1)
-  })
-
-  it('cancels a running exit when the pointer comes back', () => {
-    const { props, hide } = stack({ chat: chat({
-      answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
-    }) })
-    render(createElement(BubbleStack, props as never))
-    const log = screen.getByRole('log')
-    fireEvent.pointerOver(log)
-    fireEvent.pointerOut(log)
-    act(() => { vi.advanceTimersByTime(BUBBLE_STAGGER_MS) })
-    expect(column()?.dataset.exiting).toBe('true')
-    fireEvent.pointerOver(log)
-    expect(column()?.dataset.exiting).toBe('false')
-    act(() => { vi.advanceTimersByTime(2 * (BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS)) })
-    expect(hide).not.toHaveBeenCalled()
-    expect(labels()).toEqual(['older answer', 'newest answer'])
-  })
-
-  it('stays on screen until a pointer that entered it leaves', () => {
-    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
-    render(createElement(BubbleStack, props as never))
-    expect(column()?.dataset.exiting).toBe('false')
-    act(() => { vi.advanceTimersByTime(60_000) })
-    expect(column()?.dataset.exiting).toBe('false')
-    expect(hide).not.toHaveBeenCalled()
-    fireEvent.pointerOver(screen.getByRole('log'))
-    fireEvent.pointerOut(screen.getByRole('log'))
-    expect(column()?.dataset.exiting).toBe('true')
-    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
-    expect(hide).toHaveBeenCalledTimes(1)
-  })
-
-  it('stays while hovered over settled output until the pointer leaves', () => {
-    const answers = [{ turn: 1, response: 'answer' }]
-    const running = stack({ running: true, chat: chat({ answers }) })
-    const view = render(createElement(BubbleStack, running.props as never))
-    fireEvent.pointerOver(screen.getByRole('log'))
-    const settled = stack({ running: false, chat: chat({ answers }) })
-    view.rerender(createElement(BubbleStack, settled.props as never))
-    act(() => { vi.advanceTimersByTime(60_000) })
-    expect(settled.hide).not.toHaveBeenCalled()
-    fireEvent.pointerOut(screen.getByRole('log'))
-    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
-    expect(settled.hide).toHaveBeenCalledTimes(1)
-  })
-
-  it('cancels the exit when new output starts streaming', () => {
-    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
-    const view = render(createElement(BubbleStack, props as never))
-    fireEvent.pointerOver(screen.getByRole('log'))
-    fireEvent.pointerOut(screen.getByRole('log'))
-    expect(column()?.dataset.exiting).toBe('true')
-    const resumed = stack({
-      running: true,
-      chat: chat({ answers: [{ turn: 1, response: 'answer' }], partial: [{ kind: 'text', text: 'more' }] }),
-    })
-    view.rerender(createElement(BubbleStack, resumed.props as never))
-    expect(column()?.dataset.exiting).toBe('false')
-    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS * 2) })
-    expect(hide).not.toHaveBeenCalled()
   })
 
   it('reports pointer presence so the carrier can pass clicks through', () => {

@@ -62,6 +62,7 @@ function samePresentation(left: SurfaceSnapshot, right: SurfaceSnapshot): boolea
     && left.pinned === right.pinned
     && left.available === right.available
     && left.modal === right.modal
+    && left.orbHovered === right.orbHovered
 }
 
 /** Carrier-backed surface state; one instance lives for one plugin lifetime. */

@@ -133,6 +133,7 @@ app.on('open-url', (event, url) => { event.preventDefault(); acceptDeepLink(url)
 /** Presentation a renderer boots with when its profile presents the classic workspace window. */
 const CLASSIC_SURFACE_SNAPSHOT: SurfaceSnapshot = {
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  orbHovered: false,
 }
 
 /**

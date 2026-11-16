@@ -21,7 +21,7 @@ import { zh } from '../src/client/locales.ts'
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
 })
 
 /** Observable double with identity-stable snapshots and signal-scoped observation. */

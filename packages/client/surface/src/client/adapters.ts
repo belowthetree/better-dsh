@@ -4,6 +4,7 @@ import type { DesktopSurfaceApi, ModalSizeHint, SurfaceBootGlobal, SurfaceDescri
 /** Presentation of a carrier that cannot change it: Web pages and classic Desktop windows. */
 const INERT_SNAPSHOT: SurfaceSnapshot = Object.freeze({
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  orbHovered: false,
 })
 
 /** Desktop window with the preload product API exposed as `window.dshDesktop`. */
@@ -102,6 +103,7 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
   return {
     initial: () => descriptor ?? {
       form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
+      orbHovered: false,
     },
     read: () => api.snapshot(),
     subscribe: listener => api.subscribe(listener),

@@ -10,7 +10,9 @@ type Registration = { readonly name: string; readonly [key: string]: unknown }
 type Command = { readonly id: string; readonly resolve: () => { readonly status: string; readonly run: () => void } }
 
 /** Orb presentation the carrier reports while the plugin runs. */
-const ORB: SurfaceSnapshot = { form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null }
+const ORB: SurfaceSnapshot = {
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+}
 
 function context() {
   const registrations: Registration[] = []

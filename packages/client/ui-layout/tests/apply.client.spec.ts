@@ -27,12 +27,12 @@ type InjectedFace = {
 
 /** Presentation without a carrier: the classic profile. */
 const CLASSIC_SURFACE: SurfaceSnapshot = {
-  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbHovered: false,
 }
 
 /** Orb presentation the carrier publishes once a form profile is active. */
 const ORB_SURFACE: SurfaceSnapshot = {
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
 }
 
 interface FakeSurface {

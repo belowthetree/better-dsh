@@ -6,7 +6,7 @@ The client surface capability reports one renderer window's role, shell form, an
 
 ## Presentation state
 
-`SurfaceSnapshot` carries the window role (`classic`, the resident `orb`, or the `surface` window), the shell form (`classic` or `orb`), the presentation (`classic`, `orb`, `panel`, `modal`, or `bubbles`), panel pinning, carrier availability, and the active `shell.modal` entry id. A form profile runs the orb and surface windows as separate renderers: the orb window always reports the `orb` presentation, and the surface window reports the real one. `snapshot()` keeps one reference until a field changes, and `follow(signal)` yields the current snapshot plus each change until the signal aborts. The classic frame reports the `classic` presentation, so a form profile can collapse back to it; a page without a carrier reports `available: false` and can never change the presentation.
+`SurfaceSnapshot` carries the window role (`classic`, the resident `orb`, or the `surface` window), the shell form (`classic` or `orb`), the presentation (`classic`, `orb`, `panel`, `modal`, or `bubbles`), panel pinning, carrier availability, the active `shell.modal` entry id, and `orbHovered`, whether the pointer is over the resident orb window. A form profile runs the orb and surface windows as separate renderers: the orb window always reports the `orb` presentation, and the surface window reports the real one. `snapshot()` keeps one reference until a field changes, and `follow(signal)` yields the current snapshot plus each change until the signal aborts. The classic frame reports the `classic` presentation, so a form profile can collapse back to it; a page without a carrier reports `available: false` and can never change the presentation.
 
 ## Carrier ownership
 

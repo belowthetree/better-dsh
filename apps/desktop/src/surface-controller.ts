@@ -161,6 +161,7 @@ export class DesktopSurfaceController {
       pinned: this.#layout.pinned,
       available: true,
       modal: role === 'orb' ? null : this.#modal,
+      orbHovered: this.#pointer.orb.inside,
     }
   }
 
@@ -204,11 +205,7 @@ export class DesktopSurfaceController {
         if (this.#presentation === 'orb') this.#show('bubbles')
         return
       case 'dismissBubbles':
-        if (this.#presentation !== 'bubbles') return
-        // The orb window reports its pointer leaving; a pointer that moved onto
-        // the column keeps it, and only leaving the column dismisses it.
-        if (origin === 'orb' && this.#pointer.surface.inside) return
-        this.#show('orb')
+        if (this.#presentation === 'bubbles') this.#show('orb')
         return
       case 'setPinned':
         this.#layout = { ...this.#layout, pinned: command.pinned }
@@ -222,10 +219,14 @@ export class DesktopSurfaceController {
         this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
         this.#effects.persist(this.#layout)
         return
-      case 'pointerInside':
+      case 'pointerInside': {
+        const orbHoverChanged = origin === 'orb' && this.#pointer.orb.inside !== command.inside
         this.#pointer[origin] = { reported: true, inside: command.inside }
         this.#effects.setIgnoreMouseEvents(origin, this.#ignoreMouse(origin))
+        // The surface renderer decides when the bubble column leaves from the orb hover fact.
+        if (orbHoverChanged) this.#publish()
         return
+      }
       default:
         command satisfies never
     }
