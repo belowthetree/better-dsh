@@ -82,7 +82,8 @@
   outline: 2px solid var(--dsw-focus-ring-color);
 }
 
-.bubble[data-live='false'] {
+/* History entries step down from the streaming bubble's primary reading style. */
+.bubble[data-kind='history'] {
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xxs-12);
 }

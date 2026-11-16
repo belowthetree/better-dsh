@@ -8,7 +8,7 @@ import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/cli
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import {
   BUBBLE_HOVER_LEAVE_MS, BUBBLE_MOTION_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
-  assistantText, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack,
+  assistantText, bubbleKind, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack,
 } from '../src/client/bubbles.tsx'
 
 /** Orb presentation of the committed form profile. */
@@ -42,8 +42,10 @@ function chat(input: {
 function stack(options: {
   readonly presentation?: SurfaceSnapshot['presentation']
   readonly orbHovered?: boolean
+  readonly running?: boolean
   readonly chat?: ChatSnapshot
 } = {}) {
+  const show = vi.fn()
   const hide = vi.fn()
   const open = vi.fn()
   const pointerInside = vi.fn()
@@ -53,12 +55,13 @@ function stack(options: {
       presentation: options.presentation ?? 'bubbles',
       orbHovered: options.orbHovered ?? true,
     }),
+    useSession: (select: (value: { readonly running: boolean }) => unknown) => select({ running: options.running === true }),
     useConversation: (select: (value: { readonly views: { get: () => ChatSnapshot | undefined } }) => unknown) =>
       select({ views: { get: () => options.chat } }),
-    hide, open, pointerInside,
+    show, hide, open, pointerInside,
     t: (key: string) => key,
   }
-  return { props, hide, open, pointerInside }
+  return { props, show, hide, open, pointerInside }
 }
 
 function column(): HTMLElement | null {
@@ -83,6 +86,13 @@ describe('assistantText', () => {
 
   it('returns nothing for a publication without text', () => {
     expect(assistantText([{ kind: 'reasoning', text: 'only thinking' }])).toBe('')
+  })
+})
+
+describe('bubbleKind', () => {
+  it('classifies the live partial as streaming and completed answers as history', () => {
+    expect(bubbleKind({ key: 'live', text: 'writing', live: true })).toBe('streaming')
+    expect(bubbleKind({ key: 'message-1', text: 'done', live: false })).toBe('history')
   })
 })
 
@@ -226,11 +236,72 @@ describe('BubbleStack', () => {
   })
 
   it('renders only the newest output while collapsed', () => {
-    const { props } = stack({ chat: chat({
-      answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
-    }) })
+    const { props } = stack({
+      orbHovered: false,
+      chat: chat({
+        answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
+      }),
+    })
     render(createElement(BubbleStack, props as never))
     expect(labels()).toEqual(['newest answer'])
+  })
+
+  it('asks for the column when output starts streaming', () => {
+    const { props, show } = stack({
+      presentation: 'orb',
+      orbHovered: false,
+      running: true,
+      chat: chat({ partial: [{ kind: 'text', text: 'working' }] }),
+    })
+    render(createElement(BubbleStack, props as never))
+    expect(show).toHaveBeenCalledOnce()
+  })
+
+  it('does not raise the column for a run that has produced no answer yet', () => {
+    const { props, show } = stack({ presentation: 'orb', running: true, chat: chat({}) })
+    render(createElement(BubbleStack, props as never))
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it('marks the live answer as streaming and the completed answers as history', () => {
+    const { props } = stack({
+      orbHovered: true,
+      running: true,
+      chat: chat({
+        answers: [{ turn: 1, response: 'older answer' }],
+        partial: [{ kind: 'text', text: 'still writing' }],
+      }),
+    })
+    render(createElement(BubbleStack, props as never))
+    expect(screen.getAllByRole('button').map(button => button.dataset.kind)).toEqual(['history', 'streaming'])
+  })
+
+  it('keeps the streaming bubble while the agent runs regardless of hover', () => {
+    const { props, hide } = stack({
+      orbHovered: false,
+      running: true,
+      chat: chat({ partial: [{ kind: 'text', text: 'working' }] }),
+    })
+    const view = render(createElement(BubbleStack, props as never))
+    expect(labels()).toEqual(['working'])
+    expect(screen.getByRole('button').dataset.kind).toBe('streaming')
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(column()?.dataset.exiting).toBe('false')
+    expect(hide).not.toHaveBeenCalled()
+    const settled = stack({
+      orbHovered: false,
+      running: false,
+      chat: chat({ answers: [{ turn: 1, response: 'working' }] }),
+    })
+    view.rerender(createElement(BubbleStack, settled.props as never))
+    expect(labels()).toEqual(['working'])
+    expect(screen.getByRole('button').dataset.kind).toBe('history')
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS - 1) })
+    expect(settled.hide).not.toHaveBeenCalled()
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(column()?.dataset.exiting).toBe('true')
+    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
+    expect(settled.hide).toHaveBeenCalledTimes(1)
   })
 
   it('enters the history in sequence from the newest answer outward', () => {

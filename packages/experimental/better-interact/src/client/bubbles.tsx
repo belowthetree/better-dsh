@@ -73,6 +73,18 @@ export interface BubbleOutput {
   readonly live: boolean
 }
 
+/** Category of one bubble: a completed answer, or the message currently streaming. */
+export type BubbleKind = 'history' | 'streaming'
+
+/**
+ * Classify one bubble by whether its answer is still streaming.
+ * @param entry - derived bubble entry.
+ * @returns the streaming category for the live partial, history for a completed message.
+ */
+export function bubbleKind(entry: BubbleOutput): BubbleKind {
+  return entry.live ? 'streaming' : 'history'
+}
+
 /**
  * Join the text blocks of one assistant publication.
  * @param blocks - assistant content blocks.
@@ -163,26 +175,32 @@ export function BubblesLayer(props: BubblesLayerProps) {
 }
 
 /**
- * Render the bubble column of one Session: the newest output while the agent
- * works, the earlier answers while the pointer rests on it. Bubbles pop in and
- * out from the right in sequence from the newest output outward; the column
- * leaves after the pointer has been off both the orb and the column for half a
- * second.
+ * Render the bubble column of one Session: history bubbles for the messages
+ * already answered, and one streaming bubble for the answer being written. The
+ * streaming bubble appears while output streams and the column stays until the
+ * agent stops; history bubbles follow the pointer's orb and column hover, leaving
+ * half a second after the pointer is off both.
  * @param props - bound Session state, its Chat target, and the carrier commands.
  * @returns the column while the carrier presents it, nothing otherwise.
  */
 export function BubbleStack(props: BubbleStackProps) {
-  const { hide, open, pointerInside, t } = props
+  const { show, hide, open, pointerInside, t } = props
   const presentation = props.useSurface(snapshot => snapshot.presentation)
   const orbHovered = props.useSurface(snapshot => snapshot.orbHovered)
+  const running = props.useSession(value => value.running)
   const chat = props.useConversation(state => state.views.get('chat'))
-  const [expanded, setExpanded] = useState(false)
   const [exiting, setExiting] = useState(false)
   const [inside, setInside] = useState(false)
-  const wasVisible = useRef<boolean | null>(null)
+  /** Once the pointer asked for the history, keep it visible through the leave and exit. */
+  const [holdHistory, setHoldHistory] = useState(false)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { entries } = bubbleOutputs(chat)
+  const { entries, live } = bubbleOutputs(chat)
+  const streaming = live !== ''
+  const busy = running || streaming
   const visible = presentation === 'bubbles'
+  // The pointer on the orb or the column asks for the history; a streaming
+  // column the pointer is away from shows only its newest bubble.
+  const expanded = orbHovered || inside || holdHistory
   const shown = expanded ? entries : entries.slice(-1)
 
   /** Stop a running exit, if any, and keep every bubble on screen. */
@@ -216,40 +234,45 @@ export function BubbleStack(props: BubbleStackProps) {
     if (exitTimer.current !== null) clearTimeout(exitTimer.current)
   }, [])
 
-  // A fresh column opens on the orb hover with its history expanded.
+  // A streaming answer raises the column on its own; the streaming bubble must
+  // stay visible until the agent stops, whether or not the pointer is nearby.
   useEffect(() => {
-    const entered = wasVisible.current === false && visible
-    wasVisible.current = visible
+    if (visible || !streaming) return
+    show()
+  }, [visible, streaming, show])
+
+  // Asking for the history keeps it expanded while the pointer leaves and the
+  // bubbles finish their exit; a fresh streaming-only column starts collapsed.
+  useEffect(() => {
     if (!visible) {
-      setInside(false)
-      setExpanded(false)
-      cancelExit()
+      setHoldHistory(false)
       return
     }
-    if (entered) setExpanded(true)
-  }, [visible, cancelExit])
+    if (orbHovered || inside) setHoldHistory(true)
+  }, [visible, orbHovered, inside])
 
   useEffect(() => {
     if (!visible) {
+      setInside(false)
+      setHoldHistory(false)
       cancelExit()
       return
     }
-    // The orb or the column under the pointer keeps the bubbles. Otherwise the
-    // column leaves after half a second; returning to either cancels the exit.
-    if (orbHovered || inside) {
+    // The orb, the column, or an active output keeps the bubbles. Otherwise the
+    // column leaves half a second after the pointer left both.
+    if (orbHovered || inside || busy) {
       cancelExit()
       return
     }
     if (exiting) return
     const timer = setTimeout(startExit, BUBBLE_HOVER_LEAVE_MS)
     return () => { clearTimeout(timer) }
-  }, [visible, orbHovered, inside, exiting, startExit, cancelExit])
+  }, [visible, orbHovered, inside, busy, exiting, startExit, cancelExit])
 
-  /** Show the history and keep the column while the pointer rests on it. */
+  /** Expand the history and keep the column while the pointer rests on it. */
   const enter = (): void => {
     setInside(true)
     cancelExit()
-    setExpanded(true)
     pointerInside(true)
   }
 
@@ -273,7 +296,7 @@ export function BubbleStack(props: BubbleStackProps) {
         type="button"
         className={css.bubble}
         style={{ animationDelay: `${Math.max(0, shown.length - 1 - index) * BUBBLE_STAGGER_MS}ms` }}
-        data-live={entry.live ? 'true' : 'false'}
+        data-kind={bubbleKind(entry)}
         title={t('command.open')}
         onClick={() => { open() }}
       >
