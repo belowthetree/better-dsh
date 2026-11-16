@@ -8,11 +8,12 @@
 export type SurfaceForm = 'classic' | 'orb'
 
 /**
- * Window role that owns one renderer. A form profile runs the resident orb and
- * the surface window beside it as separate renderers; the classic workspace has
- * no orb and reports itself.
+ * Window role that owns one renderer. A form profile runs the resident orb, the
+ * surface window that hosts the panel and the modal, and the bubble column
+ * window as separate renderers; the classic workspace has no orb and reports
+ * itself.
  */
-export type SurfaceWindowRole = 'classic' | 'orb' | 'surface'
+export type SurfaceWindowRole = 'classic' | 'orb' | 'surface' | 'bubbles'
 
 /** Optional size of one modal presentation. */
 export interface ModalSizeHint {
@@ -54,6 +55,12 @@ export interface SurfaceSnapshot {
    * the pointer is not on the column itself.
    */
   readonly orbHovered: boolean
+  /**
+   * Whether the surface window currently presents a modal entry. The bubble
+   * column stays while it is true, so opening the workbench from a bubble never
+   * dismisses the column that opened it.
+   */
+  readonly modalOpen: boolean
 }
 
 /** Boot descriptor the carrier publishes before Client plugins load. */
@@ -82,11 +89,11 @@ export interface DesktopSurfaceApi {
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**
-   * Show the bubble column presentation: a topmost column at the work area's right edge.
+   * Show the bubble column window: a topmost column above the orb.
    * It never takes focus, so it can appear while the user works in another application.
    */
   presentBubbles(): Promise<void>
-  /** Dismiss the bubble column and restore the orb presentation. */
+  /** Dismiss the bubble column window. */
   dismissBubbles(): Promise<void>
   /**
    * Keep a collapsed or panel presentation above other windows.
@@ -102,7 +109,7 @@ export interface DesktopSurfaceApi {
   /**
    * Report whether the pointer is over interactive content, so main can pass
    * clicks through.
-   * @param inside - whether the pointer is over the orb or its drag handle.
+   * @param inside - whether the pointer is over the reporting window's content.
    */
   pointerInside(inside: boolean): void
 }

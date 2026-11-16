@@ -8,6 +8,7 @@ import type { SurfaceService } from '../src/client/index.ts'
 /** Committed orb presentation the carrier boots with. */
 const ORB: SurfaceSnapshot = Object.freeze({
   form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  modalOpen: false,
 })
 
 interface FakeBridge {
@@ -64,7 +65,8 @@ describe('surface client plugin', () => {
     const fiber = ctx.plugin({ apply })
     await fiber.await()
     expect(serviceOf(ctx).snapshot()).toEqual({
-      form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbHovered: false,
+      form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+      orbHovered: false, modalOpen: false,
     })
     await fiber.dispose()
     expect(ctx.get('surface')).toBeUndefined()

@@ -29,11 +29,11 @@ export interface SurfaceService {
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**
-   * Show the bubble column presentation: a topmost column at the work area's right edge.
+   * Show the bubble column window: a topmost column above the orb.
    * It never takes focus, so it can appear while the user works in another application.
    */
   presentBubbles(): Promise<void>
-  /** Dismiss the bubble column and restore the orb presentation. */
+  /** Dismiss the bubble column window. */
   dismissBubbles(): Promise<void>
   /**
    * Keep a collapsed or panel presentation above other windows.
@@ -48,7 +48,7 @@ export interface SurfaceService {
   dragBy(deltaX: number, deltaY: number): Promise<void>
   /**
    * Report whether the pointer is over interactive content.
-   * @param inside - whether the pointer is over the orb or its drag handle.
+   * @param inside - whether the pointer is over the reporting window's content.
    */
   setPointerInside(inside: boolean): void
 }
@@ -63,6 +63,7 @@ function samePresentation(left: SurfaceSnapshot, right: SurfaceSnapshot): boolea
     && left.available === right.available
     && left.modal === right.modal
     && left.orbHovered === right.orbHovered
+    && left.modalOpen === right.modalOpen
 }
 
 /** Carrier-backed surface state; one instance lives for one plugin lifetime. */
@@ -118,12 +119,12 @@ export class SurfaceRuntime implements SurfaceService {
     await this.command(() => this.adapter.dismissModal())
   }
 
-  /** Show the bubble column presentation at the work area's right edge. */
+  /** Show the bubble column window above the orb. */
   async presentBubbles(): Promise<void> {
     await this.command(() => this.adapter.presentBubbles())
   }
 
-  /** Dismiss the bubble column and restore the orb presentation. */
+  /** Dismiss the bubble column window. */
   async dismissBubbles(): Promise<void> {
     await this.command(() => this.adapter.dismissBubbles())
   }

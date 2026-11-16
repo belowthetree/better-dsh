@@ -41,9 +41,9 @@ export interface BubblesInjected {
     /** Carrier presentation snapshot. */
     surface: HostObservable<SurfaceSnapshot>
   }
-  /** Ask the carrier for the bubble column presentation. */
+  /** Ask the carrier to show the bubble column window. */
   show(): void
-  /** Return the carrier to the orb presentation. */
+  /** Ask the carrier to hide the bubble column window. */
   hide(): void
   /** Raise the workbench for the Session the bubble column reports. */
   open(): void
@@ -148,11 +148,15 @@ export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: Bubble
 
 /**
  * Bind the bubble column to the Session the catalog reports as current.
+ * The orb window keeps its stack mounted because it owns the entry triggers and
+ * raises a streaming column; the column window mounts the stack only while the
+ * column is up, and the surface window renders no column.
  * @param props - Session catalog, the workbench resource hook, and the bubble entries.
  * @returns the bound bubble column, or nothing while the catalog has no Session.
  */
 export function BubblesLayer(props: BubblesLayerProps) {
   const role = props.useSurface(snapshot => snapshot.role)
+  const presentation = props.useSurface(snapshot => snapshot.presentation)
   const orbHovered = props.useSurface(snapshot => snapshot.orbHovered)
   const target = props.useSessions(state => state.ids[0])
   const resource = props.useResource<'betterinteract'>(workbenchAddress(target))
@@ -169,7 +173,7 @@ export function BubblesLayer(props: BubblesLayerProps) {
     show()
   }, [role, orbHovered, reference, show])
 
-  if (reference === undefined) return null
+  if (reference === undefined || (role !== 'orb' && presentation !== 'bubbles')) return null
   const { SessionProvider, renderSlot } = props
   return <SessionProvider session={reference}>{renderSlot('better-interact.bubbles.stack', {})}</SessionProvider>
 }
@@ -179,14 +183,18 @@ export function BubblesLayer(props: BubblesLayerProps) {
  * already answered, and one streaming bubble for the answer being written. The
  * streaming bubble appears while output streams and the column stays until the
  * agent stops; history bubbles follow the pointer's orb and column hover, leaving
- * half a second after the pointer is off both.
+ * half a second after the pointer is off both. The workbench holds the column
+ * until its modal leaves, so opening it from a bubble keeps the outputs that
+ * opened it.
  * @param props - bound Session state, its Chat target, and the carrier commands.
  * @returns the column while the carrier presents it, nothing otherwise.
  */
 export function BubbleStack(props: BubbleStackProps) {
   const { show, hide, open, pointerInside, t } = props
+  const role = props.useSurface(snapshot => snapshot.role)
   const presentation = props.useSurface(snapshot => snapshot.presentation)
   const orbHovered = props.useSurface(snapshot => snapshot.orbHovered)
+  const modalOpen = props.useSurface(snapshot => snapshot.modalOpen)
   const running = props.useSession(value => value.running)
   const chat = props.useConversation(state => state.views.get('chat'))
   const [exiting, setExiting] = useState(false)
@@ -224,11 +232,13 @@ export function BubbleStack(props: BubbleStackProps) {
     }, total)
   }, [visible, shown.length, hide])
 
-  // The column starts transparent to clicks; the carrier forwards pointer moves
-  // to the page, so the first move over the stack asks for clicks back.
+  // The bubble column owns its window; the orb and surface renderers never report
+  // pointer presence for it. The column starts transparent to clicks, and the
+  // carrier forwards pointer moves to the page, so the first move asks for clicks back.
   useEffect(() => {
+    if (role !== 'bubbles') return
     pointerInside(false)
-  }, [pointerInside])
+  }, [role, pointerInside])
 
   useEffect(() => () => {
     if (exitTimer.current !== null) clearTimeout(exitTimer.current)
@@ -258,16 +268,16 @@ export function BubbleStack(props: BubbleStackProps) {
       cancelExit()
       return
     }
-    // The orb, the column, or an active output keeps the bubbles. Otherwise the
-    // column leaves half a second after the pointer left both.
-    if (orbHovered || inside || busy) {
+    // The orb, the column, an active output, or the workbench keeps the bubbles.
+    // Otherwise the column leaves half a second after the pointer left both.
+    if (orbHovered || inside || busy || modalOpen) {
       cancelExit()
       return
     }
     if (exiting) return
     const timer = setTimeout(startExit, BUBBLE_HOVER_LEAVE_MS)
     return () => { clearTimeout(timer) }
-  }, [visible, orbHovered, inside, busy, exiting, startExit, cancelExit])
+  }, [visible, orbHovered, inside, busy, modalOpen, exiting, startExit, cancelExit])
 
   /** Expand the history and keep the column while the pointer rests on it. */
   const enter = (): void => {

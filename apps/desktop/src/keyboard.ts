@@ -9,7 +9,7 @@ import { DESKTOP_IPC, assertDesktopSender } from './ipc.ts'
 
 /**
  * Install application-owned configuration handlers and attach each product window's input lifecycle.
- * @param getWindows - current product windows; a form profile runs the orb and surface windows.
+ * @param getWindows - current product windows; a form profile runs the orb, surface, and bubble column windows.
  * @param userData - Electron-resolved device preference directory.
  * @param platform - local device platform.
  * @param updateMenu - rebuild the application menu when the close accelerator or availability changes.

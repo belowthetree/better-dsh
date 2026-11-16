@@ -14,6 +14,7 @@ import {
 /** Orb presentation of the committed form profile. */
 const ORB: SurfaceSnapshot = {
   form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  modalOpen: false,
 }
 
 function chat(input: {
@@ -40,8 +41,10 @@ function chat(input: {
 }
 
 function stack(options: {
+  readonly role?: SurfaceSnapshot['role']
   readonly presentation?: SurfaceSnapshot['presentation']
   readonly orbHovered?: boolean
+  readonly modalOpen?: boolean
   readonly running?: boolean
   readonly chat?: ChatSnapshot
 } = {}) {
@@ -52,8 +55,10 @@ function stack(options: {
   const props = {
     useSurface: (select: (value: SurfaceSnapshot) => unknown) => select({
       ...ORB,
+      role: options.role ?? 'bubbles',
       presentation: options.presentation ?? 'bubbles',
       orbHovered: options.orbHovered ?? true,
+      modalOpen: options.modalOpen ?? false,
     }),
     useSession: (select: (value: { readonly running: boolean }) => unknown) => select({ running: options.running === true }),
     useConversation: (select: (value: { readonly views: { get: () => ChatSnapshot | undefined } }) => unknown) =>
@@ -201,9 +206,29 @@ describe('BubblesLayer', () => {
     expect(show).not.toHaveBeenCalled()
   })
 
-  it('ignores the orb hover reported to the surface window', () => {
+  it('renders no column in the surface window', () => {
+    const { props, renderSlot } = layer({
+      surface: { ...ORB, role: 'surface', presentation: 'panel' },
+    })
+    render(createElement(BubblesLayer, props as never))
+    expect(renderSlot).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('stack')).toBeNull()
+  })
+
+  it('mounts the column window stack only while the carrier presents the column', () => {
+    const hidden = layer({ surface: { ...ORB, role: 'bubbles', presentation: 'orb' } })
+    const view = render(createElement(BubblesLayer, hidden.props as never))
+    expect(hidden.renderSlot).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('stack')).toBeNull()
+    const shown = layer({ surface: { ...ORB, role: 'bubbles', presentation: 'bubbles' } })
+    view.rerender(createElement(BubblesLayer, shown.props as never))
+    expect(shown.renderSlot).toHaveBeenCalledWith('better-interact.bubbles.stack', {})
+    expect(screen.getByTestId('stack')).toBeTruthy()
+  })
+
+  it('ignores the orb hover in the column window', () => {
     const { props, show } = layer({
-      surface: { ...ORB, role: 'surface', presentation: 'bubbles', orbHovered: true },
+      surface: { ...ORB, role: 'bubbles', presentation: 'bubbles', orbHovered: true },
     })
     render(createElement(BubblesLayer, props as never))
     expect(show).not.toHaveBeenCalled()
@@ -411,6 +436,58 @@ describe('BubbleStack', () => {
     expect(pointerInside).toHaveBeenLastCalledWith(true)
     fireEvent.pointerOut(log)
     expect(pointerInside).toHaveBeenLastCalledWith(false)
+  })
+
+  it('keeps the orb and surface renderers out of the column pointer reporting', () => {
+    for (const role of ['orb', 'surface'] as const) {
+      const { props, pointerInside } = stack({
+        role,
+        presentation: 'orb',
+        chat: chat({ answers: [{ turn: 1, response: 'answer' }] }),
+      })
+      const view = render(createElement(BubbleStack, props as never))
+      expect(column()).toBeNull()
+      expect(pointerInside).not.toHaveBeenCalled()
+      view.unmount()
+    }
+  })
+
+  it('holds the column while the workbench modal is open', () => {
+    const { props, hide } = stack({
+      modalOpen: true,
+      orbHovered: false,
+      chat: chat({ answers: [{ turn: 1, response: 'answer' }] }),
+    })
+    render(createElement(BubbleStack, props as never))
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(column()?.dataset.exiting).toBe('false')
+    expect(hide).not.toHaveBeenCalled()
+  })
+
+  it('cancels a pending leave when the workbench opens', () => {
+    const answers = [{ turn: 1, response: 'answer' }]
+    const away = stack({ orbHovered: false, chat: chat({ answers }) })
+    const view = render(createElement(BubbleStack, away.props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS - 100) })
+    const workbench = stack({ orbHovered: false, modalOpen: true, chat: chat({ answers }) })
+    view.rerender(createElement(BubbleStack, workbench.props as never))
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(column()?.dataset.exiting).toBe('false')
+    expect(workbench.hide).not.toHaveBeenCalled()
+  })
+
+  it('leaves half a second after the workbench closes', () => {
+    const answers = [{ turn: 1, response: 'answer' }]
+    const workbench = stack({ orbHovered: false, modalOpen: true, chat: chat({ answers }) })
+    const view = render(createElement(BubbleStack, workbench.props as never))
+    const closed = stack({ orbHovered: false, chat: chat({ answers }) })
+    view.rerender(createElement(BubbleStack, closed.props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS - 1) })
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(column()?.dataset.exiting).toBe('true')
+    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
+    expect(closed.hide).toHaveBeenCalledTimes(1)
   })
 
   it('opens the workbench from a bubble click', () => {

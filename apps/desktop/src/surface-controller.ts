@@ -1,4 +1,4 @@
-/** Presentation state machine and validated command surface for a form profile's orb and surface windows. */
+/** Presentation state machine and validated command surface for a form profile's orb, surface, and bubble column windows. */
 import type { ModalSizeHint, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { DesktopFormLayout, DesktopWorkArea } from './form-layout.ts'
 import { clampFormLayout } from './form-layout.ts'
@@ -6,7 +6,7 @@ import type { DesktopFormRole, FormPresentationBounds } from './form-window.ts'
 import { bubblesBounds, modalBounds, orbBounds, panelBounds, presentationResizable } from './form-window.ts'
 
 /** Presentations the surface window hosts; the orb window always presents the orb. */
-type SurfacePresentation = 'orb' | 'panel' | 'modal' | 'bubbles'
+type SurfacePresentation = 'orb' | 'panel' | 'modal'
 
 /** Longest accepted `shell.modal` entry id. */
 export const MAX_MODAL_ID_CHARS = 128
@@ -23,7 +23,7 @@ export type SurfaceCommand =
   | { readonly kind: 'dragBy'; readonly deltaX: number; readonly deltaY: number }
   | { readonly kind: 'pointerInside'; readonly inside: boolean }
 
-/** Native effects the controller applies to one or both form windows. */
+/** Native effects the controller applies to the three form windows. */
 export interface SurfaceWindowEffects {
   /** Apply presentation bounds to one window. */
   setBounds(role: DesktopFormRole, bounds: FormPresentationBounds): void
@@ -37,10 +37,16 @@ export interface SurfaceWindowEffects {
   focusSurface(): void
   /** Hide the surface window while its presentation is the orb. */
   hideSurface(): void
+  /** Reveal the bubble column window without taking focus. */
+  revealBubbles(): void
+  /** Hide the bubble column window. */
+  hideBubbles(): void
   /** Publish the resident orb window's snapshot. */
   publishOrb(snapshot: SurfaceSnapshot): void
   /** Publish the surface window's snapshot. */
   publishSurface(snapshot: SurfaceSnapshot): void
+  /** Publish the bubble column window's snapshot. */
+  publishBubbles(snapshot: SurfaceSnapshot): void
   /** Persist the orb position and pinning. */
   persist(layout: DesktopFormLayout): void
   /** Work area of the display the orb window currently occupies. */
@@ -119,25 +125,29 @@ export function parseSurfaceCommand(raw: unknown): SurfaceCommand | undefined {
 }
 
 /**
- * Owns one form profile's presentation, pinning, modal selection, and orb position.
- * The controller is the only writer of presentation state and asks its window
- * owner to apply the resulting native effects to the orb window or the surface
- * window. Commands may arrive from either window: presentation commands always
- * apply to the surface window, while pointer and drag commands stay with the
- * window that reported them.
+ * Owns one form profile's presentation, pinning, modal selection, orb position,
+ * and bubble column visibility. The controller is the only writer of
+ * presentation state and asks its window owner to apply the resulting native
+ * effects to one of the three windows. Commands may arrive from any window:
+ * window presentations apply to the surface window, the bubble column is
+ * independent of them, and pointer and drag commands stay with the window that
+ * reported them.
  */
 export class DesktopSurfaceController {
   readonly #effects: SurfaceWindowEffects
   #layout: DesktopFormLayout
   #presentation: SurfacePresentation = 'orb'
-  /** Presentation restored when the modal presentation dismisses. */
+  /** Surface presentation restored when the modal presentation dismisses. */
   #restore: Exclude<SurfacePresentation, 'modal'> = 'orb'
   #modal: string | null = null
   /** Size hint of the active modal entry; undefined keeps the dialog size. */
   #modalSize: ModalSizeHint | undefined
+  /** Whether the bubble column is up; the bubble window hides while it is false. */
+  #bubblesVisible = false
   readonly #pointer: Record<DesktopFormRole, PointerState> = {
     orb: { reported: false, inside: false },
     surface: { reported: false, inside: false },
+    bubbles: { reported: false, inside: false },
   }
 
   /**
@@ -150,18 +160,22 @@ export class DesktopSurfaceController {
 
   /**
    * Current snapshot for one window's renderer.
-   * @param role - window role receiving the snapshot; the orb window always reports the orb presentation.
+   * @param role - window role receiving the snapshot; the orb window always reports the orb presentation,
+   * and the bubble column window reports the column presentation only while that column is up.
    * @returns the snapshot published to that window.
    */
   snapshot(role: DesktopFormRole = 'surface'): SurfaceSnapshot {
     return {
       form: 'orb',
       role,
-      presentation: role === 'orb' ? 'orb' : this.#presentation,
+      presentation: role === 'surface'
+        ? this.#presentation
+        : role === 'bubbles' && this.#bubblesVisible ? 'bubbles' : 'orb',
       pinned: this.#layout.pinned,
       available: true,
-      modal: role === 'orb' ? null : this.#modal,
+      modal: role === 'surface' ? this.#modal : null,
       orbHovered: this.#pointer.orb.inside,
+      modalOpen: this.#presentation === 'modal',
     }
   }
 
@@ -187,8 +201,8 @@ export class DesktopSurfaceController {
             this.#modalSize = command.size
             this.#effects.setBounds('surface', this.#bounds())
           }
-          // The orb window asked for the dialog, so the surface window takes the pointer back.
-          if (origin === 'orb') this.#effects.focusSurface()
+          // The orb or the bubble column asked for the dialog, so the surface window takes the pointer back.
+          if (origin !== 'surface') this.#effects.focusSurface()
           this.#publish()
         } else {
           this.#restore = this.#presentation
@@ -201,11 +215,10 @@ export class DesktopSurfaceController {
         if (this.#presentation === 'modal') { this.#modal = null; this.#show(this.#restore) }
         return
       case 'presentBubbles':
-        // The column belongs to the idle orb; it never replaces an open panel or modal.
-        if (this.#presentation === 'orb') this.#show('bubbles')
+        this.#presentBubbles()
         return
       case 'dismissBubbles':
-        if (this.#presentation === 'bubbles') this.#show('orb')
+        this.#dismissBubbles()
         return
       case 'setPinned':
         this.#layout = { ...this.#layout, pinned: command.pinned }
@@ -217,13 +230,14 @@ export class DesktopSurfaceController {
         this.#layout = clampFormLayout({ ...this.#layout,
           orb: { x: this.#layout.orb.x + command.deltaX, y: this.#layout.orb.y + command.deltaY } }, this.#effects.workArea())
         this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
+        if (this.#bubblesVisible) this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, this.#effects.workArea()))
         this.#effects.persist(this.#layout)
         return
       case 'pointerInside': {
         const orbHoverChanged = origin === 'orb' && this.#pointer.orb.inside !== command.inside
         this.#pointer[origin] = { reported: true, inside: command.inside }
         this.#effects.setIgnoreMouseEvents(origin, this.#ignoreMouse(origin))
-        // The surface renderer decides when the bubble column leaves from the orb hover fact.
+        // The orb renderer decides when the bubble column leaves from the orb hover fact.
         if (orbHoverChanged) this.#publish()
         return
       }
@@ -247,7 +261,8 @@ export class DesktopSurfaceController {
    * Collapse an unpinned panel, and dismiss the modal, when the surface window
    * loses focus. The modal window covers only the dialog, so leaving it is how
    * the user dismisses the presentation by activating another application. The
-   * orb window never owns this focus and keeps presenting the orb.
+   * orb window never owns this focus and keeps presenting the orb; the bubble
+   * column keeps its own visibility.
    */
   blurred(): void {
     if (this.#presentation === 'modal') {
@@ -259,12 +274,13 @@ export class DesktopSurfaceController {
     if (this.#presentation === 'panel' && !this.#layout.pinned) this.#show('orb', false)
   }
 
-  /** Re-clamp the orb position and both windows' bounds after a display change. */
+  /** Re-clamp the orb position and all three windows' bounds after a display change. */
   reflow(): void {
     this.#layout = clampFormLayout(this.#layout, this.#effects.workArea())
     this.#effects.persist(this.#layout)
     this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
     if (this.#presentation !== 'orb') this.#effects.setBounds('surface', this.#bounds())
+    this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, this.#effects.workArea()))
   }
 
   /** Re-apply bounds, resizing, visibility, and click-through after a window is created or shown. */
@@ -282,10 +298,14 @@ export class DesktopSurfaceController {
       if (focusable(this.#presentation)) this.#effects.focusSurface()
       else this.#effects.revealSurface()
     }
+    this.#placeBubbles()
+    if (this.#bubblesVisible && this.#presentation !== 'modal') this.#effects.revealBubbles()
+    else this.#effects.hideBubbles()
     this.#publish()
   }
 
   #show(presentation: SurfacePresentation, focus = true): void {
+    const wasModal = this.#presentation === 'modal'
     this.#presentation = presentation
     this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
     this.#effects.setResizable('orb', false)
@@ -299,6 +319,9 @@ export class DesktopSurfaceController {
       if (focus && focusable(presentation)) this.#effects.focusSurface()
       else this.#effects.revealSurface()
     }
+    // The surface presentation never owns the column; a column held through the
+    // workbench returns when the modal leaves.
+    if (wasModal && presentation !== 'modal') this.#revealHeldBubbles()
     this.#publish()
   }
 
@@ -308,20 +331,62 @@ export class DesktopSurfaceController {
       case 'orb': return orbBounds(this.#layout, workArea)
       case 'panel': return panelBounds(this.#layout, workArea)
       case 'modal': return modalBounds(workArea, this.#modalSize)
-      case 'bubbles': return bubblesBounds(this.#layout, workArea)
     }
+  }
+
+  /**
+   * Show the bubble column. It belongs to no surface presentation: it appears
+   * above the orb while the surface window shows whatever it showed before.
+   */
+  #presentBubbles(): void {
+    if (this.#bubblesVisible) return
+    this.#bubblesVisible = true
+    this.#placeBubbles()
+    // A column raised over the workbench would cover the dialog it opened; the
+    // modal's dismissal reveals the held column instead.
+    if (this.#presentation !== 'modal') this.#effects.revealBubbles()
+    this.#publish()
+  }
+
+  /**
+   * Hide the bubble column. The column that opened the workbench stays while the
+   * modal is up, so closing the workbench keeps the outputs the user was reading.
+   */
+  #dismissBubbles(): void {
+    if (!this.#bubblesVisible || this.#presentation === 'modal') return
+    this.#bubblesVisible = false
+    this.#effects.hideBubbles()
+    this.#publish()
+  }
+
+  /** Reveal a column held through the workbench once the modal presentation leaves. */
+  #revealHeldBubbles(): void {
+    if (!this.#bubblesVisible) return
+    this.#placeBubbles()
+    this.#effects.revealBubbles()
+  }
+
+  /** Apply the column's geometry, resizing, and click-through without changing its visibility. */
+  #placeBubbles(): void {
+    this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, this.#effects.workArea()))
+    this.#effects.setResizable('bubbles', false)
+    this.#effects.setIgnoreMouseEvents('bubbles', this.#ignoreMouse('bubbles'))
   }
 
   #ignoreMouse(role: DesktopFormRole): boolean {
     const pointer = this.#pointer[role]
     // The renderer owns the hit test; until it reports pointer presence the window
     // stays interactive so a first click is never lost to click-through.
-    if (role === 'orb') return pointer.reported && !pointer.inside
-    return this.#presentation === 'bubbles' && pointer.reported && !pointer.inside
+    if (!pointer.reported || pointer.inside) return false
+    // The surface window presents the panel and the modal, which keep every pixel interactive.
+    if (role === 'surface') return false
+    // The orb and the bubble column are click-through everywhere but their own content.
+    return role === 'orb' || this.#bubblesVisible
   }
 
   #publish(): void {
     this.#effects.publishOrb(this.snapshot('orb'))
     this.#effects.publishSurface(this.snapshot('surface'))
+    this.#effects.publishBubbles(this.snapshot('bubbles'))
   }
 }

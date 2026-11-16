@@ -4,7 +4,7 @@ import type { DesktopSurfaceApi, ModalSizeHint, SurfaceBootGlobal, SurfaceDescri
 /** Presentation of a carrier that cannot change it: Web pages and classic Desktop windows. */
 const INERT_SNAPSHOT: SurfaceSnapshot = Object.freeze({
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-  orbHovered: false,
+  orbHovered: false, modalOpen: false,
 })
 
 /** Desktop window with the preload product API exposed as `window.dshDesktop`. */
@@ -38,11 +38,11 @@ export interface SurfaceAdapter {
   /** Dismiss the modal presentation and restore the previous one. */
   dismissModal(): Promise<void>
   /**
-   * Show the bubble column presentation: a topmost column at the work area's right edge.
+   * Show the bubble column window: a topmost column above the orb.
    * It never takes focus, so it can appear while the user works in another application.
    */
   presentBubbles(): Promise<void>
-  /** Dismiss the bubble column and restore the orb presentation. */
+  /** Dismiss the bubble column window. */
   dismissBubbles(): Promise<void>
   /**
    * Keep a collapsed or panel presentation above other windows.
@@ -57,7 +57,7 @@ export interface SurfaceAdapter {
   dragBy(deltaX: number, deltaY: number): Promise<void>
   /**
    * Report whether the pointer is over interactive content.
-   * @param inside - whether the pointer is over the orb or its drag handle.
+   * @param inside - whether the pointer is over the reporting window's content.
    */
   pointerInside(inside: boolean): void
 }
@@ -103,7 +103,7 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
   return {
     initial: () => descriptor ?? {
       form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
-      orbHovered: false,
+      orbHovered: false, modalOpen: false,
     },
     read: () => api.snapshot(),
     subscribe: listener => api.subscribe(listener),

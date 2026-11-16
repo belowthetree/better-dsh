@@ -107,6 +107,8 @@ const rendererConsole = new RendererConsoleTail()
 const productWindows = new DesktopProductWindow()
 /** Resident orb window of a form profile; it never hosts another presentation. */
 const orbWindows = new DesktopProductWindow()
+/** Bubble column window of a form profile; it shows outputs and stays out of the surface presentation. */
+const bubblesWindows = new DesktopProductWindow()
 /** Launch-selected profile, resolved by main() before recovery can need it. */
 let launch: DesktopLaunchSelection | undefined
 /** Deep link the operating system delivered before main() chose a profile. */
@@ -133,7 +135,7 @@ app.on('open-url', (event, url) => { event.preventDefault(); acceptDeepLink(url)
 /** Presentation a renderer boots with when its profile presents the classic workspace window. */
 const CLASSIC_SURFACE_SNAPSHOT: SurfaceSnapshot = {
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-  orbHovered: false,
+  orbHovered: false, modalOpen: false,
 }
 
 /**
@@ -497,8 +499,13 @@ async function main(): Promise<void> {
     return window === undefined ? screen.getPrimaryDisplay().workArea : screen.getDisplayMatching(window.getBounds()).workArea
   }
   /** Native window for one form role; undefined while that window is absent. */
-  const formWindow = (role: DesktopFormRole): BrowserWindow | undefined =>
-    role === 'orb' ? orbWindows.current() : productWindows.current()
+  const formWindow = (role: DesktopFormRole): BrowserWindow | undefined => {
+    switch (role) {
+      case 'orb': return orbWindows.current()
+      case 'surface': return productWindows.current()
+      case 'bubbles': return bubblesWindows.current()
+    }
+  }
   /** Snapshot one product renderer boots or reads with, falling back to the classic descriptor. */
   const snapshotFor = (formRole: DesktopFormRole | undefined): SurfaceSnapshot =>
     formRole === undefined ? CLASSIC_SURFACE_SNAPSHOT : surfaceController?.snapshot(formRole) ?? CLASSIC_SURFACE_SNAPSHOT
@@ -514,11 +521,16 @@ async function main(): Promise<void> {
     revealSurface: () => { productWindows.current()?.showInactive() },
     focusSurface: () => {
       const window = productWindows.current()
-      if (window !== undefined) { window.show(); window.focus() }
+      // The modal must cover a bubble column that is already up, even when the
+      // surface window was visible and focused for the panel.
+      if (window !== undefined) { window.show(); window.focus(); window.moveTop() }
     },
     hideSurface: () => { productWindows.current()?.hide() },
+    revealBubbles: () => { bubblesWindows.current()?.showInactive() },
+    hideBubbles: () => { bubblesWindows.current()?.hide() },
     publishOrb: (snapshot) => { orbWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
     publishSurface: (snapshot) => { productWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
+    publishBubbles: (snapshot) => { bubblesWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
     persist: saveFormLayout,
     workArea: surfaceWorkArea,
   }
@@ -666,6 +678,8 @@ async function main(): Promise<void> {
     if (surface !== undefined && productWindows.owns(event)) {
       return { window: surface, ...(requestedForm.kind === 'orb' ? { formRole: 'surface' as const } : {}) }
     }
+    const bubbles = bubblesWindows.current()
+    if (bubbles !== undefined && bubblesWindows.owns(event)) return { window: bubbles, formRole: 'bubbles' }
     return undefined
   }
   const assertProductOwner = (event: IpcMainInvokeEvent): ProductWindowOwner => {
@@ -675,8 +689,8 @@ async function main(): Promise<void> {
     return owner
   }
   const assertProductSender = (event: IpcMainInvokeEvent): BrowserWindow => assertProductOwner(event).window
-  /** Every live product window, orb first so owner-independent broadcasts reach both. */
-  const productWindowList = (): BrowserWindow[] => [orbWindows.current(), productWindows.current()]
+  /** Every live product window, orb first so owner-independent broadcasts reach all of them. */
+  const productWindowList = (): BrowserWindow[] => [orbWindows.current(), productWindows.current(), bubblesWindows.current()]
     .filter((window): window is BrowserWindow => window !== undefined)
   const navigations = new Map<BrowserWindow, { url: string; promise: Promise<void> }>()
   /** Navigate one product window, joining a navigation already in flight for the same document. */
@@ -1142,7 +1156,7 @@ async function main(): Promise<void> {
   })
   ipcMain.on(DESKTOP_IPC.onboardingActive, (event, active: unknown) => {
     const owner = productWindowOwner(event)
-    if (owner === undefined || owner.formRole === 'orb' || event.senderFrame === null
+    if (owner === undefined || (owner.formRole !== undefined && owner.formRole !== 'surface') || event.senderFrame === null
       || !event.senderFrame.url.startsWith(`${SCHEME}://app/`) || typeof active !== 'boolean') return
     const window = owner.window
     window.setMinimumSize(active ? 960 : 520, 600)
@@ -1512,7 +1526,7 @@ async function main(): Promise<void> {
       window.hide()
     }
   }
-  /** Attach renderer diagnostics shared by the orb and surface windows. */
+  /** Attach renderer diagnostics shared by the three product windows. */
   const trackRenderer = (window: BrowserWindow): void => {
     window.webContents.on('console-message', (details) => {
       if (details.level !== 'error') return
@@ -1535,8 +1549,8 @@ async function main(): Promise<void> {
   }
   /**
    * Dismiss an unpinned panel or the modal only when the whole form lost focus.
-   * Moving between the orb and surface windows stays inside the application, so
-   * the decision waits for both focus states to settle.
+   * Moving between the orb, the surface, and the bubble column stays inside the
+   * application, so the decision waits for all three focus states to settle.
    */
   const formFocusLost = (): void => {
     setImmediate(() => {
@@ -1544,6 +1558,7 @@ async function main(): Promise<void> {
       const surface = productWindows.current()
       if (surface === undefined || surface.isDestroyed() || surface.isFocused()) return
       if (orbWindows.current()?.isFocused() === true) return
+      if (bubblesWindows.current()?.isFocused() === true) return
       surfaceController?.blurred()
     })
   }
@@ -1566,6 +1581,24 @@ async function main(): Promise<void> {
     }
     window.on('blur', formFocusLost)
     window.on('closed', () => { navigations.delete(window); orbWindows.detach(window) })
+    trackRenderer(window)
+    return window
+  }
+  /** The resident bubble column window; the surface presentation never hides behind it. */
+  const createBubblesWindow = (): BrowserWindow => {
+    const window = createWindow(appPreload, false, false,
+      { role: 'bubbles', layout: formLayout ?? defaultFormLayout(surfaceWorkArea()), workArea: surfaceWorkArea() })
+    bubblesWindows.attach(window)
+    shortcuts.attach(window)
+    // A click on a bubble focuses the column; leaving it for another application is still
+    // the whole form losing focus, so the unpinned panel and the modal dismiss.
+    window.on('blur', formFocusLost)
+    // The column is never closed by the user; the controller hides it and only an application quit destroys it.
+    window.on('close', (event) => {
+      if (quitting || shellInstallerOwnsQuit || sessionEnding) return
+      event.preventDefault()
+    })
+    window.on('closed', () => { navigations.delete(window); bubblesWindows.detach(window) })
     trackRenderer(window)
     return window
   }
@@ -1607,7 +1640,7 @@ async function main(): Promise<void> {
     trackRenderer(window)
     return window
   }
-  /** Create whichever product windows this launch needs, and the controller that drives a form profile's two windows. */
+  /** Create whichever product windows this launch needs, and the controller that drives a form profile's three windows. */
   const ensureProductWindows = (): void => {
     if (requestedForm.kind !== 'orb') {
       if (productWindows.current() === undefined) createMainWindow()
@@ -1615,6 +1648,7 @@ async function main(): Promise<void> {
     }
     if (orbWindows.current() === undefined) createOrbWindow()
     if (productWindows.current() === undefined) createMainWindow()
+    if (bubblesWindows.current() === undefined) createBubblesWindow()
     surfaceController ??= new DesktopSurfaceController({
       layout: formLayout ?? defaultFormLayout(surfaceWorkArea()), effects: surfaceEffects,
     })
@@ -1626,7 +1660,8 @@ async function main(): Promise<void> {
     await navigateMain(applicationUrl)
     if (isQuitting() || recovery.active || window === undefined || window.isDestroyed()) return
     if (requestedForm.kind === 'orb') {
-      // The orb is the resident form; the surface window appears only for panel, bubbles, and modal.
+      // The orb is the resident form; the surface window appears only for panel and modal,
+      // and the controller decides whether the bubble column window is up.
       orbWindows.current()?.showInactive()
       surfaceController?.restore()
     } else {
@@ -1637,7 +1672,11 @@ async function main(): Promise<void> {
     enteredWorkspace = true
     if (welcomeWindow !== undefined) {
       welcomeWindow.close()
-      for (const productWindow of productWindowList()) productWindow.webContents.send(DESKTOP_IPC.enterWorkspace)
+      for (const productWindow of productWindowList()) {
+        // The bubble column stays unfocused; focusing its body would activate the column window.
+        if (productWindow === bubblesWindows.current()) continue
+        productWindow.webContents.send(DESKTOP_IPC.enterWorkspace)
+      }
     }
     welcomeWindow = undefined
     if (raiseAfterUpdate) {
@@ -1707,12 +1746,14 @@ async function main(): Promise<void> {
         if (process.platform === 'darwin') {
           productWindows.current()?.destroy()
           orbWindows.current()?.destroy()
+          bubblesWindows.current()?.destroy()
         } else app.quit()
       })
       if (isQuitting() || recovery.active || enteredWorkspace) window.close()
       else {
         productWindows.current()?.hide()
         orbWindows.current()?.hide()
+        bubblesWindows.current()?.hide()
       }
     })().finally(() => { openingWelcome = undefined })
     return openingWelcome
@@ -1771,6 +1812,7 @@ async function main(): Promise<void> {
     if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.hide()
     productWindows.current()?.hide()
     orbWindows.current()?.hide()
+    bubblesWindows.current()?.hide()
     flushFormLayout()
     updateSchedule.dispose()
     updateDialog.dispose()

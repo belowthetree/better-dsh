@@ -40,7 +40,8 @@ let foldedLandscape: SnapshotStore<boolean>
 let surfaceState: SnapshotStore<SurfaceSnapshot>
 /** Presentation without a carrier: the classic profile. */
 const CLASSIC_SURFACE: SurfaceSnapshot = {
-  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbHovered: false,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  orbHovered: false, modalOpen: false,
 }
 const restoreProperties: (() => void)[] = []
 
@@ -811,6 +812,7 @@ describe('AppFrame surface presentations', () => {
   /** Presentation used by a form profile's collapsed and expanded states. */
   const ORB: SurfaceSnapshot = {
     form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+    modalOpen: false,
   }
 
   it('keeps the classic frame unchanged without a carrier presentation', () => {
@@ -840,12 +842,20 @@ describe('AppFrame surface presentations', () => {
   })
 
   it('renders the transparent bubble root with only the overlay seat', () => {
-    surfaceState = createSnapshotStore({ ...ORB, presentation: 'bubbles' })
+    surfaceState = createSnapshotStore({ ...ORB, role: 'bubbles', presentation: 'bubbles' })
     const { frame, slotCalls, getByTestId } = mountFrame()
     expect(frame.dataset.surface).toBe('bubbles')
     expect(getByTestId('shell.overlay-content')).toBeTruthy()
     expect(slotCalls.map(call => call.key)).toEqual(['shell.overlay'])
     expect(frame.querySelector('[data-testid="main-content"]')).toBeNull()
+    expect(frame.querySelector('[data-shell-modal]')).toBeNull()
+  })
+
+  it('renders a hidden bubble window as the transparent orb root', () => {
+    surfaceState = createSnapshotStore({ ...ORB, role: 'bubbles' })
+    const { frame, slotCalls } = mountFrame()
+    expect(frame.dataset.surface).toBe('orb')
+    expect(slotCalls.map(call => call.key)).toEqual(['shell.overlay'])
     expect(frame.querySelector('[data-shell-modal]')).toBeNull()
   })
 

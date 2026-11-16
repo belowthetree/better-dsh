@@ -11,7 +11,7 @@ function applicationFrame(url: string): boolean {
 /**
  * Handle microphone requests from the owned application windows; other permissions retain Electron's defaults.
  * @param session - application's browser session.
- * @param primaries - current application windows' contents; the orb and surface windows may both capture audio.
+ * @param primaries - current application windows' contents; the orb, surface, and bubble column windows may capture audio.
  */
 export function installMicrophonePermissions(
   session: Pick<Session, 'setPermissionCheckHandler' | 'setPermissionRequestHandler'>,

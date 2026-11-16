@@ -12,6 +12,7 @@ type Command = { readonly id: string; readonly resolve: () => { readonly status:
 /** Orb presentation the carrier reports while the plugin runs. */
 const ORB: SurfaceSnapshot = {
   form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  modalOpen: false,
 }
 
 function context() {

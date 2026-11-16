@@ -159,14 +159,16 @@ describe('form window options', () => {
     if (process.platform !== 'darwin') expect(options.titleBarStyle).toBeUndefined()
   })
 
-  it('marks the surface window with its role and keeps the same native options', () => {
-    const orbit = formWindowOptions({ preload: '/app/preload-app.js', role: 'orb', layout: LAYOUT, workArea: WORK_AREA })
-    const surface = formWindowOptions({ preload: '/app/preload-app.js', role: 'surface', layout: LAYOUT, workArea: WORK_AREA })
-    expect(surface.webPreferences).toMatchObject({
-      additionalArguments: ['--dsh-desktop-form-window', '--dsh-desktop-form-role=surface'],
-    })
-    const nativeOptions = ({ webPreferences: _webPreferences, ...rest }: typeof orbit): Omit<typeof orbit, 'webPreferences'> => rest
-    expect(nativeOptions(surface)).toEqual(nativeOptions(orbit))
+  it('marks each form window with its role and keeps the same native options', () => {
+    const orb = formWindowOptions({ preload: '/app/preload-app.js', role: 'orb', layout: LAYOUT, workArea: WORK_AREA })
+    const nativeOptions = ({ webPreferences: _webPreferences, ...rest }: typeof orb): Omit<typeof orb, 'webPreferences'> => rest
+    for (const role of ['surface', 'bubbles'] as const) {
+      const options = formWindowOptions({ preload: '/app/preload-app.js', role, layout: LAYOUT, workArea: WORK_AREA })
+      expect(options.webPreferences).toMatchObject({
+        additionalArguments: ['--dsh-desktop-form-window', `--dsh-desktop-form-role=${role}`],
+      })
+      expect(nativeOptions(options)).toEqual(nativeOptions(orb))
+    }
   })
 
   it('clamps the constructed bounds into the work area', () => {

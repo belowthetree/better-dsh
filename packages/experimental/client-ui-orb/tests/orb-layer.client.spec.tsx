@@ -19,6 +19,7 @@ afterEach(cleanup)
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
   form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  modalOpen: false,
 })
 
 /** One Session row; only the current main-view row is retained. */

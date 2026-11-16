@@ -5,8 +5,8 @@ import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/protocol'
 import { FORM_WINDOW_ARGUMENT, FORM_WINDOW_ROLE_ARGUMENT } from './ipc.ts'
 import { clampFormLayout, type DesktopFormLayout, type DesktopWorkArea } from './form-layout.ts'
 
-/** Role of one form window: the resident orb, or the surface window that hosts the other presentations. */
-export type DesktopFormRole = 'orb' | 'surface'
+/** Role of one form window: the resident orb, the surface window, or the bubble column. */
+export type DesktopFormRole = 'orb' | 'surface' | 'bubbles'
 
 /** Orb width and height in logical pixels. */
 export const ORB_SIZE = 112
@@ -124,9 +124,11 @@ export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkAr
 
 /**
  * Build the Electron options for one form product window.
- * Both roles are frameless, transparent, always on top, and absent from the
- * taskbar. The surface window starts at the orb square and is moved to each
- * presentation's bounds; the orb window keeps the orb bounds for its lifetime.
+ * All roles are frameless, transparent, always on top, and absent from the
+ * taskbar. Every window starts at the orb square and is moved to its own bounds
+ * once the surface controller places it: the orb window keeps the orb bounds for
+ * its lifetime, the surface window takes each presentation's bounds, and the
+ * bubble column window takes the column bounds.
  * @param input - preload bundle path, window role, current layout, and the display work area.
  * @returns Electron options for the form window.
  */
@@ -171,9 +173,9 @@ export function formWindowOptions(input: {
 
 /**
  * Whether the user may resize a presentation; only the expanded panel is resizable.
- * @param presentation - current form presentation.
- * @returns true for the panel presentation, false for the orb, modal, and bubble presentations.
+ * @param presentation - current surface presentation.
+ * @returns true for the panel presentation, false for the orb and modal presentations.
  */
-export function presentationResizable(presentation: 'orb' | 'panel' | 'modal' | 'bubbles'): boolean {
+export function presentationResizable(presentation: 'orb' | 'panel' | 'modal'): boolean {
   return presentation === 'panel'
 }

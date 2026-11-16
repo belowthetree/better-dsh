@@ -27,9 +27,12 @@ function effects(workArea = WORK_AREA): SurfaceWindowEffects & {
   readonly persisted: DesktopFormLayout[]
   readonly publishedOrb: SurfaceSnapshot[]
   readonly publishedSurface: SurfaceSnapshot[]
+  readonly publishedBubbles: SurfaceSnapshot[]
   readonly revealed: number
   readonly focused: number
   readonly hidden: number
+  readonly bubblesRevealed: number
+  readonly bubblesHidden: number
 } {
   const record = {
     bounds: [] as AppliedBounds[],
@@ -38,9 +41,12 @@ function effects(workArea = WORK_AREA): SurfaceWindowEffects & {
     persisted: [] as DesktopFormLayout[],
     publishedOrb: [] as SurfaceSnapshot[],
     publishedSurface: [] as SurfaceSnapshot[],
+    publishedBubbles: [] as SurfaceSnapshot[],
     revealed: 0,
     focused: 0,
     hidden: 0,
+    bubblesRevealed: 0,
+    bubblesHidden: 0,
   }
   return {
     get bounds() { return record.bounds },
@@ -49,17 +55,23 @@ function effects(workArea = WORK_AREA): SurfaceWindowEffects & {
     get persisted() { return record.persisted },
     get publishedOrb() { return record.publishedOrb },
     get publishedSurface() { return record.publishedSurface },
+    get publishedBubbles() { return record.publishedBubbles },
     get revealed() { return record.revealed },
     get focused() { return record.focused },
     get hidden() { return record.hidden },
+    get bubblesRevealed() { return record.bubblesRevealed },
+    get bubblesHidden() { return record.bubblesHidden },
     setBounds: (role, bounds) => { record.bounds.push({ role, bounds }) },
     setResizable: (role, value) => { record.resizable.push({ role, value }) },
     setIgnoreMouseEvents: (role, value) => { record.ignored.push({ role, value }) },
     revealSurface: () => { record.revealed++ },
     focusSurface: () => { record.focused++ },
     hideSurface: () => { record.hidden++ },
+    revealBubbles: () => { record.bubblesRevealed++ },
+    hideBubbles: () => { record.bubblesHidden++ },
     publishOrb: (snapshot) => { record.publishedOrb.push(snapshot) },
     publishSurface: (snapshot) => { record.publishedSurface.push(snapshot) },
+    publishBubbles: (snapshot) => { record.publishedBubbles.push(snapshot) },
     persist: (next) => { record.persisted.push(next) },
     workArea: () => workArea,
   }
@@ -130,9 +142,15 @@ describe('DesktopSurfaceController', () => {
     const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, pinned: true }, effects: window })
     expect(controller.snapshot('orb')).toEqual({
       form: 'orb', role: 'orb', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
+      modalOpen: false,
     })
     expect(controller.snapshot('surface')).toEqual({
       form: 'orb', role: 'surface', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
+      modalOpen: false,
+    })
+    expect(controller.snapshot('bubbles')).toEqual({
+      form: 'orb', role: 'bubbles', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
+      modalOpen: false,
     })
   })
 
@@ -175,7 +193,7 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'orb.quick-setup' })
     expect(controller.ensurePanel()).toBe(false)
     expect(controller.snapshot('surface')).toEqual({ form: 'orb', role: 'surface', presentation: 'modal', pinned: false,
-      available: true, modal: 'orb.quick-setup', orbHovered: false })
+      available: true, modal: 'orb.quick-setup', orbHovered: false, modalOpen: true })
   })
 
   it('ignores expand while already expanded and collapse while collapsed', () => {
@@ -290,12 +308,13 @@ describe('DesktopSurfaceController', () => {
     expect(controller.snapshot('surface')).toMatchObject({ presentation: 'panel', pinned: true })
   })
 
-  it('publishes the changed pin state to both windows', () => {
+  it('publishes the changed pin state to all three windows', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'setPinned', pinned: true }, 'orb')
     expect(window.publishedOrb.at(-1)).toMatchObject({ role: 'orb', pinned: true })
     expect(window.publishedSurface.at(-1)).toMatchObject({ role: 'surface', pinned: true })
+    expect(window.publishedBubbles.at(-1)).toMatchObject({ role: 'bubbles', pinned: true })
   })
 
   it('collapses an unpinned panel when the surface window loses focus', () => {
@@ -316,6 +335,7 @@ describe('DesktopSurfaceController', () => {
     controller.blurred()
     expect(controller.snapshot('surface')).toEqual({
       form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+      modalOpen: false,
     })
   })
 
@@ -394,14 +414,17 @@ describe('DesktopSurfaceController', () => {
     expect(lastOf(window.ignored, 'surface')).toBe(false)
   })
 
-  it('re-clamps the persisted orb and both window bounds after a display change', () => {
+  it('re-clamps the orb and all three windows after a display change', () => {
     const window = effects({ x: 0, y: 0, width: 800, height: 600 })
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'presentBubbles' })
+    controller.dispatch({ kind: 'expand' })
     controller.reflow()
     expect(window.persisted.at(-1)?.orb).toEqual({ x: 688, y: 400 })
     expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 688, y: 400, width: 112, height: 112 })
-    expect(boundsOf(window, 'surface').at(-1)).toEqual(bubblesBounds({ ...LAYOUT, orb: { x: 688, y: 400 } },
+    expect(boundsOf(window, 'surface').at(-1)).toEqual(panelBounds({ ...LAYOUT, orb: { x: 688, y: 400 } },
+      { x: 0, y: 0, width: 800, height: 600 }))
+    expect(boundsOf(window, 'bubbles').at(-1)).toEqual(bubblesBounds({ ...LAYOUT, orb: { x: 688, y: 400 } },
       { x: 0, y: 0, width: 800, height: 600 }))
   })
 
@@ -415,18 +438,25 @@ describe('DesktopSurfaceController', () => {
     expect(lastOf(window.resizable, 'orb')).toBe(false)
     expect(lastOf(window.ignored, 'orb')).toBe(true)
     expect(window.hidden).toBe(1)
+    expect(window.bubblesHidden).toBe(1)
+    expect(window.bubblesRevealed).toBe(0)
     expect(window.publishedOrb.at(-1)).toMatchObject({ role: 'orb', presentation: 'orb' })
     expect(window.publishedSurface.at(-1)).toMatchObject({ role: 'surface', presentation: 'orb' })
+    expect(window.publishedBubbles.at(-1)).toMatchObject({ role: 'bubbles', presentation: 'orb' })
   })
 
-  it('re-reveals a non-orb presentation when the windows are restored', () => {
+  it('re-reveals the panel and the bubble column when the windows are restored', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'expand' })
     controller.dispatch({ kind: 'presentBubbles' })
     const revealed = window.revealed
+    const bubblesRevealed = window.bubblesRevealed
     controller.restore()
-    expect(boundsOf(window, 'surface').at(-1)).toEqual(bubblesBounds(LAYOUT, WORK_AREA))
+    expect(boundsOf(window, 'surface').at(-1)).toEqual(panelBounds(LAYOUT, WORK_AREA))
+    expect(boundsOf(window, 'bubbles').at(-1)).toEqual(bubblesBounds(LAYOUT, WORK_AREA))
     expect(window.revealed).toBe(revealed + 1)
+    expect(window.bubblesRevealed).toBe(bubblesRevealed + 1)
     expect(window.hidden).toBe(0)
   })
 
@@ -439,110 +469,149 @@ describe('DesktopSurfaceController', () => {
     expect(window.focused).toBe(focused + 1)
   })
 
-  it('presents the bubble column in the surface window without focus', () => {
+  it('presents the bubble column in its own window without focus or a surface change', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'presentBubbles' }, 'orb')
-    expect(controller.snapshot('surface')).toMatchObject({ role: 'surface', presentation: 'bubbles', modal: null })
+    expect(controller.snapshot('bubbles')).toMatchObject({ role: 'bubbles', presentation: 'bubbles', modal: null })
+    expect(controller.snapshot('surface')).toMatchObject({ role: 'surface', presentation: 'orb' })
     expect(controller.snapshot('orb')).toMatchObject({ role: 'orb', presentation: 'orb' })
-    expect(boundsOf(window, 'surface').at(-1)).toEqual(bubblesBounds(LAYOUT, WORK_AREA))
-    expect(lastOf(window.resizable, 'surface')).toBe(false)
-    expect(window.revealed).toBe(1)
+    expect(boundsOf(window, 'bubbles').at(-1)).toEqual(bubblesBounds(LAYOUT, WORK_AREA))
+    expect(lastOf(window.resizable, 'bubbles')).toBe(false)
+    expect(window.bubblesRevealed).toBe(1)
+    expect(window.publishedBubbles.at(-1)).toMatchObject({ presentation: 'bubbles' })
+    expect(window.revealed).toBe(0)
     expect(window.focused).toBe(0)
+    expect(window.hidden).toBe(0)
   })
 
-  it('publishes the orb hover fact so the surface window can time the bubble exit', () => {
+  it('keeps the bubble column independent of the surface presentation', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' }, 'orb')
+    controller.dispatch({ kind: 'expand' })
+    expect(controller.snapshot('surface').presentation).toBe('panel')
+    expect(controller.snapshot('bubbles').presentation).toBe('bubbles')
+    expect(window.bubblesHidden).toBe(0)
+    controller.dispatch({ kind: 'dismissBubbles' }, 'bubbles')
+    expect(controller.snapshot('bubbles').presentation).toBe('orb')
+    expect(controller.snapshot('surface').presentation).toBe('panel')
+    expect(window.bubblesHidden).toBe(1)
+    expect(window.hidden).toBe(0)
+  })
+
+  it('publishes the orb hover fact so the bubble window can time the exit', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'pointerInside', inside: true }, 'orb')
     expect(window.publishedSurface.at(-1)).toMatchObject({ orbHovered: true })
     expect(window.publishedOrb.at(-1)).toMatchObject({ orbHovered: true })
-    const published = window.publishedSurface.length
+    expect(window.publishedBubbles.at(-1)).toMatchObject({ orbHovered: true })
+    const published = window.publishedBubbles.length
     controller.dispatch({ kind: 'pointerInside', inside: true }, 'orb')
-    controller.dispatch({ kind: 'pointerInside', inside: false }, 'surface')
-    expect(window.publishedSurface.length).toBe(published)
+    controller.dispatch({ kind: 'pointerInside', inside: false }, 'bubbles')
+    expect(window.publishedBubbles.length).toBe(published)
     controller.dispatch({ kind: 'pointerInside', inside: false }, 'orb')
-    expect(window.publishedSurface.at(-1)).toMatchObject({ orbHovered: false })
+    expect(window.publishedBubbles.at(-1)).toMatchObject({ orbHovered: false })
   })
 
-  it('dismisses the bubble column back to the orb window and hides the surface window', () => {
-    const window = effects()
-    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'presentBubbles' })
-    controller.dispatch({ kind: 'dismissBubbles' })
-    expect(controller.snapshot('surface').presentation).toBe('orb')
-    expect(window.hidden).toBe(1)
-    expect(window.focused).toBe(0)
-  })
-
-  it('ignores bubble commands that do not change the presentation', () => {
+  it('ignores a repeated bubble presentation and dismissal that changes nothing', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'dismissBubbles' })
-    expect(window.publishedSurface).toEqual([])
+    expect(window.publishedBubbles).toEqual([])
+    expect(window.bubblesHidden).toBe(0)
     controller.dispatch({ kind: 'presentBubbles' })
-    const published = window.publishedSurface.length
+    const published = window.publishedBubbles.length
     controller.dispatch({ kind: 'presentBubbles' })
-    expect(window.publishedSurface.length).toBe(published)
+    expect(window.publishedBubbles.length).toBe(published)
+    expect(window.bubblesRevealed).toBe(1)
   })
 
-  it('does not let a hovered orb replace an open panel or modal', () => {
+  it('holds a visible column while the workbench modal is open', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'presentModal', id: 'orb.chat' })
     controller.dispatch({ kind: 'presentBubbles' }, 'orb')
-    expect(controller.snapshot('surface')).toMatchObject({ presentation: 'modal', modal: 'orb.chat' })
+    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench' })
+    expect(controller.snapshot('bubbles')).toMatchObject({ presentation: 'bubbles', modalOpen: true })
+    expect(controller.snapshot('surface')).toMatchObject({ presentation: 'modal', modalOpen: true })
+    controller.dispatch({ kind: 'dismissBubbles' }, 'bubbles')
+    expect(controller.snapshot('bubbles').presentation).toBe('bubbles')
+    expect(window.bubblesHidden).toBe(0)
     controller.dispatch({ kind: 'dismissModal' })
-    controller.dispatch({ kind: 'expand' })
+    expect(controller.snapshot('bubbles')).toMatchObject({ presentation: 'bubbles', modalOpen: false })
+    expect(window.bubblesHidden).toBe(0)
+    expect(window.bubblesRevealed).toBe(2)
+  })
+
+  it('defers a column requested during the workbench until the modal leaves', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench' })
     controller.dispatch({ kind: 'presentBubbles' }, 'orb')
-    expect(controller.snapshot('surface')).toMatchObject({ presentation: 'panel' })
+    expect(controller.snapshot('bubbles')).toMatchObject({ presentation: 'bubbles', modalOpen: true })
+    expect(window.bubblesRevealed).toBe(0)
+    controller.dispatch({ kind: 'dismissModal' })
+    expect(window.bubblesRevealed).toBe(1)
+    expect(controller.snapshot('bubbles')).toMatchObject({ presentation: 'bubbles', modalOpen: false })
+  })
+
+  it('opens the workbench from a bubble click and keeps the column that opened it', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' }, 'orb')
+    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench' }, 'bubbles')
+    expect(controller.snapshot('surface')).toMatchObject({ presentation: 'modal', modal: 'better-interact.workbench' })
+    expect(window.focused).toBe(1)
+    expect(controller.snapshot('bubbles').presentation).toBe('bubbles')
   })
 
   it('keeps the bubble column when the surface window loses focus', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'presentBubbles' })
-    const bounds = window.bounds.length
+    controller.dispatch({ kind: 'expand' })
     controller.blurred()
-    expect(controller.snapshot('surface').presentation).toBe('bubbles')
-    expect(window.bounds.length).toBe(bounds)
+    expect(controller.snapshot('surface').presentation).toBe('orb')
+    expect(controller.snapshot('bubbles').presentation).toBe('bubbles')
+    expect(window.bubblesHidden).toBe(0)
   })
 
-  it('restores the bubble column a modal was raised from', () => {
+  it('passes clicks through the empty pixels of the bubble column only while it is up', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'pointerInside', inside: false }, 'bubbles')
+    expect(lastOf(window.ignored, 'bubbles')).toBe(false)
     controller.dispatch({ kind: 'presentBubbles' })
+    expect(lastOf(window.ignored, 'bubbles')).toBe(true)
+    controller.dispatch({ kind: 'pointerInside', inside: true }, 'bubbles')
+    expect(lastOf(window.ignored, 'bubbles')).toBe(false)
+    controller.dispatch({ kind: 'dismissBubbles' })
+    expect(lastOf(window.ignored, 'bubbles')).toBe(false)
+  })
+
+  it('moves the bubble column with the orb while it is up', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'dragBy', deltaX: -10, deltaY: -10 }, 'orb')
+    expect(boundsOf(window, 'bubbles')).toEqual([])
+    controller.dispatch({ kind: 'presentBubbles' })
+    controller.dispatch({ kind: 'dragBy', deltaX: -10, deltaY: -10 }, 'orb')
+    expect(boundsOf(window, 'bubbles').at(-1))
+      .toEqual(bubblesBounds({ ...LAYOUT, orb: { x: 1280, y: 380 } }, WORK_AREA))
+  })
+
+  it('hides the bubble column while a modal stays open when the windows are restored', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench' })
-    expect(boundsOf(window, 'surface').at(-1)).toEqual(modalBounds(WORK_AREA))
+    controller.dispatch({ kind: 'presentBubbles' })
+    const revealed = window.bubblesRevealed
+    controller.restore()
+    expect(window.bubblesRevealed).toBe(revealed)
+    expect(window.bubblesHidden).toBe(1)
     controller.dispatch({ kind: 'dismissModal' })
-    expect(controller.snapshot('surface')).toMatchObject({ presentation: 'bubbles', modal: null })
-  })
-
-  it('returns to the bubble column when a modal raised from it loses focus', () => {
-    const window = effects()
-    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'presentBubbles' })
-    controller.dispatch({ kind: 'presentModal', id: 'better-interact.workbench' })
-    controller.blurred()
-    expect(controller.snapshot('surface')).toMatchObject({ presentation: 'bubbles', modal: null })
-  })
-
-  it('replaces the bubble column when a shell-owned document needs the panel', () => {
-    const window = effects()
-    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'presentBubbles' })
-    expect(controller.ensurePanel()).toBe(true)
-    expect(controller.snapshot('surface').presentation).toBe('panel')
-  })
-
-  it('passes clicks through the empty pixels of the bubble column', () => {
-    const window = effects()
-    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'pointerInside', inside: false }, 'surface')
-    controller.dispatch({ kind: 'presentBubbles' })
-    expect(lastOf(window.ignored, 'surface')).toBe(true)
-    controller.dispatch({ kind: 'pointerInside', inside: true }, 'surface')
-    expect(lastOf(window.ignored, 'surface')).toBe(false)
+    expect(window.bubblesRevealed).toBe(revealed + 1)
   })
 })
 
