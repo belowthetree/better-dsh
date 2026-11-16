@@ -141,33 +141,21 @@ export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: Bubble
  */
 export function BubblesLayer(props: BubblesLayerProps) {
   const role = props.useSurface(snapshot => snapshot.role)
+  const orbHovered = props.useSurface(snapshot => snapshot.orbHovered)
   const target = props.useSessions(state => state.ids[0])
   const resource = props.useResource<'betterinteract'>(workbenchAddress(target))
   const reference = resource.value?.reference
   const { show } = props
 
-  // The carrier runs the orb window beside the surface window. Pointer activity
-  // inside the resident orb asks the carrier to present the column in the
-  // surface window; leaving the orb re-arms the request for the next hover.
-  // The column decides its own exit from the snapshot's orb-hover fact.
+  // The orb window is the only renderer that asks for the column, and the
+  // pointer entering the resident orb is the only entry trigger. The carrier
+  // reports that hover in the snapshot after the orb renderer's pointer report,
+  // so the column and its exit timer never disagree about whether the pointer
+  // is still on the orb.
   useEffect(() => {
-    if (role !== 'orb' || reference === undefined) return
-    let fired = false
-    const enter = (): void => {
-      if (fired) return
-      fired = true
-      show()
-    }
-    const leave = (): void => { fired = false }
-    document.addEventListener('pointerenter', enter, true)
-    document.addEventListener('pointermove', enter, true)
-    document.addEventListener('pointerleave', leave, true)
-    return () => {
-      document.removeEventListener('pointerenter', enter, true)
-      document.removeEventListener('pointermove', enter, true)
-      document.removeEventListener('pointerleave', leave, true)
-    }
-  }, [role, reference, show])
+    if (role !== 'orb' || !orbHovered || reference === undefined) return
+    show()
+  }, [role, orbHovered, reference, show])
 
   if (reference === undefined) return null
   const { SessionProvider, renderSlot } = props

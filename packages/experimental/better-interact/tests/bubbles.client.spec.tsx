@@ -173,29 +173,29 @@ describe('BubblesLayer', () => {
     expect(renderSlot).toHaveBeenCalledWith('better-interact.bubbles.stack', {})
   })
 
-  it('asks for the column once per pointer entry into the orb window', () => {
-    const { props, show } = layer()
+  it('asks for the column when the carrier reports the orb hover', () => {
+    const { props, show } = layer({ surface: { ...ORB, orbHovered: true } })
     render(createElement(BubblesLayer, props as never))
-    fireEvent.pointerEnter(document)
-    fireEvent.pointerMove(document)
     expect(show).toHaveBeenCalledOnce()
-    fireEvent.pointerLeave(document)
-    fireEvent.pointerEnter(document)
-    expect(show).toHaveBeenCalledTimes(2)
   })
 
-  it('does not ask for the column before a Session is bound', () => {
-    const { props, show } = layer({ reference: false })
+  it('does not ask for the column before the pointer enters the orb', () => {
+    const { props, show } = layer({ surface: { ...ORB, orbHovered: false } })
     render(createElement(BubblesLayer, props as never))
-    fireEvent.pointerEnter(document)
     expect(show).not.toHaveBeenCalled()
   })
 
-  it('ignores pointer activity reported by the surface window', () => {
-    const { props, show } = layer({ surface: { ...ORB, role: 'surface', presentation: 'bubbles' } })
+  it('does not ask for the column before a Session is bound', () => {
+    const { props, show } = layer({ reference: false, surface: { ...ORB, orbHovered: true } })
     render(createElement(BubblesLayer, props as never))
-    fireEvent.pointerEnter(document)
-    fireEvent.pointerMove(document)
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it('ignores the orb hover reported to the surface window', () => {
+    const { props, show } = layer({
+      surface: { ...ORB, role: 'surface', presentation: 'bubbles', orbHovered: true },
+    })
+    render(createElement(BubblesLayer, props as never))
     expect(show).not.toHaveBeenCalled()
   })
 })
