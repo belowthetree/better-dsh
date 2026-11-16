@@ -20,6 +20,9 @@ export const MODAL_SIZE = { width: 768, height: 560 } as const
 /** Bubble column width in logical pixels; its height follows the display work area. */
 export const BUBBLES_WIDTH = 380
 
+/** Vertical gap between the bubble column and the orb it belongs to, in logical pixels. */
+export const BUBBLES_GAP = 12
+
 /** Gap between a presentation and the work area edge, in logical pixels. */
 export const SCREEN_MARGIN = 24
 
@@ -83,27 +86,26 @@ export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {})
 }
 
 /**
- * Anchor the bubble column to the orb, inset from the screen margin and growing upward from the orb's bottom edge.
- * The window spans the column and the orb, so the orb stays on screen beside the column it belongs to;
- * its height never covers a whole display, so covered applications keep rendering.
+ * Stack the bubble column above the orb and span one window that holds both.
+ * The column shrinks to the room above the orb, so it never covers it, and the
+ * window never covers a whole display, so covered applications keep rendering.
  * @param layout - current orb layout.
  * @param workArea - target display work area.
- * @returns bubble window bounds inside the work area, covering both the column and the orb.
+ * @returns bubble window bounds inside the work area, covering the column and the orb below it.
  */
 export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea): FormPresentationBounds {
   const orb = orbBounds(layout, workArea)
+  const top = workArea.y + SCREEN_MARGIN
   const width = Math.min(BUBBLES_WIDTH, workArea.width)
-  const height = Math.min(workArea.height - SCREEN_MARGIN * 2, Math.max(ORB_SIZE, Math.round(workArea.height * 0.6)))
-  const columnX = Math.min(Math.max(workArea.x, orb.x + ORB_SIZE - width), workArea.x + workArea.width - width)
-  const columnY = Math.min(Math.max(workArea.y + SCREEN_MARGIN, orb.y + ORB_SIZE - height), workArea.y + workArea.height - height)
-  // The window keeps the orb itself on screen beside the column.
-  const x = Math.min(columnX, orb.x)
-  const y = Math.min(columnY, orb.y)
+  const room = Math.max(ORB_SIZE, orb.y - BUBBLES_GAP - top)
+  const height = Math.min(Math.max(ORB_SIZE, Math.round(workArea.height * 0.6)), room)
+  const x = Math.min(Math.max(workArea.x, orb.x + ORB_SIZE - width), workArea.x + workArea.width - width)
+  const y = Math.max(top, orb.y - BUBBLES_GAP - height)
   return {
     x,
     y,
-    width: Math.max(columnX + width, orb.x + ORB_SIZE) - x,
-    height: Math.max(columnY + height, orb.y + ORB_SIZE) - y,
+    width: Math.max(x + width, orb.x + ORB_SIZE) - x,
+    height: Math.max(y + height, orb.y + ORB_SIZE) - y,
   }
 }
 

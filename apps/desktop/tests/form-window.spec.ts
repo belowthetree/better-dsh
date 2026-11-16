@@ -6,6 +6,7 @@ import {
   PANEL_SIZE,
   SCREEN_MARGIN,
   formWindowOptions,
+  BUBBLES_GAP,
   BUBBLES_WIDTH,
   bubblesBounds,
   modalBounds,
@@ -64,18 +65,27 @@ describe('panel bounds', () => {
 })
 
 describe('bubble bounds', () => {
-  it('spans the column and the orb, growing upward from the orb bottom edge', () => {
+  it('stacks the column above the orb in one window', () => {
     const bounds = bubblesBounds(
       { version: 1, orb: { x: 1800, y: 400 }, pinned: false },
       { x: 0, y: 0, width: 1920, height: 1080 },
     )
-    expect(bounds).toEqual({ x: 1920 - BUBBLES_WIDTH - 8, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 648 })
+    expect(bounds).toEqual({ x: 1532, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 488 })
+    // The orb owns the window's bottom 112 pixels, so the column ends 12px above its top edge.
+    expect(bounds.y + bounds.height - ORB_SIZE).toBe(400)
+    expect(bounds.y + bounds.height - ORB_SIZE - BUBBLES_GAP).toBe(388)
+  })
+
+  it('shrinks the column to the room above an orb near the top edge', () => {
+    const layout = { version: 1, orb: { x: 1800, y: 160 }, pinned: false } as const
+    const bounds = bubblesBounds(layout, { x: 0, y: 0, width: 1920, height: 1080 })
+    expect(bounds).toEqual({ x: 1532, y: SCREEN_MARGIN, width: BUBBLES_WIDTH, height: 248 })
   })
 
   it('keeps the column inside a work area it would overflow', () => {
     const layout = { version: 1, orb: { x: 0, y: 0 }, pinned: false } as const
     expect(bubblesBounds(layout, { x: 0, y: 0, width: 320, height: 400 }))
-      .toEqual({ x: 0, y: 0, width: 320, height: 264 })
+      .toEqual({ x: 0, y: SCREEN_MARGIN, width: 320, height: 112 })
   })
 })
 

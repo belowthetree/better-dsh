@@ -170,6 +170,13 @@ export function BubbleStack(props: BubbleStackProps) {
     pointerInside(false)
   }, [pointerInside])
 
+  // Every fresh column clears the previous fade: reopening it must show it again.
+  useEffect(() => {
+    if (!visible) return
+    setFaded(false)
+    pointerInside(false)
+  }, [visible, pointerInside])
+
   useEffect(() => {
     if (!busy) return
     setFaded(false)
