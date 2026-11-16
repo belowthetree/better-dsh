@@ -45,7 +45,7 @@ overlay 条目只在快照的 `orb` 角色中绘制，在 `surface` 窗口或 cl
 
 `apply` 注册一次八种语言词典，然后为每个观察源建立一个快照存储：载体呈现、减少动效媒体查询，以及每个已挂载的语音服务。呈现观察与两个可选语音观察共用一个助手：跟随带 signal 的流写入存储，并随 fiber 中止；可选服务经 `ctx.inject` 观察，因此卸载其中一个就会清空对应存储，界面继续可用。三个条目经 `ctx.slots.inject` 注册：它会等待框架声明，并在该声明收起时移除贡献。命令经 `ctx.shortcuts.register` 注册，其释放函数随插件运行。一次提交用本包的 `orbPrompt` 引用来源经 `ctx.sessions.using` 保留目标，然后调用 `prompt(content, 'queue')`；对话框不显示乐观转写，因此不注册本地提交回显。每条载体命令都从一个闭包发出，包含拒绝并只报告一次。
 
-组件只接收普通数据与回调：`hooks` 分区的源绑定为 `useSurface`、`useCapture`、`useVoice` 与 `useReducedMotion` 选择器 Hook，标准 `useSessions` 座位提供运行状态，`actions` 携带回调。overlay 注入面携带 `openChat`、拖动与菜单命令以及 `toggleVoice`；对话框注入面另外携带基于共享采集服务的 `takeTranscript`、`submit`、`dismiss` 与听写命令，因此对话框从不拥有录音器。拖动状态、悬停、按下与菜单开关是组件局部状态；拖动 Hook 把指针移动合并为每动画帧一次报告，并在释放时发送剩余位移，这也决定了该手势是否算作拖动。对话框的文字、提交失败与听写提示是组件局部状态；追加转写是输入框之外对该文字的唯一写入。悬浮球菜单用共享的 `MenuSurface` 材质包裹自己的行。
+组件只接收普通数据与回调：`hooks` 分区的源绑定为 `useSurface`、`useCapture`、`useVoice` 与 `useReducedMotion` 选择器 Hook，标准 `useSessions` 座位提供运行状态，`actions` 携带回调。overlay 注入面携带 `openChat`、拖动与菜单命令以及 `toggleVoice`；对话框注入面另外携带基于共享采集服务的 `takeTranscript`、`submit`、`dismiss` 与听写命令，因此对话框从不拥有录音器。拖动状态、悬停、按下与菜单开关是组件局部状态；拖动 Hook 把指针移动合并为每动画帧一次报告，并以屏幕坐标测量，因此载体在指针下移动窗口不会抵消下一次位移，释放时发送剩余位移，这也决定了该手势是否算作拖动。对话框的文字、提交失败与听写提示是组件局部状态；追加转写是输入框之外对该文字的唯一写入。悬浮球菜单用共享的 `MenuSurface` 材质包裹自己的行。
 
 </details>
 

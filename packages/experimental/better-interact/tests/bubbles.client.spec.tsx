@@ -7,7 +7,7 @@ import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import {
-  BUBBLE_COLLAPSE_MS, BUBBLE_FADE_MS, BUBBLE_FADE_OUT_MS, assistantText, bubbleOutputs, BubblesLayer, BubbleStack,
+  BUBBLE_IDLE_MS, BUBBLE_MOTION_MS, BUBBLE_STAGGER_MS, assistantText, bubbleOutputs, BubblesLayer, BubbleStack,
 } from '../src/client/bubbles.tsx'
 
 /** Orb presentation of the committed form profile. */
@@ -177,6 +177,12 @@ describe('BubblesLayer', () => {
 })
 
 describe('BubbleStack', () => {
+  /** Rendered bubble labels, oldest first. */
+  const labels = (): (string | null)[] => screen.queryAllByRole('button').map(button => button.textContent)
+
+  /** Per-bubble entry or exit delays, oldest first. */
+  const delays = (): string[] => screen.queryAllByRole('button').map(button => button.style.animationDelay)
+
   it('renders nothing while the carrier presents another presentation', () => {
     const { props } = stack({ presentation: 'panel', running: true, chat: chat({
       answers: [{ turn: 1, response: 'answer' }],
@@ -192,7 +198,7 @@ describe('BubbleStack', () => {
     expect(column()).toBeNull()
     const opened = stack({ presentation: 'bubbles', chat: chat({ answers }) })
     view.rerender(createElement(BubbleStack, opened.props as never))
-    expect(screen.getAllByRole('button')).toHaveLength(2)
+    expect(labels()).toEqual(['older answer', 'newest answer'])
   })
 
   it('renders only the newest output while collapsed', () => {
@@ -200,7 +206,24 @@ describe('BubbleStack', () => {
       answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
     }) })
     render(createElement(BubbleStack, props as never))
-    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['newest answer'])
+    expect(labels()).toEqual(['newest answer'])
+  })
+
+  it('enters the history in sequence from the newest answer outward', () => {
+    const answers = [
+      { turn: 1, response: 'oldest answer' },
+      { turn: 2, response: 'middle answer' },
+      { turn: 3, response: 'newest answer' },
+    ]
+    const { props } = stack({ chat: chat({ answers }) })
+    render(createElement(BubbleStack, props as never))
+    fireEvent.pointerOver(screen.getByRole('log'))
+    expect(labels()).toEqual(['oldest answer', 'middle answer', 'newest answer'])
+    expect(delays()).toEqual([
+      `${String(2 * BUBBLE_STAGGER_MS)}ms`,
+      `${String(BUBBLE_STAGGER_MS)}ms`,
+      '0ms',
+    ])
   })
 
   it('asks for the column while the agent streams output', () => {
@@ -217,41 +240,88 @@ describe('BubbleStack', () => {
     expect(show).not.toHaveBeenCalled()
   })
 
-  it('expands the earlier answers on hover and collapses them after the pointer leaves', () => {
-    const { props } = stack({ chat: chat({
+  it('expands the history on hover and leaves in sequence after the pointer leaves', () => {
+    const { props, hide } = stack({ chat: chat({
       answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
     }) })
     render(createElement(BubbleStack, props as never))
     const log = screen.getByRole('log')
     fireEvent.pointerOver(log)
-    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['older answer', 'newest answer'])
+    expect(labels()).toEqual(['older answer', 'newest answer'])
     fireEvent.pointerOut(log)
-    expect(screen.getAllByRole('button')).toHaveLength(2)
-    act(() => { vi.advanceTimersByTime(BUBBLE_COLLAPSE_MS) })
-    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['newest answer'])
+    expect(column()?.dataset.exiting).toBe('true')
+    expect(delays()).toEqual([`${String(BUBBLE_STAGGER_MS)}ms`, '0ms'])
+    expect(hide).not.toHaveBeenCalled()
+    act(() => { vi.advanceTimersByTime(BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS) })
+    expect(hide).toHaveBeenCalledTimes(1)
   })
 
-  it('collapses an abandoned history even when no leave event arrives', () => {
-    const { props } = stack({ chat: chat({
-      answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
-    }) })
-    render(createElement(BubbleStack, props as never))
-    fireEvent.pointerOver(screen.getByRole('log'))
-    act(() => { vi.advanceTimersByTime(BUBBLE_COLLAPSE_MS) })
-    expect(screen.getAllByRole('button')).toHaveLength(1)
-  })
-
-  it('keeps the history open while the pointer keeps moving', () => {
-    const { props } = stack({ chat: chat({
+  it('cancels a running exit when the pointer comes back', () => {
+    const { props, hide } = stack({ chat: chat({
       answers: [{ turn: 1, response: 'older answer' }, { turn: 2, response: 'newest answer' }],
     }) })
     render(createElement(BubbleStack, props as never))
     const log = screen.getByRole('log')
     fireEvent.pointerOver(log)
-    act(() => { vi.advanceTimersByTime(BUBBLE_COLLAPSE_MS - 500) })
-    fireEvent.pointerMove(log)
-    act(() => { vi.advanceTimersByTime(BUBBLE_COLLAPSE_MS - 500) })
-    expect(screen.getAllByRole('button')).toHaveLength(2)
+    fireEvent.pointerOut(log)
+    act(() => { vi.advanceTimersByTime(BUBBLE_STAGGER_MS) })
+    expect(column()?.dataset.exiting).toBe('true')
+    fireEvent.pointerOver(log)
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(2 * (BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS)) })
+    expect(hide).not.toHaveBeenCalled()
+    expect(labels()).toEqual(['older answer', 'newest answer'])
+  })
+
+  it('keeps a single bubble when the pointer arrives before the quiet timer', () => {
+    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
+    render(createElement(BubbleStack, props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS - 100) })
+    fireEvent.pointerOver(screen.getByRole('log'))
+    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS * 2) })
+    expect(column()?.dataset.exiting).toBe('false')
+    expect(hide).not.toHaveBeenCalled()
+  })
+
+  it('leaves after the quiet period when the pointer never entered', () => {
+    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
+    render(createElement(BubbleStack, props as never))
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS - 1) })
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(column()?.dataset.exiting).toBe('true')
+    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays while hovered over settled output until the pointer leaves', () => {
+    const answers = [{ turn: 1, response: 'answer' }]
+    const running = stack({ running: true, chat: chat({ answers }) })
+    const view = render(createElement(BubbleStack, running.props as never))
+    fireEvent.pointerOver(screen.getByRole('log'))
+    const settled = stack({ running: false, chat: chat({ answers }) })
+    view.rerender(createElement(BubbleStack, settled.props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS * 2) })
+    expect(settled.hide).not.toHaveBeenCalled()
+    fireEvent.pointerOut(screen.getByRole('log'))
+    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS) })
+    expect(settled.hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels the exit when new output starts streaming', () => {
+    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
+    const view = render(createElement(BubbleStack, props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_IDLE_MS) })
+    expect(column()?.dataset.exiting).toBe('true')
+    const resumed = stack({
+      running: true,
+      chat: chat({ answers: [{ turn: 1, response: 'answer' }], partial: [{ kind: 'text', text: 'more' }] }),
+    })
+    view.rerender(createElement(BubbleStack, resumed.props as never))
+    expect(column()?.dataset.exiting).toBe('false')
+    act(() => { vi.advanceTimersByTime(BUBBLE_MOTION_MS * 2) })
+    expect(hide).not.toHaveBeenCalled()
   })
 
   it('reports pointer presence so the carrier can pass clicks through', () => {
@@ -263,17 +333,6 @@ describe('BubbleStack', () => {
     expect(pointerInside).toHaveBeenLastCalledWith(true)
     fireEvent.pointerOut(log)
     expect(pointerInside).toHaveBeenLastCalledWith(false)
-  })
-
-  it('fades and then dismisses the column once the output settles', () => {
-    const { props, hide } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
-    render(createElement(BubbleStack, props as never))
-    expect(column()?.dataset.faded).toBe('false')
-    act(() => { vi.advanceTimersByTime(BUBBLE_FADE_MS) })
-    expect(column()?.dataset.faded).toBe('true')
-    expect(hide).not.toHaveBeenCalled()
-    act(() => { vi.advanceTimersByTime(BUBBLE_FADE_OUT_MS) })
-    expect(hide).toHaveBeenCalledTimes(1)
   })
 
   it('opens the workbench from a bubble click', () => {

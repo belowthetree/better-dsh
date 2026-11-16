@@ -8,19 +8,19 @@ import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NS } from './locales.ts'
 import { workbenchAddress } from './resource.ts'
 import css from './Bubbles.module.css'
 
-/** Quiet time after the output settles before the bubble column fades. */
-export const BUBBLE_FADE_MS = 3000
+/** Quiet time after the output settles before a column the pointer never entered leaves. */
+export const BUBBLE_IDLE_MS = 3000
 
-/** Quiet time after the pointer leaves the column before the history collapses. */
-export const BUBBLE_COLLAPSE_MS = 3000
+/** Delay between two bubbles entering or leaving in sequence. */
+export const BUBBLE_STAGGER_MS = 60
 
-/** Fade-out duration; the carrier returns to the orb when it ends. */
-export const BUBBLE_FADE_OUT_MS = 300
+/** One bubble's enter or leave animation duration. */
+export const BUBBLE_MOTION_MS = 180
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -151,7 +151,10 @@ export function BubblesLayer(props: BubblesLayerProps) {
 
 /**
  * Render the bubble column of one Session: the newest output while the agent
- * works, the earlier answers while the pointer rests on it.
+ * works, the earlier answers while the pointer rests on it. Bubbles enter and
+ * leave in sequence from the newest output outward; the column leaves after the
+ * pointer that entered it leaves, or after the quiet period when the pointer
+ * never entered.
  * @param props - bound Session state, its Chat target, and the carrier commands.
  * @returns the column while the carrier presents it, nothing otherwise.
  */
@@ -161,12 +164,48 @@ export function BubbleStack(props: BubbleStackProps) {
   const running = props.useSession(value => value.running)
   const chat = props.useConversation(state => state.views.get('chat'))
   const [expanded, setExpanded] = useState(false)
-  const [activity, setActivity] = useState(0)
-  const [faded, setFaded] = useState(false)
+  const [exiting, setExiting] = useState(false)
+  const [inside, setInside] = useState(false)
   const wasVisible = useRef<boolean | null>(null)
+  /** Whether the pointer has entered this showing, which makes leaving decide the exit. */
+  const hovered = useRef(false)
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { entries, live } = bubbleOutputs(chat)
   const busy = running || live !== ''
   const visible = presentation === 'bubbles'
+  const shown = expanded ? entries : entries.slice(-1)
+
+  /** Drop a pending quiet-period exit. */
+  const clearIdle = useCallback((): void => {
+    if (idleTimer.current !== null) {
+      clearTimeout(idleTimer.current)
+      idleTimer.current = null
+    }
+  }, [])
+
+  /** Stop a running exit, if any, and keep every bubble on screen. */
+  const cancelExit = useCallback((): void => {
+    if (exitTimer.current !== null) {
+      clearTimeout(exitTimer.current)
+      exitTimer.current = null
+    }
+    setExiting(false)
+  }, [])
+
+  /** Leave in sequence from the newest bubble, then dismiss the column. */
+  const startExit = useCallback((): void => {
+    clearIdle()
+    if (exitTimer.current !== null || !visible || shown.length === 0) return
+    setExiting(true)
+    const total = (shown.length - 1) * BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS
+    exitTimer.current = setTimeout(() => {
+      exitTimer.current = null
+      setExiting(false)
+      hovered.current = false
+      hide()
+    }, total)
+  }, [clearIdle, visible, shown.length, hide])
 
   // The column starts transparent to clicks; the carrier forwards pointer moves
   // to the page, so the first move over the stack asks for clicks back.
@@ -174,66 +213,76 @@ export function BubbleStack(props: BubbleStackProps) {
     pointerInside(false)
   }, [pointerInside])
 
-  // Every fresh column clears the previous fade: reopening it must show it again.
-  useEffect(() => {
-    if (!visible) return
-    setFaded(false)
-    pointerInside(false)
-  }, [visible, pointerInside])
+  useEffect(() => () => {
+    if (idleTimer.current !== null) clearTimeout(idleTimer.current)
+    if (exitTimer.current !== null) clearTimeout(exitTimer.current)
+  }, [])
 
-  useEffect(() => {
-    if (!busy) return
-    setFaded(false)
-    if (!visible) show()
-  }, [busy, visible, show])
-
-  useEffect(() => {
-    if (!expanded) return
-    const collapse = setTimeout(() => { setExpanded(false) }, BUBBLE_COLLAPSE_MS)
-    return () => { clearTimeout(collapse) }
-  }, [expanded, activity])
-
+  // A fresh column opens with the newest answer; reopening it after output
+  // settled expands to the history while the pointer asks for it.
   useEffect(() => {
     const entered = wasVisible.current === false && visible
     wasVisible.current = visible
+    if (!visible) {
+      hovered.current = false
+      setInside(false)
+      setExpanded(false)
+      clearIdle()
+      cancelExit()
+      return
+    }
     if (entered && !busy) setExpanded(true)
-  }, [visible, busy])
+  }, [visible, busy, cancelExit, clearIdle])
 
   useEffect(() => {
-    if (busy || entries.length === 0 || expanded || !visible) return
-    const fade = setTimeout(() => { setFaded(true) }, BUBBLE_FADE_MS)
-    const dismiss = setTimeout(() => { hide() }, BUBBLE_FADE_MS + BUBBLE_FADE_OUT_MS)
-    return () => {
-      clearTimeout(fade)
-      clearTimeout(dismiss)
-    }
-  }, [busy, entries.length, expanded, visible, hide])
+    if (!busy) return
+    cancelExit()
+    if (!visible) show()
+  }, [busy, visible, show, cancelExit])
 
-  const touch = (): void => {
-    pointerInside(true)
-    setActivity(value => value + 1)
+  useEffect(() => {
+    if (!visible || exiting || busy || shown.length === 0 || inside) return
+    // A pointer that entered the column decides when the bubbles leave; a
+    // column the pointer never entered stays for the quiet period.
+    const timer = setTimeout(startExit, hovered.current ? 0 : BUBBLE_IDLE_MS)
+    idleTimer.current = timer
+    return () => {
+      clearTimeout(timer)
+      if (idleTimer.current === timer) idleTimer.current = null
+    }
+  }, [visible, exiting, busy, shown.length, inside, startExit])
+
+  /** Show the history and keep the column while the pointer rests on it. */
+  const enter = (): void => {
+    setInside(true)
+    hovered.current = true
+    clearIdle()
+    cancelExit()
     setExpanded(true)
+    pointerInside(true)
+  }
+
+  /** Let the carrier pass clicks through and leave the column once nothing streams. */
+  const leave = (): void => {
+    setInside(false)
+    pointerInside(false)
+    if (!busy && visible) startExit()
   }
 
   if (!visible || entries.length === 0) return null
-  const shown = expanded ? entries : entries.slice(-1)
-  return <div
-    className={css.layer}
-    data-better-interact-bubbles=""
-    data-faded={faded ? 'true' : 'false'}
-  >
+  return <div className={css.layer} data-better-interact-bubbles="" data-exiting={exiting ? 'true' : 'false'}>
     <div
       className={css.stack}
       role="log"
       aria-label={t('bubbles.label')}
-      onPointerEnter={touch}
-      onPointerMove={touch}
-      onPointerLeave={() => { pointerInside(false) }}
+      onPointerEnter={enter}
+      onPointerLeave={leave}
     >
-      {shown.map(entry => <button
+      {shown.map((entry, index) => <button
         key={entry.key}
         type="button"
         className={css.bubble}
+        style={{ animationDelay: `${Math.max(0, shown.length - 1 - index) * BUBBLE_STAGGER_MS}ms` }}
         data-live={entry.live ? 'true' : 'false'}
         title={t('command.open')}
         onClick={() => { open() }}

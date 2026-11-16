@@ -1,8 +1,11 @@
 /**
- * Pointer-drag gesture for the orb and the panel strip. Deltas report through
- * animation frames while the pointer moves and once on release; a gesture that
- * crosses {@link DRAG_THRESHOLD} pixels counts as a drag, so the caller
- * suppresses the click it would otherwise produce.
+ * Pointer-drag gesture for the orb. Deltas report through animation frames
+ * while the pointer moves and once on release; a gesture that crosses
+ * {@link DRAG_THRESHOLD} pixels counts as a drag, so the caller suppresses the
+ * click it would otherwise produce. Movement is measured in screen coordinates:
+ * the carrier moves the window under the pointer, so client coordinates would
+ * fold that movement back into the next delta and make the window lag the
+ * pointer.
  */
 import { useCallback, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
@@ -78,7 +81,7 @@ export function usePointerDrag(onDelta: (deltaX: number, deltaY: number) => void
     onPointerDown: (event) => {
       if (event.button !== 0 || active.current !== null) return
       event.currentTarget.setPointerCapture(event.pointerId)
-      const point = { x: event.clientX, y: event.clientY }
+      const point = { x: event.screenX, y: event.screenY }
       latest.current = point
       dragged.current = false
       active.current = {
@@ -92,10 +95,10 @@ export function usePointerDrag(onDelta: (deltaX: number, deltaY: number) => void
     onPointerMove: (event) => {
       const gesture = active.current
       if (gesture === null || gesture.pointerId !== event.pointerId) return
-      latest.current = { x: event.clientX, y: event.clientY }
+      latest.current = { x: event.screenX, y: event.screenY }
       if (!dragged.current) {
-        const travelled = Math.abs(event.clientX - gesture.startX) >= DRAG_THRESHOLD
-          || Math.abs(event.clientY - gesture.startY) >= DRAG_THRESHOLD
+        const travelled = Math.abs(event.screenX - gesture.startX) >= DRAG_THRESHOLD
+          || Math.abs(event.screenY - gesture.startY) >= DRAG_THRESHOLD
         if (!travelled) return
         dragged.current = true
         setDragging(true)
@@ -108,7 +111,7 @@ export function usePointerDrag(onDelta: (deltaX: number, deltaY: number) => void
     onPointerUp: (event) => {
       const gesture = active.current
       if (gesture === null || gesture.pointerId !== event.pointerId) return
-      latest.current = { x: event.clientX, y: event.clientY }
+      latest.current = { x: event.screenX, y: event.screenY }
       // A press that never crossed the threshold is a click: it must not move the window.
       if (dragged.current) flush()
       event.currentTarget.releasePointerCapture(event.pointerId)

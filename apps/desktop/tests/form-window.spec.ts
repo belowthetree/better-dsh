@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MODAL_SIZE,
+  MODAL_WINDOW_MARGIN,
   ORB_SIZE,
   PANEL_MIN_SIZE,
   PANEL_SIZE,
@@ -25,6 +26,7 @@ describe('form presentation constants', () => {
     expect(PANEL_SIZE).toEqual({ width: 560, height: 160 })
     expect(PANEL_MIN_SIZE).toEqual({ width: 420, height: 120 })
     expect(MODAL_SIZE).toEqual({ width: 768, height: 560 })
+    expect(MODAL_WINDOW_MARGIN).toBe(72)
     expect(SCREEN_MARGIN).toBe(24)
   })
 })
@@ -89,24 +91,30 @@ describe('bubble bounds', () => {
 })
 
 describe('modal bounds', () => {
-  it('centers the dialog box inside the display work area', () => {
+  it('centers the dialog and its shadow margin inside the display work area', () => {
     expect(modalBounds({ x: -1920, y: -200, width: 1920, height: 1080 }))
-      .toEqual({ x: -1344, y: 60, width: MODAL_SIZE.width, height: MODAL_SIZE.height })
+      .toEqual({ x: -1416, y: -12, width: 912, height: 704 })
+  })
+
+  it('leaves room for the card window shadow on every side', () => {
+    const bounds = modalBounds(WORK_AREA)
+    expect(bounds.width - MODAL_SIZE.width).toBe(2 * MODAL_WINDOW_MARGIN)
+    expect(bounds.height - MODAL_SIZE.height).toBe(2 * MODAL_WINDOW_MARGIN)
   })
 
   it('shrinks to a work area smaller than the dialog box', () => {
     expect(modalBounds({ x: 0, y: 0, width: 640, height: 480 }))
-      .toEqual({ x: 0, y: 0, width: 640, height: 480 })
+      .toEqual({ x: SCREEN_MARGIN, y: SCREEN_MARGIN, width: 640 - 2 * SCREEN_MARGIN, height: 480 - 2 * SCREEN_MARGIN })
   })
 
   it('grows to the requested work-area height fraction', () => {
     expect(modalBounds({ x: 0, y: 0, width: 2560, height: 1440 }, { heightRatio: 0.8 }))
-      .toEqual({ x: 896, y: 144, width: MODAL_SIZE.width, height: 1152 })
+      .toEqual({ x: 824, y: 72, width: 912, height: 1296 })
   })
 
   it('keeps the dialog height on a work area the fraction would shrink below it', () => {
     expect(modalBounds({ x: 0, y: 0, width: 1280, height: 600 }, { heightRatio: 0.8 }))
-      .toEqual({ x: 256, y: 20, width: MODAL_SIZE.width, height: MODAL_SIZE.height })
+      .toEqual({ x: 184, y: SCREEN_MARGIN, width: 912, height: 600 - 2 * SCREEN_MARGIN })
   })
 
   it('treats an empty size hint as the dialog size', () => {

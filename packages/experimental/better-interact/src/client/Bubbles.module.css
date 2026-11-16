@@ -1,28 +1,25 @@
 /* Bubble column over the desktop: transparent window, card-per-output, right aligned. */
+
 .layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 1;
-  transition: opacity 300ms ease;
 }
 
-.layer[data-faded='true'] {
-  opacity: 0;
-}
-
-/* The stack sits above the orb, which the carrier keeps visible beneath it:
-   112px orb plus the 12px gap the carrier leaves. */
+/* The stack sits on the window's bottom edge, which the carrier places 12px
+   above the orb's top edge. justify-content keeps the newest output visible
+   when the history is taller than the window. */
 .stack {
   position: absolute;
   right: 8px;
   left: 8px;
-  bottom: 124px;
+  bottom: 0;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   align-items: stretch;
   gap: 8px;
-  max-height: calc(100% - 124px);
+  max-height: 100%;
   overflow: hidden;
   pointer-events: auto;
 }
@@ -47,11 +44,37 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 7;
   cursor: pointer;
+  /* The component sets animation-delay per bubble so the column enters and
+     leaves in sequence from the newest answer outward. */
+  animation: bubble-in 180ms cubic-bezier(0.2, 0, 0, 1) backwards;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.layer[data-exiting='true'] .bubble {
+  animation-name: bubble-out;
+  animation-duration: 180ms;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes bubble-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
   .bubble:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--dsw-elevation-prominent);
   }
 }
 
@@ -62,4 +85,15 @@
 .bubble[data-live='false'] {
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xxs-12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    animation: none;
+    transition: none;
+  }
+
+  .bubble:hover {
+    transform: none;
+  }
 }

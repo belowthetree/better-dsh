@@ -32,7 +32,7 @@ export function WorkbenchDialog({ useSessions, useResource, SessionProvider, ren
   const address = workbenchAddress(target)
   const resource = useResource<'betterinteract'>(address)
   const reference = resource.value?.reference
-  return <section className={css.root} data-better-interact-workbench="">
+  return <section className={css.root} data-better-interact-workbench="" data-shell-modal-fill="">
     {reference === undefined
       ? <p className={css.empty} data-better-interact-empty="">{t('workbench.empty')}</p>
       : <SessionProvider session={reference}>{renderSlot('better-interact.workbench.conversation', {})}</SessionProvider>}

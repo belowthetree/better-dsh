@@ -1,11 +1,13 @@
 /* The dialog card is the frame's; the workbench fills it so the conversation
-   keeps its own transcript scroll area and the composer stays docked. */
+   keeps its own transcript scroll area and the composer stays docked. The
+   section marks itself data-shell-modal-fill so the frame gives the card the
+   dialog height. */
 .root {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   width: 100%;
-  height: calc(100vh - 48px);
+  height: 100%;
   min-height: 0;
 }
 

@@ -79,9 +79,15 @@ function flushFrames(): void {
   for (const run of pending) run(0)
 }
 
-/** Fire one pointer event with an explicit position. */
-function pointer(target: Element, type: 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel', x: number, y: number): void {
-  fireEvent[type](target, { pointerId: 1, button: 0, clientX: x, clientY: y })
+/** Fire one pointer event with explicit client and screen positions. */
+function pointer(
+  target: Element,
+  type: 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel',
+  x: number,
+  y: number,
+  screen: { readonly x: number; readonly y: number } = { x, y },
+): void {
+  fireEvent[type](target, { pointerId: 1, button: 0, clientX: x, clientY: y, screenX: screen.x, screenY: screen.y })
 }
 
 function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: SessionListState } = {}) {
@@ -242,6 +248,21 @@ it('drags the orb through throttled deltas and suppresses the click it would pro
   expect(orb().dataset.dragging).toBeUndefined()
   fireEvent.click(orb())
   expect(b.actions.openChat).not.toHaveBeenCalled()
+})
+
+it('measures drag movement in screen coordinates so the moving window cannot cancel it', () => {
+  const b = fixture()
+  pointer(orb(), 'pointerDown', 10, 10)
+  pointer(orb(), 'pointerMove', 30, 18)
+  act(flushFrames)
+  expect(b.actions.dragBy).toHaveBeenLastCalledWith(20, 8)
+  // The carrier followed the pointer by (20, 8), so the pointer's client
+  // position under the moved window is back at the press point while the
+  // screen position continues from the last report.
+  pointer(orb(), 'pointerMove', 10, 10, { x: 50, y: 28 })
+  act(flushFrames)
+  expect(b.actions.dragBy).toHaveBeenLastCalledWith(20, 10)
+  pointer(orb(), 'pointerUp', 10, 10, { x: 50, y: 28 })
 })
 
 it('skips a queued drag frame that accumulated no movement', () => {

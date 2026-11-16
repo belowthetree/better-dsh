@@ -383,15 +383,20 @@
 /* Modal presentation: a dialog-sized dismissal layer with one centered card.
    The form window floats over the desktop, so this layer paints no mask of its
    own; the card traps focus and caps its own width, and the entry inside owns
-   the content and its chrome. */
+   the content and its chrome. The carrier sizes the window to the dialog plus a
+   transparent margin for the card's window shadow; reserving the same margin
+   here keeps the card at its dialog size and lets the shadow fade out before
+   the window edge, which would otherwise cut it into a hard border. */
 .modalBackdrop {
+  /* Matches MODAL_WINDOW_MARGIN in apps/desktop/src/form-window.ts. */
+  --dsh-modal-window-margin: 72px;
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  padding: 24px;
+  padding: calc(24px + var(--dsh-modal-window-margin));
   background: transparent;
 }
 
@@ -406,6 +411,13 @@
   background: var(--dsw-alias-bg-base);
   box-shadow: var(--dsw-elevation-window);
   outline: none;
+}
+
+/* An entry whose content fills the whole dialog marks itself
+   `data-shell-modal-fill`: the card takes the dialog height so percentage-sized
+   content inside it can fill the card. */
+.modalCard:has([data-shell-modal-fill]) {
+  height: 100%;
 }
 
 /* A modal entry that draws its own surface marks its content

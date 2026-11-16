@@ -24,6 +24,7 @@ it('renders the empty state while no Session exists', () => {
   render(createElement(WorkbenchDialog, props as never))
   expect(screen.getByText('workbench.empty')).toBeTruthy()
   expect(screen.queryByTestId('conversation')).toBeNull()
+  expect(document.querySelector('[data-shell-modal-fill]')).not.toBeNull()
 })
 
 it('renders the bound conversation seat', () => {

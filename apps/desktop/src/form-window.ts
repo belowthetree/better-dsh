@@ -20,6 +20,15 @@ export const PANEL_MIN_SIZE = { width: 420, height: 120 } as const
 /** Modal dialog window size in logical pixels: the frame's widest card plus its own padding. */
 export const MODAL_SIZE = { width: 768, height: 560 } as const
 
+/**
+ * Transparent margin around a modal dialog. The frame card's window shadow is
+ * painted inside the carrier window, so the window extends past the dialog;
+ * without the margin the shadow is cut off at the window edge and reads as a
+ * hard border. Keep in sync with `--dsh-modal-window-margin` in ui-layout's
+ * `AppFrame.module.css`, which reserves the same room for the card.
+ */
+export const MODAL_WINDOW_MARGIN = 72
+
 /** Bubble column width in logical pixels; its height follows the display work area. */
 export const BUBBLES_WIDTH = 380
 
@@ -67,19 +76,25 @@ export function panelBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea
 }
 
 /**
- * Center the modal dialog box in the work area, shrinking it when the work area is smaller.
- * The window covers only the dialog: a topmost window spanning a whole display is treated as
- * an occluder by Windows, which stops rendering in the covered application.
+ * Center the modal dialog in the work area, adding a transparent margin around
+ * it for the card's window shadow and shrinking both when the work area is
+ * smaller. The window keeps a screen margin on every side, so it never covers a
+ * whole display and covered applications keep rendering.
  * @param workArea - target display work area.
  * @param size - optional presentation size; a height ratio taller than the dialog grows the box, never past the work area.
- * @returns centered modal bounds inside the work area.
+ * @returns centered modal window bounds inside the work area.
  */
 export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {}): FormPresentationBounds {
-  const width = Math.min(MODAL_SIZE.width, workArea.width)
+  const dialogWidth = Math.min(MODAL_SIZE.width, workArea.width)
   const wanted = size.heightRatio === undefined
     ? MODAL_SIZE.height
     : Math.max(MODAL_SIZE.height, Math.round(workArea.height * size.heightRatio))
-  const height = Math.min(wanted, workArea.height)
+  const dialogHeight = Math.min(wanted, workArea.height)
+  // A topmost window that spans the whole display stops the covered application from rendering.
+  const availableWidth = Math.max(0, workArea.width - 2 * SCREEN_MARGIN)
+  const availableHeight = Math.max(0, workArea.height - 2 * SCREEN_MARGIN)
+  const width = Math.min(dialogWidth + 2 * MODAL_WINDOW_MARGIN, availableWidth)
+  const height = Math.min(dialogHeight + 2 * MODAL_WINDOW_MARGIN, availableHeight)
   return {
     x: workArea.x + Math.floor((workArea.width - width) / 2),
     y: workArea.y + Math.floor((workArea.height - height) / 2),
