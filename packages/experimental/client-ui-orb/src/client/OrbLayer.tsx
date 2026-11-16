@@ -1,12 +1,11 @@
 /**
  * Overlay entry of the orb form. Only the resident orb window draws chrome
- * here: the floating orb with its drag gesture and context menu. The chat box
- * is a separate `shell.modal` entry hosted by the surface window; the classic
- * frame needs no form chrome, and the panel presentation hosts only
+ * here: the floating orb with its drag gesture and its microphone control. The
+ * chat box is a separate `shell.modal` entry hosted by the surface window; the
+ * classic frame needs no form chrome, and the panel presentation hosts only
  * shell-owned overlays.
  */
-import { useCallback, useMemo, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { IconLoadingOutlineRegular, IconMicrophoneOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -14,11 +13,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/client'
-import { QUICK_SETUP_MODAL_ID } from './modals.ts'
 import { activeSession, orbLabelKey, orbVisualState } from './state.ts'
 import type { OrbVisualState } from './state.ts'
-import { OrbMenu } from './OrbMenu.tsx'
-import type { OrbMenuEntryId } from './OrbMenu.tsx'
 import { usePointerDrag } from './use-pointer-drag.ts'
 import type { NS } from './locales.ts'
 import css from './OrbForm.module.css'
@@ -27,16 +23,6 @@ import css from './OrbForm.module.css'
 export interface OrbSurfaceActions {
   /** Present the centered chat modal. */
   readonly openChat: () => void
-  /**
-   * Change the panel pin state.
-   * @param pinned - whether the presentation stays above other windows.
-   */
-  readonly setPinned: (pinned: boolean) => void
-  /**
-   * Raise one registered modal presentation.
-   * @param id - registered `shell.modal` entry id.
-   */
-  readonly presentModal: (id: string) => void
   /**
    * Move the window by one pointer delta.
    * @param deltaX - horizontal movement in logical pixels.
@@ -48,10 +34,6 @@ export interface OrbSurfaceActions {
    * @param inside - whether the pointer is over the orb or its drag handle.
    */
   readonly pointerInside: (inside: boolean) => void
-  /** Toggle playback mute state. */
-  readonly toggleMuted: () => void
-  /** Advance the auto-speak policy one step. */
-  readonly cyclePolicy: () => void
   /** Start a collapsed-orb capture, or finish one into the chat modal. */
   readonly toggleVoice: () => void
 }
@@ -100,7 +82,7 @@ function OrbGlyph({ state }: { state: OrbVisualState }) {
 /**
  * Render the floating orb of the resident orb window.
  * @param props - carrier presentation, voice observations, commands, and localized copy.
- * @returns the orb chrome in the orb window, or nothing in the surface window.
+ * @returns the orb chrome in the orb window, or nothing in the surface or bubble column window.
  */
 export function OrbLayer(props: OrbLayerProps) {
   const surface = props.useSurface(snapshot => snapshot)
@@ -110,7 +92,6 @@ export function OrbLayer(props: OrbLayerProps) {
   const sessions = props.useSessions(state => state)
   const [hovered, setHovered] = useState(false)
   const [pressed, setPressed] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const { actions, t } = props
   const drag = usePointerDrag(actions.dragBy)
   const session = useMemo(() => activeSession(sessions), [sessions])
@@ -119,40 +100,9 @@ export function OrbLayer(props: OrbLayerProps) {
     () => orbVisualState({ capture, voice }, session?.running === true),
     [capture, voice, session],
   )
-  const closeMenu = useCallback((): void => { setMenuOpen(false) }, [])
-  const selectEntry = useCallback((entry: OrbMenuEntryId): void => {
-    setMenuOpen(false)
-    switch (entry) {
-      case 'pin':
-        actions.setPinned(!surface.pinned)
-        return
-      case 'mute':
-        actions.toggleMuted()
-        return
-      case 'policy':
-        actions.cyclePolicy()
-        return
-      case 'settings':
-        actions.presentModal(QUICK_SETUP_MODAL_ID)
-        return
-      case 'voice':
-        actions.toggleVoice()
-        return
-    }
-  }, [actions, surface.pinned])
 
-  /**
-   * Close the context menu with Escape; the focused orb keeps the key event inside the overlay.
-   * @param event - key press inside the overlay.
-   */
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key !== 'Escape' || !menuOpen) return
-    event.preventDefault()
-    setMenuOpen(false)
-  }
-
-  // The surface window hosts panel, bubbles, and modal presentations; only the
-  // resident orb window draws the orb.
+  // The surface window hosts panel and modal presentations and the bubble
+  // column window hosts the output column; only the resident orb window draws the orb.
   if (surface.role !== 'orb') return null
 
   return <div
@@ -160,7 +110,6 @@ export function OrbLayer(props: OrbLayerProps) {
     data-orb
     data-state={state}
     data-reduced-motion={reducedMotion || undefined}
-    onKeyDown={onKeyDown}
   >
     {capture !== null && <button type="button" className={css.mic} data-orb-mic
       data-capturing={capturing === true || undefined}
@@ -184,17 +133,11 @@ export function OrbLayer(props: OrbLayerProps) {
       onLostPointerCapture={drag.handlers.onPointerCancel}
       onPointerEnter={() => { setHovered(true); actions.pointerInside(true) }}
       onPointerLeave={() => { setHovered(false); actions.pointerInside(false) }}
-      onClick={() => { if (!drag.moved()) actions.openChat() }}
-      onContextMenu={(event) => { event.preventDefault(); setMenuOpen(true) }}>
+      onClick={() => { if (!drag.moved()) actions.openChat() }}>
       <OrbGlyph state={state} />
       <span className={css.grip} data-orb-drag aria-hidden="true"
         onPointerEnter={() => { actions.pointerInside(true) }}
         onPointerLeave={() => { actions.pointerInside(false) }} />
     </button>
-    {menuOpen && <>
-      <div className={css.menuBackdrop} data-orb-menu-backdrop onClick={closeMenu} />
-      <OrbMenu pinned={surface.pinned} muted={voice?.muted ?? null} policy={voice?.policy ?? null}
-        capturing={capturing} onSelect={selectEntry} t={t} />
-    </>}
   </div>
 }

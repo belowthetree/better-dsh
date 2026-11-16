@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Driven OrbLayer props: presentation branches, visual states, drag, and the context menu. */
+/** Driven OrbLayer props: presentation branches, visual states, and the drag gesture. */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -12,7 +12,6 @@ import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-outpu
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import { OrbLayer } from '../src/client/OrbLayer.tsx'
 import type { OrbLayerProps } from '../src/client/OrbLayer.tsx'
-import { QUICK_SETUP_MODAL_ID } from '../src/client/modals.ts'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -98,8 +97,7 @@ function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: Sessi
   const reducedMotion = createSnapshotStore(false)
   const sessions = createSnapshotStore<SessionListState>(initial.sessions ?? EMPTY_LIST)
   const actions = {
-    openChat: vi.fn(), setPinned: vi.fn(), presentModal: vi.fn(),
-    dragBy: vi.fn(), pointerInside: vi.fn(), toggleMuted: vi.fn(), cyclePolicy: vi.fn(), toggleVoice: vi.fn(),
+    openChat: vi.fn(), dragBy: vi.fn(), pointerInside: vi.fn(), toggleVoice: vi.fn(),
   }
   const props = {
     useSurface: bindSnapshotSelector(surface),
@@ -164,7 +162,7 @@ it('labels the idle, capturing, transcribing, speaking, and running states', () 
   expect(orb().getAttribute('aria-label')).toBe(zh['orb.openRunning'])
 })
 
-it('offers a mic control and a voice menu entry only while the capture service is mounted', () => {
+it('offers a mic control only while the capture service is mounted', () => {
   const b = fixture()
   expect(document.querySelector('[data-orb-mic]')).toBeNull()
   act(() => { b.capture.set(capture('idle')) })
@@ -179,24 +177,11 @@ it('offers a mic control and a voice menu entry only while the capture service i
   expect(b.actions.toggleVoice).toHaveBeenCalledOnce()
   expect(b.actions.openChat).not.toHaveBeenCalled()
 
-  fireEvent.contextMenu(orb())
-  const idleEntry = document.querySelector('[data-orb-menu-entry="voice"]') as HTMLButtonElement
-  expect(idleEntry.textContent).toBe(zh['menu.voiceStart'])
-  fireEvent.click(idleEntry)
-  expect(b.actions.toggleVoice).toHaveBeenCalledTimes(2)
-
   act(() => { b.capture.set(capture('capturing')) })
   expect(mic.getAttribute('aria-label')).toBe(zh['orb.micStop'])
-  fireEvent.contextMenu(orb())
-  const entry = document.querySelector('[data-orb-menu-entry="voice"]') as HTMLButtonElement
-  expect(entry.textContent).toBe(zh['menu.voiceStop'])
-  fireEvent.click(entry)
-  expect(b.actions.toggleVoice).toHaveBeenCalledTimes(3)
 
   act(() => { b.capture.set(null) })
   expect(document.querySelector('[data-orb-mic]')).toBeNull()
-  fireEvent.contextMenu(orb())
-  expect(document.querySelector('[data-orb-menu-entry="voice"]')).toBeNull()
 })
 
 it('marks hover, press, and the reduced-motion preference', () => {
@@ -307,77 +292,23 @@ it('ignores a secondary press, a foreign pointer, and a cancelled gesture', () =
   expect(orb().dataset.dragging).toBeUndefined()
 })
 
-it('opens the context menu on a secondary click and runs each entry', () => {
+it('leaves a secondary click inert', () => {
   const b = fixture()
   act(() => { b.voice.set(playback()) })
-  const menu = (): HTMLElement => screen.getByRole('menu')
   fireEvent.contextMenu(orb())
-  expect(menu().getAttribute('aria-label')).toBe(zh['orb.menu'])
-  expect(screen.getByRole('menuitem', { name: zh['menu.pin'] })).toBeTruthy()
-  fireEvent.click(screen.getByRole('menuitem', { name: zh['menu.pin'] }))
-  expect(b.actions.setPinned).toHaveBeenCalledExactlyOnceWith(true)
   expect(screen.queryByRole('menu')).toBeNull()
-
-  fireEvent.contextMenu(orb())
-  fireEvent.click(screen.getByRole('menuitem', { name: zh['menu.mute'] }))
-  expect(b.actions.toggleMuted).toHaveBeenCalledOnce()
-
-  fireEvent.contextMenu(orb())
-  fireEvent.click(screen.getByRole('menuitem', { name: zh['menu.policy'].replace('{policy}', zh['policy.off']) }))
-  expect(b.actions.cyclePolicy).toHaveBeenCalledOnce()
-
-  fireEvent.contextMenu(orb())
-  fireEvent.click(screen.getByRole('menuitem', { name: zh['menu.settings'] }))
-  expect(b.actions.presentModal).toHaveBeenCalledExactlyOnceWith(QUICK_SETUP_MODAL_ID)
-})
-
-it('shows the settled entries of a pinned and muted voice plugin', () => {
-  const b = fixture({ surface: { pinned: true }, sessions: EMPTY_LIST })
-  act(() => { b.voice.set(playback({ muted: true, policy: 'voice' })) })
-  fireEvent.contextMenu(orb())
-  expect(screen.getByRole('menuitem', { name: zh['menu.unpin'] })).toBeTruthy()
-  expect(screen.getByRole('menuitem', { name: zh['menu.unmute'] })).toBeTruthy()
-  expect(screen.getByRole('menuitem', {
-    name: zh['menu.policy'].replace('{policy}', zh['policy.voice']),
-  })).toBeTruthy()
-})
-
-it('explains an unmounted voice plugin instead of offering its entries', () => {
-  fixture()
-  fireEvent.contextMenu(orb())
-  expect(screen.getByText(zh['menu.voiceMissing'])).toBeTruthy()
-  expect(screen.queryByRole('menuitem', { name: zh['menu.mute'] })).toBeNull()
-  expect(screen.queryByRole('menuitem', { name: zh['menu.policy'].replace('{policy}', zh['policy.off']) })).toBeNull()
-  expect(screen.getByRole('menuitem', { name: zh['menu.pin'] })).toBeTruthy()
-})
-
-it('walks the menu rows with the arrow keys and closes on Escape or the backdrop', () => {
-  fixture()
-  fireEvent.contextMenu(orb())
-  const rows = screen.getAllByRole('menuitem')
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
-  expect(document.activeElement).toBe(rows[0])
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
-  expect(document.activeElement).toBe(rows[1])
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' })
-  expect(document.activeElement).toBe(rows[0])
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' })
-  expect(document.activeElement).toBe(rows[rows.length - 1])
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Enter' })
-  expect(screen.queryByRole('menu')).not.toBeNull()
-  fireEvent.keyDown(orb(), { key: 'Escape' })
-  expect(screen.queryByRole('menu')).toBeNull()
-  fireEvent.keyDown(orb(), { key: 'Escape' })
-
-  fireEvent.contextMenu(orb())
-  fireEvent.click(document.querySelector('[data-orb-menu-backdrop]') as HTMLElement)
-  expect(screen.queryByRole('menu')).toBeNull()
+  expect(b.actions.openChat).not.toHaveBeenCalled()
 })
 
 it('draws no orb in the surface window role', () => {
   fixture({ surface: { role: 'surface' } })
   expect(document.querySelector('[data-orb]')).toBeNull()
   expect(document.querySelector('[data-orb-prompt]')).toBeNull()
+})
+
+it('draws no orb in the bubble column window role', () => {
+  fixture({ surface: { role: 'bubbles' } })
+  expect(document.querySelector('[data-orb]')).toBeNull()
 })
 
 it('keeps the orb while the surface window presents another presentation', () => {

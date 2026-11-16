@@ -190,10 +190,10 @@ describe('DesktopSurfaceController', () => {
   it('leaves a form-owned modal in place for a shell-owned document', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'presentModal', id: 'orb.quick-setup' })
+    controller.dispatch({ kind: 'presentModal', id: 'orb.chat' })
     expect(controller.ensurePanel()).toBe(false)
     expect(controller.snapshot('surface')).toEqual({ form: 'orb', role: 'surface', presentation: 'modal', pinned: false,
-      available: true, modal: 'orb.quick-setup', orbHovered: false, modalOpen: true })
+      available: true, modal: 'orb.chat', orbHovered: false, modalOpen: true })
   })
 
   it('ignores expand while already expanded and collapse while collapsed', () => {
@@ -262,12 +262,12 @@ describe('DesktopSurfaceController', () => {
   it('takes surface focus back when the orb window replaces an open modal', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
-    controller.dispatch({ kind: 'presentModal', id: 'orb.quick-setup' })
-    const focused = window.focused
-    controller.dispatch({ kind: 'presentModal', id: 'orb.chat' }, 'orb')
-    expect(window.focused).toBe(focused + 1)
-    expect(controller.snapshot('surface').modal).toBe('orb.chat')
     controller.dispatch({ kind: 'presentModal', id: 'orb.chat' })
+    const focused = window.focused
+    controller.dispatch({ kind: 'presentModal', id: 'permission-repair' }, 'orb')
+    expect(window.focused).toBe(focused + 1)
+    expect(controller.snapshot('surface').modal).toBe('permission-repair')
+    controller.dispatch({ kind: 'presentModal', id: 'permission-repair' })
     expect(window.focused).toBe(focused + 1)
   })
 

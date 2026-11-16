@@ -32,6 +32,16 @@ export const MODAL_WINDOW_MARGIN = 72
 /** Bubble column width in logical pixels; its height follows the display work area. */
 export const BUBBLES_WIDTH = 380
 
+/**
+ * Transparent margin around the bubble column. The cards' window shadow is
+ * painted inside the carrier window, so the window extends past the column;
+ * without the margin the shadow is cut off at the window edge and reads as a
+ * hard border. Keep in sync with `--dsh-bubbles-window-margin` in
+ * better-interact's `Bubbles.module.css`, which insets the stack by the same
+ * room.
+ */
+export const BUBBLES_WINDOW_MARGIN = 24
+
 /** Vertical gap between the bubble column and the orb it belongs to, in logical pixels. */
 export const BUBBLES_GAP = 12
 
@@ -104,12 +114,14 @@ export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {})
 }
 
 /**
- * Stack the bubble column above the orb. The column shrinks to the room above
- * the orb and never covers a whole display, so covered applications keep
- * rendering; the orb lives in its own window.
+ * Stack the bubble column above the orb and add the window's transparent shadow
+ * margin. The column shrinks to the room above the orb and never covers a whole
+ * display, so covered applications keep rendering; the orb lives in its own
+ * window. The margin stays transparent and click-through and may extend past the
+ * work area at a screen edge, where the shadow would be clipped anyway.
  * @param layout - current orb layout.
  * @param workArea - target display work area.
- * @returns bubble column bounds inside the work area.
+ * @returns bubble column window bounds inside the work area.
  */
 export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea): FormPresentationBounds {
   const orb = orbBounds(layout, workArea)
@@ -119,7 +131,12 @@ export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkAr
   const height = Math.min(Math.max(ORB_SIZE, Math.round(workArea.height * 0.6)), room)
   const x = Math.min(Math.max(workArea.x, orb.x + ORB_SIZE - width), workArea.x + workArea.width - width)
   const y = Math.max(top, orb.y - BUBBLES_GAP - height)
-  return { x, y, width, height }
+  return {
+    x: x - BUBBLES_WINDOW_MARGIN,
+    y: y - BUBBLES_WINDOW_MARGIN,
+    width: width + 2 * BUBBLES_WINDOW_MARGIN,
+    height: height + 2 * BUBBLES_WINDOW_MARGIN,
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Plugin-level spec: seat registrations, the system command, optional services, and disposal. */
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -14,8 +14,7 @@ import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import * as plugin from '../src/client/index.ts'
 import { QuickPrompt } from '../src/client/QuickPrompt.tsx'
-import { OrbQuickSetupCard } from '../src/client/QuickSetupCard.tsx'
-import { ORB_CHAT_MODAL_ID, QUICK_SETUP_MODAL_ID } from '../src/client/modals.ts'
+import { ORB_CHAT_MODAL_ID } from '../src/client/modals.ts'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
@@ -185,16 +184,15 @@ async function provideVoice(
   return fiber
 }
 
-it('registers the overlay chrome, the chat dialog, the quick setup card, and the system commands', async () => {
+it('registers the overlay chrome, the chat dialog, and the system commands', async () => {
   const b = await bench()
   const overlay = b.runtime.slots.entries('shell.overlay')
   expect(overlay.map(entry => entry.options.id)).toEqual(['orb'])
   expect(overlay[0]?.locale).toBe('orb')
   const modal = b.runtime.slots.entries('shell.modal')
-  expect(modal.map(entry => entry.options.id)).toEqual([ORB_CHAT_MODAL_ID, QUICK_SETUP_MODAL_ID])
+  expect(modal.map(entry => entry.options.id)).toEqual([ORB_CHAT_MODAL_ID])
   expect(modal[0]?.locale).toBe('orb')
   expect(modal[0]?.component).toBe(QuickPrompt)
-  expect(modal[1]?.component).toBe(OrbQuickSetupCard)
 
   const command = b.commands.get('orb.toggle')
   expect(command).toBeDefined()
@@ -322,25 +320,15 @@ it('issues every registered action through the entry faces', async () => {
   const overlayEntry = benchResult.runtime.slots.entries('shell.overlay')[0]
   const face = overlayEntry?.inject?.() as { actions: {
     openChat(): void
-    setPinned(pinned: boolean): void
-    presentModal(id: string): void
     dragBy(deltaX: number, deltaY: number): void
     pointerInside(inside: boolean): void
-    toggleMuted(): void
-    cyclePolicy(): void
     toggleVoice(): void
   } }
   face.actions.openChat()
-  face.actions.setPinned(true)
-  face.actions.presentModal(QUICK_SETUP_MODAL_ID)
   face.actions.dragBy(6, -4)
   face.actions.pointerInside(true)
-  face.actions.toggleMuted()
-  face.actions.cyclePolicy()
   await flush()
   expect(surface.service.presentModal).toHaveBeenCalledWith(ORB_CHAT_MODAL_ID)
-  expect(surface.service.presentModal).toHaveBeenCalledWith(QUICK_SETUP_MODAL_ID)
-  expect(surface.service.setPinned).toHaveBeenCalledExactlyOnceWith(true)
   expect(surface.service.dragBy).toHaveBeenCalledExactlyOnceWith(6, -4)
   expect(surface.service.setPointerInside).toHaveBeenCalledExactlyOnceWith(true)
 
@@ -363,17 +351,11 @@ it('issues every registered action through the entry faces', async () => {
   expect(surface.service.dismissModal).toHaveBeenCalledOnce()
 })
 
-it('treats playback and capture commands as no-ops while those plugins are unmounted', async () => {
+it('treats absent voice services as no-ops', async () => {
   const surface = surfaceDouble()
   const benchResult = await bench({ surface: surface.service })
   const entry = benchResult.runtime.slots.entries('shell.overlay')[0]
-  const face = entry?.inject?.() as { actions: {
-    toggleMuted(): void
-    cyclePolicy(): void
-    toggleVoice(): void
-  } }
-  face.actions.toggleMuted()
-  face.actions.cyclePolicy()
+  const face = entry?.inject?.() as { actions: { toggleVoice(): void } }
   face.actions.toggleVoice()
   const chatEntry = benchResult.runtime.slots.entries('shell.modal')[0]
   const chat = chatEntry?.inject?.() as { actions: {
@@ -475,7 +457,7 @@ it('reports a rejected prompt inside the chat box', async () => {
   expect(surface.service.dismissModal).not.toHaveBeenCalled()
 })
 
-it('reflects the optional voice services and drives them from the menu', async () => {
+it('reflects the optional voice services', async () => {
   const surface = surfaceDouble()
   const capture = captureDouble(CAPTURING)
   const output = outputDouble(PLAYBACK)
@@ -483,25 +465,6 @@ it('reflects the optional voice services and drives them from the menu', async (
   expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('idle')
   const provider = await provideVoice(b.runtime, capture, output)
   expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('capturing')
-
-  const orb = document.querySelector('[data-orb-button]') as HTMLElement
-  fireEvent.contextMenu(orb)
-  fireEvent.click(screen.getByRole('menuitem', { name: zh['menu.mute'] }))
-  expect(output.service.setMuted).toHaveBeenCalledExactlyOnceWith(true)
-  fireEvent.contextMenu(orb)
-  fireEvent.click(screen.getByRole('menuitem', {
-    name: zh['menu.policy'].replace('{policy}', zh['policy.off']),
-  }))
-  expect(output.service.setPolicy).toHaveBeenCalledExactlyOnceWith('voice')
-
-  fireEvent.click(screen.getByRole('button', { name: 'Tide' }))
-  expect(output.service.setVoice).toHaveBeenCalledExactlyOnceWith('tide')
-  fireEvent.click(screen.getByRole('button', { name: zh['policy.all'] }))
-  expect(output.service.setPolicy).toHaveBeenCalledWith('all')
-  fireEvent.click(screen.getByRole('button', { name: zh['setup.mute'] }))
-  expect(output.service.setMuted).toHaveBeenCalledWith(true)
-  fireEvent.click(screen.getByRole('button', { name: zh['setup.close'] }))
-  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
 
   capture.publish({ ...CAPTURING, phase: 'transcribing' })
   output.publish({ ...PLAYBACK, speaking: true })
@@ -511,7 +474,6 @@ it('reflects the optional voice services and drives them from the menu', async (
   await provider.dispose()
   await flush()
   expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('idle')
-  expect(document.querySelector('[data-orb-setup-empty]')).not.toBeNull()
 })
 
 it('removes every registration and observation when the plugin unloads', async () => {

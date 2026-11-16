@@ -1,25 +1,30 @@
 /* Bubble column over the desktop: transparent window, card-per-output, right aligned. */
 
 .layer {
+  /* Matches BUBBLES_WINDOW_MARGIN in apps/desktop/src/form-window.ts: the
+     carrier adds this transparent room around the column so the card shadow
+     fades inside the window. */
+  --dsh-bubbles-window-margin: 24px;
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
 /* The stack sits on the window's bottom edge, which the carrier places 12px
-   above the orb's top edge. justify-content keeps the newest output visible
-   when the history is taller than the window. */
+   above the orb's top edge; the margin keeps that placement while leaving the
+   shadow its room. justify-content keeps the newest output visible when the
+   history is taller than the window. */
 .stack {
   position: absolute;
-  right: 8px;
-  left: 8px;
-  bottom: 0;
+  right: calc(8px + var(--dsh-bubbles-window-margin));
+  left: calc(8px + var(--dsh-bubbles-window-margin));
+  bottom: var(--dsh-bubbles-window-margin);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   align-items: stretch;
   gap: 8px;
-  max-height: 100%;
+  max-height: calc(100% - 2 * var(--dsh-bubbles-window-margin));
   overflow: hidden;
   pointer-events: auto;
 }

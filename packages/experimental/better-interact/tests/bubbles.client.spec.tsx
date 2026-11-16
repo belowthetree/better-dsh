@@ -490,6 +490,21 @@ describe('BubbleStack', () => {
     expect(closed.hide).toHaveBeenCalledTimes(1)
   })
 
+  it('dismisses an empty column half a second after the pointer leaves', () => {
+    const { props, hide } = stack({ orbHovered: false, chat: chat({}) })
+    render(createElement(BubbleStack, props as never))
+    expect(column()).toBeNull()
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS) })
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an empty column while the orb is hovered', () => {
+    const { props, hide } = stack({ orbHovered: true, chat: chat({}) })
+    render(createElement(BubbleStack, props as never))
+    act(() => { vi.advanceTimersByTime(60_000) })
+    expect(hide).not.toHaveBeenCalled()
+  })
+
   it('opens the workbench from a bubble click', () => {
     const { props, open } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
     render(createElement(BubbleStack, props as never))

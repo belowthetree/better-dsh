@@ -222,7 +222,9 @@ export function BubbleStack(props: BubbleStackProps) {
 
   /** Leave in sequence from the newest bubble, then dismiss the column. */
   const startExit = useCallback((): void => {
-    if (exitTimer.current !== null || !visible || shown.length === 0) return
+    if (exitTimer.current !== null || !visible) return
+    // An empty column has nothing to animate, but its window still has to go.
+    if (shown.length === 0) { hide(); return }
     setExiting(true)
     const total = (shown.length - 1) * BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS
     exitTimer.current = setTimeout(() => {

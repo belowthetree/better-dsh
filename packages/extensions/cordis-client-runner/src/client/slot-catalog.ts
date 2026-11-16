@@ -122,7 +122,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'better-interact.bubbles.stack\', () => ctx.slots.register(\n      { name: \'better-interact.bubbles.stack\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/experimental/better-interact/src/client/bubbles.tsx:28',
+    source: 'packages/experimental/better-interact/src/client/bubbles.tsx:34',
   },
   {
     key: 'better-interact.workbench.conversation',
@@ -4134,7 +4134,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'better-interact WorkbenchDialog',
       'client-ui-orb QuickPrompt',
-      'client-ui-orb OrbQuickSetupCard',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'shell.modal\', () => ctx.slots.register(\n      { name: \'shell.modal\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',

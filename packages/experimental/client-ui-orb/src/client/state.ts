@@ -1,7 +1,7 @@
 /** Pure derivations for the orb overlay: visual state, label keys, and the active Session. */
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
-import type { VoiceOutputPolicy, VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/client'
+import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/client'
 
 /** Visual state the orb reflects; each state carries its own localized label. */
 export type OrbVisualState = 'idle' | 'capturing' | 'transcribing' | 'running' | 'speaking'
@@ -20,13 +20,6 @@ export interface OrbVoiceObservation {
   readonly capture: VoiceCaptureSnapshot | null
   /** Playback snapshot from `ctx.voiceOutput`, or null while that plugin is unmounted. */
   readonly voice: VoiceOutputSnapshot | null
-}
-
-/** Next policy of the off → voice → all → off cycle. */
-const NEXT_POLICY: Readonly<Record<VoiceOutputPolicy, VoiceOutputPolicy>> = {
-  off: 'voice',
-  voice: 'all',
-  all: 'off',
 }
 
 /**
@@ -61,24 +54,6 @@ export function orbLabelKey(state: OrbVisualState): OrbLabelKey {
     case 'idle':
       return 'orb.open'
   }
-}
-
-/**
- * Dictionary key of one auto-speak policy name.
- * @param policy - policy reported by the playback service.
- * @returns the policy's localized name key.
- */
-export function policyLabelKey(policy: VoiceOutputPolicy): 'policy.off' | 'policy.voice' | 'policy.all' {
-  return `policy.${policy}`
-}
-
-/**
- * Advance the auto-speak policy one step.
- * @param policy - current policy reported by the playback service.
- * @returns the next policy in off → voice → all → off order.
- */
-export function nextPolicy(policy: VoiceOutputPolicy): VoiceOutputPolicy {
-  return NEXT_POLICY[policy]
 }
 
 /**
