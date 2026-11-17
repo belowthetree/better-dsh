@@ -117,9 +117,11 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
     event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-workbench-tab]')[nextIndex]?.focus()
   }
 
-  /** Move focus between the Session bookmarks without changing the page. */
+  /** Move the Session selection with the arrow keys and switch to that Session. */
   const onSessionKey = (event: KeyboardEvent<HTMLElement>): void => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    const forward = event.key === 'ArrowDown' || event.key === 'ArrowRight'
+    const backward = event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+    if (!forward && !backward) return
     const bookmark = event.target instanceof HTMLElement
       ? event.target.closest<HTMLButtonElement>('[data-workbench-session]')
       : null
@@ -128,8 +130,11 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
     const index = items.indexOf(bookmark)
     if (index === -1) return
     event.preventDefault()
-    const step = event.key === 'ArrowDown' ? 1 : -1
-    items[(index + step + items.length) % items.length]?.focus()
+    const next = (index + (forward ? 1 : -1) + items.length) % items.length
+    const nextId = available[next]
+    if (nextId === undefined) return
+    selectSession(nextId)
+    items[next]?.focus()
   }
 
   return <section className={css.root} data-better-interact-workbench="" data-shell-modal-fill=""

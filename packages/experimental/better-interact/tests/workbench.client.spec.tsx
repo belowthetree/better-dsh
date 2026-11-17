@@ -152,10 +152,10 @@ it('focuses the current bookmark when a focus request arrives', () => {
   expect(document.activeElement?.textContent).toBe('Second')
 })
 
-it('moves focus between bookmarks with the arrow keys', () => {
-  const { props } = dialogProps({
+it('switches to the neighbouring Session with the arrow keys', () => {
+  const { props, selectSession } = dialogProps({
     workspaces: [workspace('ws-1', 'Alpha', ['s1', 's2'])],
-    pages: { active: ws('ws-1'), sessions: {} },
+    pages: { active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s1') } },
     sessions: { s1: { updatedAt: 1, title: 'First' }, s2: { updatedAt: 2, title: 'Second' } },
   })
   render(createElement(WorkbenchDialog, props as never))
@@ -163,8 +163,10 @@ it('moves focus between bookmarks with the arrow keys', () => {
   const bookmarks = within(rail).getAllByRole('button')
   bookmarks[0]?.focus()
   fireEvent.keyDown(bookmarks[0]!, { key: 'ArrowDown' })
+  expect(selectSession).toHaveBeenLastCalledWith(sid('s2'))
   expect(document.activeElement).toBe(bookmarks[1])
-  fireEvent.keyDown(bookmarks[1]!, { key: 'ArrowUp' })
+  fireEvent.keyDown(bookmarks[1]!, { key: 'ArrowLeft' })
+  expect(selectSession).toHaveBeenLastCalledWith(sid('s1'))
   expect(document.activeElement).toBe(bookmarks[0])
 })
 
