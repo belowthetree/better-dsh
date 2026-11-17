@@ -1,8 +1,9 @@
 /**
  * Chat box of the orb form. The carrier renders it inside the modal
  * presentation's centered, focus-trapped card: one prompt input, a voice input
- * toggle, and a send button. A finished dictation appends the transcript to the
- * input instead of submitting it.
+ * toggle, and a send button. The card uses the shared composer's chrome, so the
+ * dialog and the workbench prompt read as the same control. A finished dictation
+ * appends the transcript to the input instead of submitting it.
  */
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -149,7 +150,7 @@ export function QuickPrompt(props: QuickPromptProps) {
         onClick={capture.phase === 'capturing' ? stopRecording : startRecording}>
         {capture.phase === 'starting' || capture.phase === 'transcribing'
           ? <span className={css.promptSpinner}><IconLoadingOutlineRegular /></span>
-          : capture.phase === 'capturing' ? <IconStopFillRegular /> : <IconMicrophoneOutlineRegular />}
+          : capture.phase === 'capturing' ? <IconStopFillRegular /> : <IconMicrophoneOutlineRegular size={18} />}
       </button>}
       <button type="button" className={css.promptSend} data-orb-prompt-send disabled={sending || text.trim() === ''}
         aria-label={t('prompt.send')} title={t('prompt.send')} onClick={() => { void send() }}>

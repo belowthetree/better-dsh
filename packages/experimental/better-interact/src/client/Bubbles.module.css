@@ -35,10 +35,12 @@
   max-height: 160px;
   overflow: hidden;
   padding: 10px 12px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
   border-radius: var(--dsw-radius-lg);
   /* An elevated fill rather than the page background: the column floats over an
-     arbitrary desktop, where the near-black page base has no edge of its own. */
+     arbitrary desktop, where the near-black page base has no edge of its own.
+     The elevation draws the hairline, so the stronger edge comes from rebinding
+     its stroke instead of adding a layout border beside it. */
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-elevation-panel);
   color: var(--dsw-alias-label-primary);
@@ -101,7 +103,9 @@
     transition: none;
   }
 
-  .bubble:hover {
-    transform: none;
+  @media (hover: hover) {
+    .bubble:hover {
+      transform: none;
+    }
   }
 }

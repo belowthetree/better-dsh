@@ -682,6 +682,36 @@ describe('UiWorkspaceService', () => {
     expect(b.sessions.retain).not.toHaveBeenCalled()
   })
 
+  it('creates a new Session instead of reopening a listed blank when the request is fresh', async () => {
+    const b = bench({
+      sessions: sessionState([summary('blank', { blank: true, cwd: '/w/a' })], 'pending'),
+      workspaces: workspaceState([workspace('a', [sid('blank')])]),
+    })
+    b.uiWorkspace.startSession(wid('a'), { fresh: true })
+    await vi.waitFor(() => {
+      expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a') })
+    })
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenLastCalledWith(sid('created-a'), { source: 'mainView' })
+    })
+  })
+
+  it('starts a separate attempt when blank reuse and fresh creation race in one Workspace', async () => {
+    const reusing = Promise.withResolvers<SessionId>()
+    const b = bench({
+      sessions: sessionState([summary('blank', { blank: true, cwd: '/w/a' })], 'pending'),
+      workspaces: workspaceState([workspace('a', [sid('blank')])]),
+    })
+    b.sessions.create.mockReturnValueOnce(reusing.promise)
+    const reuse = b.uiWorkspace.connectWorkspace(wid('a'))
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a'), sessionId: sid('blank') })
+    const fresh = b.uiWorkspace.openWorkspace(wid('a'), undefined, { fresh: true })
+    expect(b.sessions.create).toHaveBeenCalledTimes(2)
+    expect(b.sessions.create).toHaveBeenLastCalledWith({ workspaceId: wid('a') })
+    reusing.resolve(sid('blank'))
+    await expect(Promise.all([reuse, fresh])).resolves.toEqual([sid('blank'), undefined])
+  })
+
   it('returns New Session to the Workspace blank that holds its unsent draft', async () => {
     const b = bench({
       sessions: sessionState([summary('blank', { blank: true, cwd: '/w/a' })], 'pending'),

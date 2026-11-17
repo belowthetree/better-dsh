@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionForkError } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { ShortcutCommand, ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type { ShortcutCommand, ShortcutCommandId, ShortcutContext } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { UiWorkspace } from './navigation.ts'
@@ -49,6 +49,7 @@ export function createWorkspaceShortcutControls(): WorkspaceShortcutControls {
 /**
  * Register navigation commands against the existing workspace owner.
  * Rename requires a nonblank main Conversation with no modal other than the navigation drawer obscuring it.
+ * New Session creates a fresh Session when a dialog hides the blank it would otherwise reopen.
  * @param ctx - plugin context with the shortcut, locale, and model services.
  * @param navigation - session creation and forking from the pointer controls' navigation service.
  * @param controls - browser-owned opening requests.
@@ -79,7 +80,11 @@ export function installWorkspaceShortcuts(
     }), `ui-workspace: ${id}`)
   }
   register('session.new', () => t('session.new'), ['new session', 'new chat'], 'KeyN', ['primary'], ['primary', 'alt'],
-    () => ({ status: 'handled', run: () => { navigation.startSession() } }))
+    context => ({ status: 'handled', run: () => {
+      // A modal covers the blank New Session would return to, so the request
+      // must create a Session instead of reopening the hidden one.
+      navigation.startSession(undefined, needsFreshSession(context) ? { fresh: true } : undefined)
+    } }))
   register('session.search', () => t('search.sessions.aria'), ['search sessions'], 'KeyK', ['primary'], ['primary', 'alt'],
     () => ({ status: 'handled', run: controls.search }))
   register('workspace.add', () => t('workspace.add'), ['add workspace', 'open folder'], 'KeyO', ['primary'], ['primary', 'alt'],
@@ -115,4 +120,14 @@ export function installWorkspaceShortcuts(
         archiveSession(target.id)
       } }
   })
+}
+
+/**
+ * Whether New Session runs behind a modal that hides the Conversation it would
+ * otherwise return to; the navigation drawer leaves the main view visible.
+ * @param context - live modal owner of the shortcut input.
+ * @returns whether the request must create a Session instead of reopening a blank.
+ */
+function needsFreshSession(context: ShortcutContext): boolean {
+  return context.modal !== null && context.modal !== 'sidebar'
 }

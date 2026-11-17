@@ -160,6 +160,22 @@ describe('workspace shortcut ownership', () => {
     expect(b.registry.dispatch(key('KeyO'), context, consume).status).toBe('blocked')
   })
 
+  it('creates a fresh Session only when a dialog hides the blank New Session returns to', async () => {
+    const b = await bench()
+    const command = b.commands.get('session.new')!
+    for (const [modal, options] of [
+      [null, undefined],
+      ['sidebar', undefined],
+      ['better-interact.workbench', { fresh: true }],
+    ] as const) {
+      const resolution = command.resolve({ ...context, modal })
+      expect(resolution.status).toBe('handled')
+      if (resolution.status !== 'handled') throw new Error('New Session was unavailable')
+      resolution.run()
+      expect(b.navigation.startSession).toHaveBeenLastCalledWith(undefined, options)
+    }
+  })
+
   it('captures rename and archive targets while the main Session changes', async () => {
     const b = await bench()
     for (const command of ['session.rename', 'session.archive']) {

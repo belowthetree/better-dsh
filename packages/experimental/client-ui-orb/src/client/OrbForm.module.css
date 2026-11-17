@@ -1,4 +1,5 @@
-/* Orb form chrome: floating orb, panel strip, compact context menu, and quick setup card. */
+/* Orb form chrome: the floating orb with its drag and microphone controls, and
+   the chat box the modal presentation raises. */
 
 .orbRoot {
   position: fixed;
@@ -185,47 +186,67 @@
   outline-offset: 2px;
 }
 
-/* Chat modal content. The frame keeps the dismissal layer, focus trap, and Escape;
-   this entry owns its surface: one card whose elevation shadow starts at the edge,
-   so the dialog keeps a defined boundary over whatever sits behind it. */
+/* Chat box content. The frame keeps the dismissal layer, focus trap, and Escape,
+   so this entry owns the surface alone: one card shaped like the shared composer
+   — elevated input fill, hairline stroke, and a trailing control row. */
 .prompt {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   box-sizing: border-box;
-  width: min(620px, 100%);
+  width: min(680px, 100%);
   margin: 0 auto;
-  padding: 16px;
-  border-radius: var(--dsw-radius-xl);
-  background: var(--dsw-alias-bg-base);
-  box-shadow: var(--dsw-elevation-window);
+  padding: 8px 0 0;
+  border-radius: var(--dsw-radius-panel);
+  background: var(--dsw-specific-input-major);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
+  box-shadow: var(--dsw-elevation-soft);
+  color: var(--dsw-alias-label-primary);
+  /* The draft follows the Settings content size, like the composer's card. */
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  /* The draft scrolls once it passes the height cap, so the thumb takes the
+     elevated pair the composer's card declares. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .promptInput {
   box-sizing: border-box;
   width: 100%;
-  min-height: 48px;
+  min-height: 52px;
   max-height: 45vh;
-  padding: 0;
+  margin: 0;
+  padding: 4px 8px 0 14px;
   border: 0;
   outline: none;
   resize: none;
   background: transparent;
   color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-s-14);
-  line-height: 1.5;
+  caret-color: var(--dsw-alias-state-business-primary);
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .promptInput::placeholder {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-caption);
+}
+
+@media (pointer: coarse) {
+  .prompt {
+    font-size: max(16px, var(--dsh-content-font-size, 14px));
+  }
 }
 
 .promptActions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  min-height: 32px;
+  gap: 12px;
+  min-height: 34px;
+  padding: 2px 8px 6px;
 }
 
 .promptStatus {
@@ -238,19 +259,21 @@
   white-space: nowrap;
 }
 
+/* Dictation rides the composer's trailing controls: the same 28px ghost control
+   as the shared microphone, with the recording state carrying the fill. */
 .promptMic {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   box-sizing: border-box;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 50%;
-  corner-shape: round;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-secondary);
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
@@ -258,12 +281,10 @@
 @media (hover: hover) {
   .promptMic:hover:not(:disabled) {
     background: var(--dsw-alias-interactive-bg-hover);
-    color: var(--dsw-alias-label-primary);
   }
 }
 
 .promptMic[data-recording] {
-  border-color: transparent;
   background: var(--dsw-alias-state-error-primary);
   color: var(--dsw-alias-label-primary-inverted);
 }
@@ -289,20 +310,31 @@
   }
 }
 
+/* Primary send: the composer's info-fill circle and on-color glyph; empty text
+   keeps the shared 0.4 opacity. */
 .promptSend {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  flex: none;
+  width: 34px;
+  height: 34px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-inverted);
+  background: var(--dsw-alias-button-info-fill);
+  color: var(--dsw-alias-label-on-color);
   cursor: pointer;
-  transition: opacity 120ms ease;
+  transition: background-color 100ms ease;
+  /* The control row carries a 2px top pad; the larger circle keeps its own seat. */
+  transform: translateY(-2px);
+}
+
+@media (hover: hover) {
+  .promptSend:hover:not(:disabled) {
+    background: var(--dsw-alias-button-info-hover);
+  }
 }
 
 .promptSend:disabled {
@@ -317,6 +349,7 @@
 
 .promptError {
   margin: 0;
+  padding: 0 14px;
   color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-secondary));
   font: var(--dsw-font-xxs-12);
 }
