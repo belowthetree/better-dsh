@@ -430,3 +430,11 @@
   border-radius: 0;
   overflow: visible;
 }
+
+/* An entry that needs room beyond the default card marks its content
+   `data-shell-modal-wide`. The 1440-pixel card fits the carrier dialog a
+   matching modal width hint requests; a narrower window clamps the card to the
+   backdrop content. */
+.modalCard:has([data-shell-modal-wide]) {
+  width: min(100%, 1440px);
+}

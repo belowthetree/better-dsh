@@ -17,7 +17,11 @@ export const PANEL_SIZE = { width: 560, height: 160 } as const
 /** Smallest quick-prompt size the user may resize to, in logical pixels. */
 export const PANEL_MIN_SIZE = { width: 420, height: 120 } as const
 
-/** Modal dialog window size in logical pixels: the frame's widest card plus its own padding. */
+/**
+ * Default modal dialog window size in logical pixels: the frame's default card
+ * plus its own padding. A modal entry may request a wider dialog through
+ * `ModalSizeHint.width`; this default applies when it does not.
+ */
 export const MODAL_SIZE = { width: 768, height: 560 } as const
 
 /**
@@ -105,11 +109,12 @@ export function panelBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea
  * smaller. The window keeps a screen margin on every side, so it never covers a
  * whole display and covered applications keep rendering.
  * @param workArea - target display work area.
- * @param size - optional presentation size; a height ratio taller than the dialog grows the box, never past the work area.
+ * @param size - optional presentation size; a taller height or wider width grows the box, never past the work area.
  * @returns centered modal window bounds inside the work area.
  */
 export function modalBounds(workArea: DesktopWorkArea, size: ModalSizeHint = {}): FormPresentationBounds {
-  const dialogWidth = Math.min(MODAL_SIZE.width, workArea.width)
+  const wantedWidth = size.width === undefined ? MODAL_SIZE.width : Math.max(MODAL_SIZE.width, Math.round(size.width))
+  const dialogWidth = Math.min(wantedWidth, workArea.width)
   const wanted = size.heightRatio === undefined
     ? MODAL_SIZE.height
     : Math.max(MODAL_SIZE.height, Math.round(workArea.height * size.heightRatio))

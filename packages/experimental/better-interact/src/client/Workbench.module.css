@@ -23,10 +23,22 @@
   min-height: 0;
 }
 
+/* On the frame's 1440-pixel wide card the panel takes 1120 pixels and centers:
+   the Session bookmarks sit in the left margin and the matching margin stays
+   empty on the right. The breakpoint is the wide card plus the frame's
+   backdrop padding (96 pixels each side). */
+@media (min-width: 1632px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr) 1120px minmax(0, 1fr);
+  }
+}
+
 /* One card per Workspace, in strip order, above the conversation panel; a long
    strip scrolls without a bar. The strip scrolls over the elevated cards, so it
    rebinds the l2 scrollbar pair even though its own bar stays hidden. */
 .tabs {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: none;
   grid-column: 2;
@@ -142,6 +154,8 @@
    panel, each a single line with the current one marked by the accent bar. The
    column scrolls over the elevated cards, so it rebinds the l2 scrollbar pair. */
 .sessions {
+  position: relative;
+  z-index: 1;
   display: flex;
   grid-column: 1;
   grid-row: 2;

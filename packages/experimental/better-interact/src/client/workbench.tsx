@@ -12,8 +12,13 @@ import { workbenchAddress } from './resource.ts'
 import type { WorkbenchPagesState } from './workbench-pages.ts'
 import css from './Workbench.module.css'
 
-/** Dialog size the workbench asks the carrier for: four fifths of the work area height. */
-export const WORKBENCH_MODAL_SIZE: ModalSizeHint = { heightRatio: 0.8 }
+/**
+ * Dialog size the workbench asks the carrier for: four fifths of the work area
+ * height and a 1488-pixel dialog. The wider dialog reserves the frame's
+ * 1440-pixel card, whose body centers a 1120-pixel conversation panel with the
+ * Session bookmarks in the left margin.
+ */
+export const WORKBENCH_MODAL_SIZE: ModalSizeHint = { heightRatio: 0.8, width: 1488 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -128,7 +133,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   }
 
   return <section className={css.root} data-better-interact-workbench="" data-shell-modal-fill=""
-    data-shell-modal-surface="bare">
+    data-shell-modal-surface="bare" data-shell-modal-wide="">
     {notice !== null && <p className={css.notice} role="alert" data-better-interact-notice="">{t(notice)}</p>}
     <div className={css.body}>
       {workspaces.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}

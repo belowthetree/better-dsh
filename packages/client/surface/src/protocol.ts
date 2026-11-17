@@ -22,6 +22,11 @@ export interface ModalSizeHint {
    * Omitted keeps the carrier's dialog size; the carrier never exceeds the work area.
    */
   readonly heightRatio?: number
+  /**
+   * Dialog width in CSS pixels, at least the carrier's dialog width; the carrier
+   * never exceeds the work area. Omitted keeps the carrier's dialog width.
+   */
+  readonly width?: number
 }
 
 /**

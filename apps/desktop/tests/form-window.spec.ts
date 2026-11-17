@@ -131,6 +131,21 @@ describe('modal bounds', () => {
       .toEqual({ x: 184, y: SCREEN_MARGIN, width: 912, height: 600 - 2 * SCREEN_MARGIN })
   })
 
+  it('grows to the requested dialog width', () => {
+    expect(modalBounds({ x: 0, y: 0, width: 2560, height: 1440 }, { width: 1488 }))
+      .toEqual({ x: 464, y: 368, width: 1632, height: 704 })
+  })
+
+  it('keeps the dialog width on a hint narrower than it', () => {
+    expect(modalBounds({ x: 0, y: 0, width: 2560, height: 1440 }, { width: 600 }))
+      .toEqual({ x: 824, y: 368, width: 912, height: 704 })
+  })
+
+  it('clamps the requested dialog width to the work area', () => {
+    expect(modalBounds({ x: 0, y: 0, width: 1280, height: 600 }, { width: 1488 }))
+      .toEqual({ x: SCREEN_MARGIN, y: SCREEN_MARGIN, width: 1280 - 2 * SCREEN_MARGIN, height: 600 - 2 * SCREEN_MARGIN })
+  })
+
   it('treats an empty size hint as the dialog size', () => {
     expect(modalBounds({ x: 0, y: 0, width: 1920, height: 1080 }, {}))
       .toEqual(modalBounds({ x: 0, y: 0, width: 1920, height: 1080 }))

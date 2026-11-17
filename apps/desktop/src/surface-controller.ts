@@ -77,15 +77,23 @@ function focusable(presentation: SurfacePresentation): boolean {
 function parseModalSizeHint(raw: unknown): ModalSizeHint | null | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) return null
-  const { heightRatio } = raw
-  if (heightRatio === undefined) return {}
-  if (typeof heightRatio !== 'number' || !Number.isFinite(heightRatio) || heightRatio <= 0 || heightRatio > 1) return null
-  return { heightRatio }
+  const { heightRatio, width } = raw
+  if (heightRatio === undefined && width === undefined) return {}
+  if (heightRatio !== undefined
+    && (typeof heightRatio !== 'number' || !Number.isFinite(heightRatio) || heightRatio <= 0 || heightRatio > 1)) {
+    return null
+  }
+  if (width !== undefined && (typeof width !== 'number' || !Number.isFinite(width) || width <= 0)) return null
+  const hint: { heightRatio?: number; width?: number } = {}
+  if (heightRatio !== undefined) hint.heightRatio = heightRatio
+  if (width !== undefined) hint.width = width
+  return hint
 }
 
 /** Whether two modal size hints ask for the same window. */
 function sameModalSize(left: ModalSizeHint | undefined, right: ModalSizeHint | undefined): boolean {
   return (left?.heightRatio ?? null) === (right?.heightRatio ?? null)
+    && (left?.width ?? null) === (right?.width ?? null)
 }
 
 /**
