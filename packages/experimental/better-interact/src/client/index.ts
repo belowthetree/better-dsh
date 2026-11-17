@@ -41,6 +41,9 @@ export const WORKBENCH_PREVIOUS_COMMAND_ID = 'betterInteract.workbench.previous'
 /** Command id creating a Workspace from a Host-picked directory. */
 export const WORKBENCH_NEW_WORKSPACE_COMMAND_ID = 'betterInteract.workspace.new'
 
+/** Command id moving keyboard focus to the active Session bookmark. */
+export const WORKBENCH_SESSIONS_COMMAND_ID = 'betterInteract.workbench.sessions'
+
 /**
  * Session the main view retains, if any.
  * @param byId - current Session catalog rows.
@@ -64,6 +67,7 @@ export function apply(ctx: Context): void {
   }
   const pages = createWorkbenchPagesStore()
   const notice = createSnapshotStore<WorkbenchNotice | null>(null)
+  const focus = createSnapshotStore(0)
   const workspaces = (): readonly WorkspaceView[] => ctx.workspaces.list.getSnapshot().items
   const workspaceOf = (sessionId: SessionId): WorkspaceView | undefined =>
     workspaces().find(item => item.sessionIds.includes(sessionId))
@@ -227,9 +231,25 @@ export function apply(ctx: Context): void {
     resolve: () => ({ status: 'handled', run: () => { void createFromDirectory() } }),
   }), 'better-interact: new workspace command')
 
+  ctx.effect(() => ctx.shortcuts.register({
+    id: WORKBENCH_SESSIONS_COMMAND_ID as ShortcutCommandId,
+    label: () => t('command.sessions'),
+    aliases: ['focus sessions', 'session tabs', 'sessions'],
+    defaults: {
+      'desktop:windows': { code: 'KeyQ', modifiers: ['control'] },
+      'desktop:macos': { code: 'KeyQ', modifiers: ['control'] },
+    },
+    regions: ['page', 'editable'],
+    modals: [WORKBENCH_MODAL_ID],
+    resolve: context => context.modal === WORKBENCH_MODAL_ID
+      ? { status: 'handled', run: () => { focus.set(focus.getSnapshot() + 1) } }
+      : { status: 'pass' },
+  }), 'better-interact: session focus command')
+
   const workbench: WorkbenchInjected = {
-    hooks: { pages: pages.store, notice },
+    hooks: { pages: pages.store, notice, focus },
     select: (workspaceId) => { showPage(workspaceId) },
+    selectSession: (sessionId) => { showSession(sessionId) },
   }
   ctx.effect(() => ctx.slots.inject('shell.modal', () => ctx.slots.register({
     name: 'shell.modal',

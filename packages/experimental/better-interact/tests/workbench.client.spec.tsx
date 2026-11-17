@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** The workbench renders one card per Workspace above the selected page's conversation. */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -10,7 +10,12 @@ import type { WorkbenchPagesState } from '../src/client/workbench-pages.ts'
 import { WorkbenchConversation, WorkbenchDialog } from '../src/client/workbench.tsx'
 import type { WorkbenchNotice } from '../src/client/workbench.tsx'
 
-type SessionRow = { readonly updatedAt: number }
+type SessionRow = {
+  readonly updatedAt: number
+  readonly blank?: boolean
+  readonly title?: string
+  readonly displayTitle?: string
+}
 type WorkspaceRow = {
   readonly workspaceId: WorkspaceId
   readonly title: string
@@ -31,28 +36,34 @@ function dialogProps(options: {
   readonly pages?: WorkbenchPagesState
   readonly workspaces?: readonly WorkspaceRow[]
   readonly sessions?: Readonly<Record<string, SessionRow>>
+  readonly archived?: readonly string[]
   readonly reference?: boolean
   readonly notice?: WorkbenchNotice | null
+  readonly focus?: number
 } = {}) {
   const workspaces = options.workspaces ?? [workspace('ws-1', 'Alpha', ['s1'])]
   const pages: WorkbenchPagesState = options.pages ?? { active: workspaces[0]?.workspaceId, sessions: {} }
   const sessions = options.sessions ?? { s1: { updatedAt: 1 } }
   const renderSlot = vi.fn(() => <div data-testid="conversation" />)
   const select = vi.fn()
+  const selectSession = vi.fn()
   const useResource = vi.fn(() => ({ value: options.reference === false ? {} : { reference: { sessionId: 's1' } } }))
   const props = {
-    useWorkspaces: (selector: (state: { items: readonly WorkspaceRow[] }) => unknown) => selector({ items: workspaces }),
+    useWorkspaces: (selector: (state: { items: readonly WorkspaceRow[]; archivedSessionIds: readonly string[] }) => unknown) =>
+      selector({ items: workspaces, archivedSessionIds: (options.archived ?? []).map(sid) }),
     usePages: (selector: (state: WorkbenchPagesState) => unknown) => selector(pages),
     useNotice: (selector: (state: WorkbenchNotice | null) => unknown) => selector(options.notice ?? null),
+    useFocus: (selector: (state: number) => unknown) => selector(options.focus ?? 0),
     useSessions: (selector: (state: { byId: Readonly<Record<string, SessionRow>> }) => unknown) =>
       selector({ byId: sessions }),
     useResource,
     SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     renderSlot,
     select,
+    selectSession,
     t: (key: string) => key,
   }
-  return { props, renderSlot, select, useResource, pages }
+  return { props, renderSlot, select, selectSession, useResource, pages }
 }
 
 it('renders the empty state while no Workspace page exists', () => {
@@ -89,6 +100,72 @@ it('binds the conversation to the page Session, falling back to its newest', () 
   expect(screen.getByTestId('conversation')).toBeTruthy()
   expect(useResource).toHaveBeenCalledWith(workbenchAddress(sid('older')))
   expect(renderSlot).toHaveBeenCalledWith('better-interact.workbench.conversation', {})
+})
+
+it('lists the active Workspace Sessions as bookmarks and marks the current one', () => {
+  const { props } = dialogProps({
+    workspaces: [workspace('ws-1', 'Alpha', ['blank', 'titled'])],
+    pages: { active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('titled') } },
+    sessions: { blank: { updatedAt: 1, blank: true }, titled: { updatedAt: 2, title: 'Release notes' } },
+  })
+  render(createElement(WorkbenchDialog, props as never))
+  const rail = screen.getByRole('navigation', { name: 'sessions.label' })
+  const bookmarks = within(rail).getAllByRole('button')
+  expect(bookmarks.map(bookmark => bookmark.textContent)).toEqual(['session.new', 'Release notes'])
+  expect(bookmarks[1]?.getAttribute('aria-current')).toBe('page')
+  expect(bookmarks[0]?.getAttribute('aria-current')).toBeNull()
+})
+
+it('switches to the Session of the clicked bookmark', () => {
+  const { props, selectSession } = dialogProps({
+    workspaces: [workspace('ws-1', 'Alpha', ['s1', 's2'])],
+    pages: { active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s1') } },
+    sessions: { s1: { updatedAt: 1, title: 'First' }, s2: { updatedAt: 2, title: 'Second' } },
+  })
+  render(createElement(WorkbenchDialog, props as never))
+  const rail = screen.getByRole('navigation', { name: 'sessions.label' })
+  fireEvent.click(within(rail).getAllByRole('button')[1]!)
+  expect(selectSession).toHaveBeenCalledExactlyOnceWith(sid('s2'))
+})
+
+it('hides archived Sessions from the bookmarks', () => {
+  const { props } = dialogProps({
+    workspaces: [workspace('ws-1', 'Alpha', ['archived', 'kept'])],
+    pages: { active: ws('ws-1'), sessions: {} },
+    sessions: { archived: { updatedAt: 2, title: 'Archived' }, kept: { updatedAt: 1, title: 'Kept' } },
+    archived: ['archived'],
+  })
+  render(createElement(WorkbenchDialog, props as never))
+  const rail = screen.getByRole('navigation', { name: 'sessions.label' })
+  expect(rail.textContent).toContain('Kept')
+  expect(rail.textContent).not.toContain('Archived')
+})
+
+it('focuses the current bookmark when a focus request arrives', () => {
+  const { props } = dialogProps({
+    workspaces: [workspace('ws-1', 'Alpha', ['s1', 's2'])],
+    pages: { active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s2') } },
+    sessions: { s1: { updatedAt: 1, title: 'First' }, s2: { updatedAt: 2, title: 'Second' } },
+  })
+  const view = render(createElement(WorkbenchDialog, props as never))
+  view.rerender(createElement(WorkbenchDialog, { ...props, useFocus: (selector: (value: number) => unknown) => selector(1) } as never))
+  expect(document.activeElement?.textContent).toBe('Second')
+})
+
+it('moves focus between bookmarks with the arrow keys', () => {
+  const { props } = dialogProps({
+    workspaces: [workspace('ws-1', 'Alpha', ['s1', 's2'])],
+    pages: { active: ws('ws-1'), sessions: {} },
+    sessions: { s1: { updatedAt: 1, title: 'First' }, s2: { updatedAt: 2, title: 'Second' } },
+  })
+  render(createElement(WorkbenchDialog, props as never))
+  const rail = screen.getByRole('navigation', { name: 'sessions.label' })
+  const bookmarks = within(rail).getAllByRole('button')
+  bookmarks[0]?.focus()
+  fireEvent.keyDown(bookmarks[0]!, { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(bookmarks[1])
+  fireEvent.keyDown(bookmarks[1]!, { key: 'ArrowUp' })
+  expect(document.activeElement).toBe(bookmarks[0])
 })
 
 it('falls back to the newest Session when the page has no recorded choice', () => {

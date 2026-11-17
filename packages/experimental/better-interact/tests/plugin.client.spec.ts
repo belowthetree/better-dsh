@@ -8,7 +8,7 @@ import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   apply, inject, WORKBENCH_COMMAND_ID, WORKBENCH_NEW_WORKSPACE_COMMAND_ID, WORKBENCH_NEXT_COMMAND_ID,
-  WORKBENCH_PREVIOUS_COMMAND_ID,
+  WORKBENCH_PREVIOUS_COMMAND_ID, WORKBENCH_SESSIONS_COMMAND_ID,
 } from '../src/client/index.ts'
 import type { BubblesInjected } from '../src/client/bubbles.tsx'
 import { WORKBENCH_MODAL_ID } from '../src/client/resource.ts'
@@ -148,11 +148,17 @@ it('mounts the workbench dialog with its Workspace cards and conversation seat',
   const workbench = workbenchInjected(registrations)
   expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: undefined, sessions: {} })
   expect(workbench.hooks.notice.getSnapshot()).toBeNull()
+  expect(workbench.hooks.focus.getSnapshot()).toBe(0)
   workbench.select(ws('ws-1'))
   expect(workbench.hooks.pages.getSnapshot()).toEqual({
     active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s2') },
   })
   expect(openSession).toHaveBeenCalledWith(sid('s2'))
+  workbench.selectSession(sid('s1'))
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({
+    active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s1') },
+  })
+  expect(openSession).toHaveBeenLastCalledWith(sid('s1'))
   expect(registrations.find(entry => entry.name === 'better-interact.workbench.conversation')).toBeDefined()
   expect(ctx.resources.register).toHaveBeenCalledOnce()
   expect(dictionaries.namespace).toBe('betterInteract')
@@ -163,7 +169,7 @@ it('labels every workbench command for the shortcut catalog', () => {
   const { ctx, commands } = context()
   apply(ctx as never)
   expect(commands.map(command => command.label()).sort()).toEqual([
-    'command.newWorkspace', 'command.next', 'command.open', 'command.previous',
+    'command.newWorkspace', 'command.next', 'command.open', 'command.previous', 'command.sessions',
   ])
 })
 
@@ -264,6 +270,18 @@ it('cycles the Workspace pages with the next and previous commands only inside t
   const backwards = previous.resolve(contextAt(WORKBENCH_MODAL_ID))
   if (backwards.status === 'handled') backwards.run()
   expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-1'))
+})
+
+it('moves focus to the Session bookmarks only inside the dialog', () => {
+  const { ctx, commands, registrations } = context()
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  const command = commands.find(entry => entry.id === WORKBENCH_SESSIONS_COMMAND_ID)!
+  expect(command.resolve(contextAt(null)).status).toBe('pass')
+  const inside = command.resolve(contextAt(WORKBENCH_MODAL_ID))
+  expect(inside.status).toBe('handled')
+  if (inside.status === 'handled') inside.run()
+  expect(workbench.hooks.focus.getSnapshot()).toBe(1)
 })
 
 it('creates a Workspace from the picked directory and opens its page', async () => {

@@ -114,13 +114,96 @@
 .panel {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
+  flex-direction: row;
   min-height: 0;
   overflow: hidden;
   border-radius: var(--dsw-radius-panel);
   --dsw-alias-bg-base: var(--dsw-alias-bg-layer-1);
   background: var(--dsw-alias-bg-base);
   box-shadow: var(--dsw-elevation-window);
+}
+
+/* Fluent navigation pane: the active Workspace's Sessions as bookmark entries,
+   each a single line with the current one marked by the accent bar. */
+.sessions {
+  display: flex;
+  flex: 0 0 208px;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 10px 8px;
+  overflow-y: auto;
+  border-inline-end: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.sessionsLabel {
+  margin: 0;
+  padding: 2px 8px 6px;
+  color: var(--dsw-alias-label-caption);
+  font: var(--dsw-font-xxs-strong-12);
+}
+
+.session {
+  position: relative;
+  display: block;
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px 6px 12px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .session:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.session[data-active] {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  color: var(--dsw-alias-label-primary);
+}
+
+.session[data-active]::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 3px;
+  width: 3px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-state-business-primary);
+  content: '';
+}
+
+.session:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color);
+  outline-offset: -2px;
+}
+
+.sessionTitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* A failed Workspace creation reports between the tabs and the page. */
