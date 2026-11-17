@@ -18,7 +18,7 @@ import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
-import type { WorkbenchInjected, WorkbenchNotice } from './workbench.tsx'
+import type { WorkbenchHints, WorkbenchInjected, WorkbenchNotice } from './workbench.tsx'
 import { WorkbenchConversation, WorkbenchDialog, WORKBENCH_MODAL_SIZE } from './workbench.tsx'
 import { createWorkbenchPagesStore } from './workbench-pages.ts'
 import type { BubblesInjected } from './bubbles.tsx'
@@ -246,8 +246,23 @@ export function apply(ctx: Context): void {
       : { status: 'pass' },
   }), 'better-interact: session focus command')
 
+  const hints = createSnapshotStore<WorkbenchHints>({ sessions: [], pageNext: [], pagePrevious: [] })
+  const refreshHints = (): void => {
+    const rows = ctx.shortcuts.catalog.getSnapshot()
+    const keys = (id: string): readonly string[] => rows.find(row => row.id === id)?.keys ?? []
+    hints.set({
+      sessions: keys(WORKBENCH_SESSIONS_COMMAND_ID),
+      pageNext: keys(WORKBENCH_NEXT_COMMAND_ID),
+      pagePrevious: keys(WORKBENCH_PREVIOUS_COMMAND_ID),
+    })
+  }
+  ctx.effect(() => {
+    refreshHints()
+    return ctx.shortcuts.catalog.subscribe(refreshHints)
+  }, 'better-interact: shortcut hints')
+
   const workbench: WorkbenchInjected = {
-    hooks: { pages: pages.store, notice, focus },
+    hooks: { pages: pages.store, notice, focus, hints },
     select: (workspaceId) => { showPage(workspaceId) },
     selectSession: (sessionId) => { showSession(sessionId) },
   }

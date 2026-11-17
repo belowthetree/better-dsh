@@ -65,6 +65,7 @@ function context(options: {
   readonly surface?: SurfaceSnapshot
   readonly sessions?: readonly { readonly id: string; readonly updatedAt?: number; readonly mainView?: boolean }[]
   readonly workspaces?: readonly WorkspaceView[]
+  readonly catalog?: readonly { readonly id: string; readonly keys: readonly string[] }[]
 } = {}) {
   const registrations: Registration[] = []
   const disposers: (() => void)[] = []
@@ -85,6 +86,7 @@ function context(options: {
   const snapshot = options.surface ?? ORB
   const sessions = sessionList(options.sessions ?? [{ id: 's1' }])
   const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])])
+  const catalog = createSnapshotStore(options.catalog ?? [])
   const ctx = {
     effect: (factory: () => unknown) => {
       const value = factory()
@@ -109,14 +111,14 @@ function context(options: {
       dismissBubbles,
       setPointerInside: vi.fn(),
     },
-    shortcuts: { register: vi.fn((command: ShortcutCommand) => { commands.push(command); return () => {} }) },
+    shortcuts: { register: vi.fn((command: ShortcutCommand) => { commands.push(command); return () => {} }), catalog },
     slots: {
       register: vi.fn((registration: Registration) => { registrations.push(registration); return () => {} }),
       inject: vi.fn((_name: string, factory: () => unknown) => { factory(); return () => {} }),
     },
   }
   return {
-    ctx, registrations, commands, dictionaries, sessions, workspaces, presentModal, presentBubbles, dismissBubbles,
+    ctx, registrations, commands, dictionaries, sessions, workspaces, catalog, presentModal, presentBubbles, dismissBubbles,
     openSession, openWorkspace, pickDirectory, createWorkspace, disposers,
   }
 }
@@ -282,6 +284,23 @@ it('moves focus to the Session bookmarks only inside the dialog', () => {
   expect(inside.status).toBe('handled')
   if (inside.status === 'handled') inside.run()
   expect(workbench.hooks.focus.getSnapshot()).toBe(1)
+})
+
+it('publishes the effective shortcut hints for the card tooltips', () => {
+  const { ctx, registrations, catalog } = context({
+    catalog: [
+      { id: WORKBENCH_SESSIONS_COMMAND_ID, keys: ['Ctrl', 'Q'] },
+      { id: WORKBENCH_NEXT_COMMAND_ID, keys: ['Ctrl', 'Tab'] },
+      { id: WORKBENCH_PREVIOUS_COMMAND_ID, keys: ['Shift', 'Ctrl', 'Tab'] },
+    ],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  expect(workbench.hooks.hints.getSnapshot()).toEqual({
+    sessions: ['Ctrl', 'Q'], pageNext: ['Ctrl', 'Tab'], pagePrevious: ['Shift', 'Ctrl', 'Tab'],
+  })
+  catalog.set([{ id: WORKBENCH_SESSIONS_COMMAND_ID, keys: ['Ctrl', 'Shift', 'Q'] }])
+  expect(workbench.hooks.hints.getSnapshot().sessions).toEqual(['Ctrl', 'Shift', 'Q'])
 })
 
 it('creates a Workspace from the picked directory and opens its page', async () => {

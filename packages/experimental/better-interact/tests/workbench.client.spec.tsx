@@ -54,6 +54,13 @@ function dialogProps(options: {
     usePages: (selector: (state: WorkbenchPagesState) => unknown) => selector(pages),
     useNotice: (selector: (state: WorkbenchNotice | null) => unknown) => selector(options.notice ?? null),
     useFocus: (selector: (state: number) => unknown) => selector(options.focus ?? 0),
+    useHints: (selector: (state: {
+      sessions: readonly string[]
+      pageNext: readonly string[]
+      pagePrevious: readonly string[]
+    }) => unknown) => selector({
+      sessions: ['Ctrl', 'Q'], pageNext: ['Ctrl', 'Tab'], pagePrevious: ['Shift', 'Ctrl', 'Tab'],
+    }),
     useSessions: (selector: (state: { byId: Readonly<Record<string, SessionRow>> }) => unknown) =>
       selector({ byId: sessions }),
     useResource,
@@ -152,7 +159,7 @@ it('focuses the current bookmark when a focus request arrives', () => {
   expect(document.activeElement?.textContent).toBe('Second')
 })
 
-it('switches to the neighbouring Session with the arrow keys', () => {
+it('moves the selection ring without switching Sessions', () => {
   const { props, selectSession } = dialogProps({
     workspaces: [workspace('ws-1', 'Alpha', ['s1', 's2'])],
     pages: { active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s1') } },
@@ -163,11 +170,11 @@ it('switches to the neighbouring Session with the arrow keys', () => {
   const bookmarks = within(rail).getAllByRole('button')
   bookmarks[0]?.focus()
   fireEvent.keyDown(bookmarks[0]!, { key: 'ArrowDown' })
-  expect(selectSession).toHaveBeenLastCalledWith(sid('s2'))
   expect(document.activeElement).toBe(bookmarks[1])
+  expect(selectSession).not.toHaveBeenCalled()
   fireEvent.keyDown(bookmarks[1]!, { key: 'ArrowLeft' })
-  expect(selectSession).toHaveBeenLastCalledWith(sid('s1'))
   expect(document.activeElement).toBe(bookmarks[0])
+  expect(selectSession).not.toHaveBeenCalled()
 })
 
 it('falls back to the newest Session when the page has no recorded choice', () => {

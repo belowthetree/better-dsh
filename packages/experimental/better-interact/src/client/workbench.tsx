@@ -5,6 +5,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/client'
 import type { HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { NS } from './locales.ts'
@@ -30,6 +31,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dialog-owned notice shown as an inline failure line. */
 export type WorkbenchNotice = 'workbench.createFailed'
 
+/** Effective shortcut key labels shown by the card hints. */
+export interface WorkbenchHints {
+  /** Binding that moves keyboard focus to the Session bookmarks. */
+  readonly sessions: readonly string[]
+  /** Binding that shows the next Workspace page. */
+  readonly pageNext: readonly string[]
+  /** Binding that shows the previous Workspace page. */
+  readonly pagePrevious: readonly string[]
+}
+
 /** Workspace pages, Session bookmarks, and selection actions the workbench dialog consumes. */
 export interface WorkbenchInjected {
   hooks: {
@@ -39,6 +50,8 @@ export interface WorkbenchInjected {
     notice: HostObservable<WorkbenchNotice | null>
     /** Focus request counter; every change moves keyboard focus to the active bookmark. */
     focus: HostObservable<number>
+    /** Effective shortcut key labels for the card hints. */
+    hints: HostObservable<WorkbenchHints>
   }
   /**
    * Show one Workspace page, opening its current Session.
@@ -73,6 +86,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const pages = props.usePages(value => value)
   const notice = props.useNotice(value => value)
   const focusRequest = props.useFocus(value => value)
+  const hints = props.useHints(value => value)
   const sessions = props.useSessions(state => state.byId)
   const sessionsRef = useRef<HTMLElement | null>(null)
   const lastFocus = useRef(focusRequest)
@@ -117,7 +131,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
     event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-workbench-tab]')[nextIndex]?.focus()
   }
 
-  /** Move the Session selection with the arrow keys and switch to that Session. */
+  /** Move the selection ring between the Session bookmarks; Enter activates it. */
   const onSessionKey = (event: KeyboardEvent<HTMLElement>): void => {
     const forward = event.key === 'ArrowDown' || event.key === 'ArrowRight'
     const backward = event.key === 'ArrowUp' || event.key === 'ArrowLeft'
@@ -131,9 +145,6 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
     if (index === -1) return
     event.preventDefault()
     const next = (index + (forward ? 1 : -1) + items.length) % items.length
-    const nextId = available[next]
-    if (nextId === undefined) return
-    selectSession(nextId)
     items[next]?.focus()
   }
 
@@ -145,14 +156,17 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
         data-workbench-tabs="" onKeyDown={onTabKey}>
         {workspaces.map((item) => {
           const selected = item.workspaceId === active
-          return <button key={item.workspaceId} type="button" role="tab"
-            id={`better-interact-workbench-tab-${item.workspaceId}`}
-            aria-selected={selected} aria-controls="better-interact-workbench-panel"
-            tabIndex={selected ? 0 : -1} className={css.tab} data-workbench-tab=""
-            data-active={selected || undefined} title={item.path}
-            onClick={() => { select(item.workspaceId) }}>
-            <span className={css.tabTitle}>{item.title}</span>
-          </button>
+          return <Tooltip key={item.workspaceId} label={item.path} shortcutKeys={hints.pageNext}
+            side="top" portal delayMs={300} maxWidth={360}>
+            <button type="button" role="tab"
+              id={`better-interact-workbench-tab-${item.workspaceId}`}
+              aria-selected={selected} aria-controls="better-interact-workbench-panel"
+              tabIndex={selected ? 0 : -1} className={css.tab} data-workbench-tab=""
+              data-active={selected || undefined}
+              onClick={() => { select(item.workspaceId) }}>
+              <span className={css.tabTitle}>{item.title}</span>
+            </button>
+          </Tooltip>
         })}
       </div>}
       {available.length > 0 && <nav ref={sessionsRef} className={css.sessions} aria-label={t('sessions.label')}
@@ -163,11 +177,14 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
             ? t('session.new')
             : (summary?.title?.trim() || summary?.displayTitle || bookmarkId)
           const selected = bookmarkId === sessionId
-          return <button key={bookmarkId} type="button" className={css.session} data-workbench-session=""
-            data-active={selected || undefined} aria-current={selected ? 'page' : undefined} title={label}
-            onClick={() => { selectSession(bookmarkId) }}>
-            <span className={css.sessionTitle}>{label}</span>
-          </button>
+          return <Tooltip key={bookmarkId} label={label} shortcutKeys={hints.sessions}
+            side="right" portal delayMs={300} maxWidth={360}>
+            <button type="button" className={css.session} data-workbench-session=""
+              data-active={selected || undefined} aria-current={selected ? 'page' : undefined}
+              onClick={() => { selectSession(bookmarkId) }}>
+              <span className={css.sessionTitle}>{label}</span>
+            </button>
+          </Tooltip>
         })}
       </nav>}
       <div id="better-interact-workbench-panel" className={css.panel} data-better-interact-panel=""
