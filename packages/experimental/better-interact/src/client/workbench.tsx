@@ -129,26 +129,24 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
 
   return <section className={css.root} data-better-interact-workbench="" data-shell-modal-fill=""
     data-shell-modal-surface="bare">
-    {workspaces.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}
-      data-workbench-tabs="" onKeyDown={onTabKey}>
-      {workspaces.map((item) => {
-        const selected = item.workspaceId === active
-        return <button key={item.workspaceId} type="button" role="tab"
-          id={`better-interact-workbench-tab-${item.workspaceId}`}
-          aria-selected={selected} aria-controls="better-interact-workbench-panel"
-          tabIndex={selected ? 0 : -1} className={css.tab} data-workbench-tab=""
-          data-active={selected || undefined} title={item.path}
-          onClick={() => { select(item.workspaceId) }}>
-          <span className={css.tabTitle}>{item.title}</span>
-        </button>
-      })}
-    </div>}
     {notice !== null && <p className={css.notice} role="alert" data-better-interact-notice="">{t(notice)}</p>}
-    <div id="better-interact-workbench-panel" className={css.panel} data-better-interact-panel=""
-      role="tabpanel" aria-labelledby={active === undefined ? undefined : `better-interact-workbench-tab-${active}`}>
+    <div className={css.body}>
+      {workspaces.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}
+        data-workbench-tabs="" onKeyDown={onTabKey}>
+        {workspaces.map((item) => {
+          const selected = item.workspaceId === active
+          return <button key={item.workspaceId} type="button" role="tab"
+            id={`better-interact-workbench-tab-${item.workspaceId}`}
+            aria-selected={selected} aria-controls="better-interact-workbench-panel"
+            tabIndex={selected ? 0 : -1} className={css.tab} data-workbench-tab=""
+            data-active={selected || undefined} title={item.path}
+            onClick={() => { select(item.workspaceId) }}>
+            <span className={css.tabTitle}>{item.title}</span>
+          </button>
+        })}
+      </div>}
       {available.length > 0 && <nav ref={sessionsRef} className={css.sessions} aria-label={t('sessions.label')}
         data-better-interact-sessions="" onKeyDown={onSessionKey}>
-        <p className={css.sessionsLabel} aria-hidden="true">{t('sessions.label')}</p>
         {available.map((bookmarkId) => {
           const summary = sessions[bookmarkId]
           const label = summary?.blank === true
@@ -162,7 +160,8 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
           </button>
         })}
       </nav>}
-      <div className={css.page} data-better-interact-page="">
+      <div id="better-interact-workbench-panel" className={css.panel} data-better-interact-panel=""
+        role="tabpanel" aria-labelledby={active === undefined ? undefined : `better-interact-workbench-tab-${active}`}>
         {reference === undefined
           ? <p className={css.empty} data-better-interact-empty="">{t('workbench.empty')}</p>
           : <SessionProvider session={reference}>{renderSlot('better-interact.workbench.conversation', {})}</SessionProvider>}

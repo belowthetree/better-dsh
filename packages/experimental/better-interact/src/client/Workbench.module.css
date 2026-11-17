@@ -1,7 +1,7 @@
 /* The frame gives the modal card the dialog box but no chrome: the workbench
-   draws the cards of its Sessions above the conversation panel on the
-   transparent window. The section marks itself data-shell-modal-fill so the
-   frame gives it the dialog height. */
+   draws the Workspace cards above the conversation panel and the Session
+   bookmarks outside its left edge on the transparent window. The section marks
+   itself data-shell-modal-fill so the frame gives it the dialog height. */
 .root {
   display: flex;
   flex-direction: column;
@@ -12,13 +12,27 @@
   min-height: 0;
 }
 
-/* One card per workbench, in strip order; a long strip scrolls without a bar.
-   The strip scrolls over the elevated cards, so it rebinds the l2 scrollbar pair
-   even though its own bar stays hidden. */
+/* The Workspace strip occupies the panel column, so the cards sit above the
+   panel only; the Session bookmarks fill the column beside it. */
+.body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+/* One card per Workspace, in strip order, above the conversation panel; a long
+   strip scrolls without a bar. The strip scrolls over the elevated cards, so it
+   rebinds the l2 scrollbar pair even though its own bar stays hidden. */
 .tabs {
   display: flex;
   flex: none;
+  grid-column: 2;
+  grid-row: 1;
   gap: 10px;
+  min-width: 0;
   min-height: 68px;
   padding: 0 2px;
   overflow-x: auto;
@@ -105,16 +119,17 @@
   -webkit-line-clamp: 2;
 }
 
-/* The modal card's chrome, drawn here because the strip sits outside it. The
-   enclosing surface takes the composer's panel radius, and the window elevation
-   carries the hairline and the broad shadow the carrier reserves margin for.
-   The embedded conversation paints the page base, so the panel rebinds that
-   alias to the window layer: the dialog reads as a lighter Fluent window over
-   the page, while the composer and queue keep their elevated fills. */
+/* The conversation panel's chrome. The enclosing surface takes the composer's
+   panel radius, and the window elevation carries the hairline and the broad
+   shadow the carrier reserves margin for. The embedded conversation paints the
+   page base, so the panel rebinds that alias to the window layer: the dialog
+   reads as a lighter Fluent window over the page, while the composer and queue
+   keep their elevated fills. */
 .panel {
   display: flex;
-  flex: 1 1 auto;
-  flex-direction: row;
+  grid-column: 2;
+  grid-row: 2;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
   border-radius: var(--dsw-radius-panel);
@@ -123,24 +138,19 @@
   box-shadow: var(--dsw-elevation-window);
 }
 
-/* Fluent navigation pane: the active Workspace's Sessions as bookmark entries,
-   each a single line with the current one marked by the accent bar. */
+/* The active Workspace's Sessions as a column of bookmark cards outside the
+   panel, each a single line with the current one marked by the accent bar. The
+   column scrolls over the elevated cards, so it rebinds the l2 scrollbar pair. */
 .sessions {
   display: flex;
-  flex: 0 0 208px;
+  grid-column: 1;
+  grid-row: 2;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   min-height: 0;
-  padding: 10px 8px;
   overflow-y: auto;
-  border-inline-end: 0.5px solid var(--dsw-alias-border-l1);
-}
-
-.sessionsLabel {
-  margin: 0;
-  padding: 2px 8px 6px;
-  color: var(--dsw-alias-label-caption);
-  font: var(--dsw-font-xxs-strong-12);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .session {
@@ -149,35 +159,46 @@
   flex: none;
   box-sizing: border-box;
   width: 100%;
-  min-height: 32px;
-  padding: 6px 10px 6px 12px;
+  min-height: 44px;
+  padding: 10px 10px 10px 14px;
   overflow: hidden;
   border: 0;
-  border-radius: var(--dsw-radius-sm);
-  background: transparent;
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
+  box-shadow: var(--dsw-elevation-panel), inset 0 1px 0 var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xs-13);
   text-align: start;
   cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 
 @media (hover: hover) {
   .session:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+    --dsw-elevation-stroke-color: var(--dsw-alias-border-l3);
     color: var(--dsw-alias-label-primary);
   }
 }
 
 .session[data-active] {
   background: var(--dsw-alias-interactive-bg-hover-solid);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l3);
   color: var(--dsw-alias-label-primary);
+}
+
+.session[data-active] .sessionTitle {
+  font-weight: 500;
 }
 
 .session[data-active]::before {
   position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 3px;
+  top: 10px;
+  bottom: 10px;
+  left: 4px;
   width: 3px;
   border-radius: 999px;
   corner-shape: round;
@@ -197,16 +218,7 @@
   white-space: nowrap;
 }
 
-.page {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* A failed Workspace creation reports between the tabs and the page. */
+/* A failed Workspace creation reports above the Workspace strip. */
 .notice {
   flex: none;
   margin: 0;
