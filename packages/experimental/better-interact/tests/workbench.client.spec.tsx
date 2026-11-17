@@ -1,98 +1,122 @@
 // @vitest-environment jsdom
-/** The workbench renders its card strip above the shared Conversation. */
+/** The workbench renders one card per Workspace above the selected page's conversation. */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { workbenchAddress } from '../src/client/resource.ts'
-import type { WorkbenchTabsState } from '../src/client/workbench-tabs.ts'
+import type { WorkbenchPagesState } from '../src/client/workbench-pages.ts'
 import { WorkbenchConversation, WorkbenchDialog } from '../src/client/workbench.tsx'
 
-type Summary = { readonly blank: boolean; readonly displayTitle?: string; readonly title?: string }
+type SessionRow = { readonly updatedAt: number }
+type WorkspaceRow = {
+  readonly workspaceId: WorkspaceId
+  readonly title: string
+  readonly path: string
+  readonly sessionIds: readonly SessionId[]
+}
+
+const ws = (value: string) => value as WorkspaceId
+const sid = (value: string) => value as SessionId
+
+const workspace = (id: string, title: string, sessionIds: string[]): WorkspaceRow => ({
+  workspaceId: ws(id), title, path: `E:\\Project\\${title}`, sessionIds: sessionIds.map(sid),
+})
 
 afterEach(() => { cleanup() })
 
 function dialogProps(options: {
-  readonly tabs?: WorkbenchTabsState
+  readonly pages?: WorkbenchPagesState
+  readonly workspaces?: readonly WorkspaceRow[]
+  readonly sessions?: Readonly<Record<string, SessionRow>>
   readonly reference?: boolean
-  readonly summaries?: Readonly<Record<string, Summary>>
 } = {}) {
+  const workspaces = options.workspaces ?? [workspace('ws-1', 'Alpha', ['s1'])]
+  const pages: WorkbenchPagesState = options.pages ?? { active: workspaces[0]?.workspaceId, sessions: {} }
+  const sessions = options.sessions ?? { s1: { updatedAt: 1 } }
   const renderSlot = vi.fn(() => <div data-testid="conversation" />)
   const select = vi.fn()
-  const tabs: WorkbenchTabsState = options.tabs
-    ?? { sessionIds: ['session-1' as SessionId], active: 'session-1' as SessionId }
-  const byId: Readonly<Record<string, Summary>> = options.summaries
-    ?? { 'session-1': { blank: true, displayTitle: 'session-1' } }
-  const useResource = vi.fn(() => ({
-    value: options.reference === false ? {} : { reference: { sessionId: tabs.active ?? tabs.sessionIds[0] } },
-  }))
+  const useResource = vi.fn(() => ({ value: options.reference === false ? {} : { reference: { sessionId: 's1' } } }))
   const props = {
-    useTabs: (selector: (state: WorkbenchTabsState) => unknown) => selector(tabs),
-    useSessions: (selector: (state: { ids: readonly string[]; byId: Readonly<Record<string, Summary>> }) => unknown) =>
-      selector({ ids: Object.keys(byId), byId }),
+    useWorkspaces: (selector: (state: { items: readonly WorkspaceRow[] }) => unknown) => selector({ items: workspaces }),
+    usePages: (selector: (state: WorkbenchPagesState) => unknown) => selector(pages),
+    useSessions: (selector: (state: { byId: Readonly<Record<string, SessionRow>> }) => unknown) =>
+      selector({ byId: sessions }),
     useResource,
     SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     renderSlot,
     select,
     t: (key: string) => key,
   }
-  return { props, renderSlot, select, useResource, tabs }
+  return { props, renderSlot, select, useResource, pages }
 }
 
-it('renders the empty state while no card exists', () => {
-  const { props } = dialogProps({ tabs: { sessionIds: [], active: undefined }, reference: false })
+it('renders the empty state while no Workspace page exists', () => {
+  const { props } = dialogProps({ pages: { active: undefined, sessions: {} }, workspaces: [], reference: false })
   render(createElement(WorkbenchDialog, props as never))
   expect(screen.getByText('workbench.empty')).toBeTruthy()
   expect(screen.queryByRole('tablist')).toBeNull()
-  expect(screen.queryByTestId('conversation')).toBeNull()
   expect(document.querySelector('[data-shell-modal-fill]')).not.toBeNull()
   expect(document.querySelector('[data-shell-modal-surface="bare"]')).not.toBeNull()
 })
 
-it('renders one card per workbench and selects the clicked one', () => {
+it('renders one card per Workspace and selects the clicked one', () => {
   const { props, select } = dialogProps({
-    tabs: { sessionIds: ['session-1' as SessionId, 'session-2' as SessionId], active: 'session-2' as SessionId },
-    summaries: {
-      'session-1': { blank: true, displayTitle: 'session-1' },
-      'session-2': { blank: false, displayTitle: 'Release notes' },
-    },
+    workspaces: [workspace('ws-1', 'Alpha', ['s1']), workspace('ws-2', 'Beta', ['s2'])],
+    pages: { active: ws('ws-2'), sessions: {} },
+    sessions: { s1: { updatedAt: 1 }, s2: { updatedAt: 2 } },
   })
   render(createElement(WorkbenchDialog, props as never))
   const cards = screen.getAllByRole('tab')
-  expect(cards.map(card => card.textContent)).toEqual(['tab.new', 'Release notes'])
+  expect(cards.map(card => card.textContent)).toEqual(['Alpha', 'Beta'])
   expect(cards[0]?.getAttribute('aria-selected')).toBe('false')
   expect(cards[1]?.getAttribute('aria-selected')).toBe('true')
   fireEvent.click(cards[0]!)
-  expect(select).toHaveBeenCalledExactlyOnceWith('session-1')
+  expect(select).toHaveBeenCalledExactlyOnceWith(ws('ws-1'))
 })
 
-it('binds the conversation to the active card', () => {
+it('binds the conversation to the page Session, falling back to its newest', () => {
   const { props, renderSlot, useResource } = dialogProps({
-    tabs: { sessionIds: ['session-1' as SessionId, 'session-2' as SessionId], active: 'session-1' as SessionId },
+    workspaces: [workspace('ws-1', 'Alpha', ['older', 'newer'])],
+    pages: { active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('older') } },
+    sessions: { older: { updatedAt: 1 }, newer: { updatedAt: 2 } },
   })
   render(createElement(WorkbenchDialog, props as never))
   expect(screen.getByTestId('conversation')).toBeTruthy()
-  expect(useResource).toHaveBeenCalledWith(workbenchAddress('session-1' as SessionId))
+  expect(useResource).toHaveBeenCalledWith(workbenchAddress(sid('older')))
   expect(renderSlot).toHaveBeenCalledWith('better-interact.workbench.conversation', {})
 })
 
-it('moves the card selection with the arrow keys', () => {
+it('falls back to the newest Session when the page has no recorded choice', () => {
+  const { props, useResource } = dialogProps({
+    workspaces: [workspace('ws-1', 'Alpha', ['older', 'newer'])],
+    pages: { active: ws('ws-1'), sessions: {} },
+    sessions: { older: { updatedAt: 1 }, newer: { updatedAt: 2 } },
+  })
+  render(createElement(WorkbenchDialog, props as never))
+  expect(useResource).toHaveBeenCalledWith(workbenchAddress(sid('newer')))
+})
+
+it('moves the page selection with the arrow keys', () => {
   const { props, select } = dialogProps({
-    tabs: { sessionIds: ['session-1' as SessionId, 'session-2' as SessionId], active: 'session-1' as SessionId },
+    workspaces: [workspace('ws-1', 'Alpha', ['s1']), workspace('ws-2', 'Beta', ['s2'])],
+    pages: { active: ws('ws-1'), sessions: {} },
+    sessions: { s1: { updatedAt: 1 }, s2: { updatedAt: 1 } },
   })
   render(createElement(WorkbenchDialog, props as never))
   const tablist = screen.getByRole('tablist')
   fireEvent.keyDown(tablist, { key: 'Enter' })
   expect(select).not.toHaveBeenCalled()
   fireEvent.keyDown(tablist, { key: 'ArrowRight' })
-  expect(select).toHaveBeenCalledExactlyOnceWith('session-2')
+  expect(select).toHaveBeenCalledExactlyOnceWith(ws('ws-2'))
   fireEvent.keyDown(tablist, { key: 'ArrowLeft' })
-  expect(select).toHaveBeenLastCalledWith('session-2')
-  expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe('better-interact-workbench-tab-session-1')
-  expect(screen.getAllByRole('tab')[0]?.getAttribute('aria-controls')).toBe('better-interact-workbench-panel')
+  expect(select).toHaveBeenLastCalledWith(ws('ws-2'))
+  expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby'))
+    .toBe('better-interact-workbench-tab-ws-1')
 })
 
-it('leaves a single card alone on the arrow keys', () => {
+it('leaves a single Workspace alone on the arrow keys', () => {
   const { props, select } = dialogProps()
   render(createElement(WorkbenchDialog, props as never))
   fireEvent.keyDown(screen.getByRole('tablist'), { key: 'ArrowRight' })

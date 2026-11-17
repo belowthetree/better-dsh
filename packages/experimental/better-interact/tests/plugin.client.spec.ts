@@ -1,7 +1,8 @@
-/** The plugin mounts the bubble column, the workbench cards, and the launcher commands. */
+/** The plugin mounts the bubble column and the Workspace-paged workbench, and wires its commands. */
 import { expect, it, vi } from 'vitest'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -28,21 +29,42 @@ const WORKBENCH: SurfaceSnapshot = {
 }
 
 const sid = (value: string) => value as SessionId
+const ws = (value: string) => value as WorkspaceId
 
 function row(id: string, overrides: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: sid(id), displayTitle: id, running: false, retainedBy: {}, blank: false, updatedAt: 0, ...overrides }
+  return { id: sid(id), displayTitle: id, running: false, retainedBy: {}, blank: true, updatedAt: 0, ...overrides }
 }
 
-function sessionList(ids: readonly string[], mainView?: string) {
+function sessionList(sessions: readonly { readonly id: string; readonly updatedAt?: number; readonly mainView?: boolean }[]) {
   return createSnapshotStore<SessionListState>({
-    ids: ids.map(sid),
-    byId: Object.fromEntries(ids.map(id => [id, row(id, mainView === id ? { retainedBy: { mainView: 1 } } : {})])),
+    ids: sessions.map(session => sid(session.id)),
+    byId: Object.fromEntries(sessions.map(session => [session.id, row(session.id, {
+      updatedAt: session.updatedAt ?? 0,
+      ...session.mainView === true ? { retainedBy: { mainView: 1 } } : {},
+    })])),
     phase: 'ready',
     projectionsBySession: {},
   })
 }
 
-function context(options: { readonly surface?: SurfaceSnapshot; readonly ids?: readonly string[]; readonly mainView?: string } = {}) {
+function view(id: string, title: string, sessionIds: readonly string[], updatedAt = '2026-11-01T00:00:00.000Z'): WorkspaceView {
+  return {
+    workspaceId: ws(id), path: `E:\\Project\\${title}`, title, sessionIds: sessionIds.map(sid),
+    createdAt: '2026-10-01T00:00:00.000Z', updatedAt,
+  }
+}
+
+function workspaceList(items: readonly WorkspaceView[]) {
+  return createSnapshotStore<WorkspaceSnapshot>({
+    items, archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+  })
+}
+
+function context(options: {
+  readonly surface?: SurfaceSnapshot
+  readonly sessions?: readonly { readonly id: string; readonly updatedAt?: number; readonly mainView?: boolean }[]
+  readonly workspaces?: readonly WorkspaceView[]
+} = {}) {
   const registrations: Registration[] = []
   const disposers: (() => void)[] = []
   const commands: ShortcutCommand[] = []
@@ -55,8 +77,11 @@ function context(options: { readonly surface?: SurfaceSnapshot; readonly ids?: r
   const presentModal = vi.fn(() => Promise.resolve())
   const presentBubbles = vi.fn(() => Promise.resolve())
   const dismissBubbles = vi.fn(() => Promise.resolve())
+  const openSession = vi.fn()
+  const openWorkspace = vi.fn(() => Promise.resolve())
   const snapshot = options.surface ?? ORB
-  const list = sessionList(options.ids ?? ['session-1'], options.mainView)
+  const sessions = sessionList(options.sessions ?? [{ id: 's1' }])
+  const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])])
   const ctx = {
     effect: (factory: () => unknown) => {
       const value = factory()
@@ -65,7 +90,9 @@ function context(options: { readonly surface?: SurfaceSnapshot; readonly ids?: r
     },
     locale: { register: record, bind: vi.fn(() => (key: string) => key) },
     resources: { register: vi.fn(() => () => {}) },
-    sessions: { list },
+    sessions: { list: sessions },
+    workspaces: { list: workspaces },
+    uiWorkspace: { openSession, openWorkspace, startSession: vi.fn(), connectWorkspace: vi.fn() },
     surface: {
       snapshot: () => snapshot,
       async *follow(signal: AbortSignal) {
@@ -83,7 +110,10 @@ function context(options: { readonly surface?: SurfaceSnapshot; readonly ids?: r
       inject: vi.fn((_name: string, factory: () => unknown) => { factory(); return () => {} }),
     },
   }
-  return { ctx, registrations, commands, dictionaries, list, presentModal, presentBubbles, dismissBubbles, disposers }
+  return {
+    ctx, registrations, commands, dictionaries, sessions, workspaces, presentModal, presentBubbles, dismissBubbles,
+    openSession, openWorkspace, disposers,
+  }
 }
 
 const contextAt = (modal: string | null) => ({ region: 'page', modal, target: null }) as never
@@ -94,21 +124,29 @@ function workbenchInjected(registrations: readonly Registration[]): WorkbenchInj
 }
 
 it('declares the services it reads', () => {
-  expect(inject).toEqual(['surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions'])
+  expect(inject).toEqual([
+    'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace',
+  ])
 })
 
-it('mounts the workbench dialog with its card strip and conversation seat', () => {
-  const { ctx, registrations, dictionaries } = context()
+it('mounts the workbench dialog with its Workspace cards and conversation seat', () => {
+  const { ctx, registrations, dictionaries, openSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1', 's2'])],
+  })
   apply(ctx as never)
   const modal = registrations.find(entry => entry.name === 'shell.modal')
   expect(modal).toMatchObject({
     name: 'shell.modal', id: WORKBENCH_MODAL_ID, locale: 'betterInteract',
     children: { 'better-interact.workbench.conversation': { kind: 'single', scope: 'session' } },
   })
-  const injected = (modal?.inject as () => WorkbenchInjected)()
-  expect(injected.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [], active: undefined })
-  injected.select(sid('session-2'))
-  expect(injected.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('session-2')], active: sid('session-2') })
+  const workbench = workbenchInjected(registrations)
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: undefined, sessions: {} })
+  workbench.select(ws('ws-1'))
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({
+    active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s2') },
+  })
+  expect(openSession).toHaveBeenCalledWith(sid('s2'))
   expect(registrations.find(entry => entry.name === 'better-interact.workbench.conversation')).toBeDefined()
   expect(ctx.resources.register).toHaveBeenCalledOnce()
   expect(dictionaries.namespace).toBe('betterInteract')
@@ -134,23 +172,145 @@ it('mounts the bubble column and its bound stack', () => {
   expect((stack?.inject as () => BubblesInjected)().hooks.surface.getSnapshot()).toEqual(ORB)
 })
 
-it('drives the carrier presentation and the card strip from the bubble entries', () => {
-  const { ctx, registrations, presentModal, presentBubbles, dismissBubbles } = context()
+it('drives the carrier and opens the bubble Session in its Workspace page', () => {
+  const { ctx, registrations, presentModal, presentBubbles, dismissBubbles, openSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1', 's2']), view('ws-2', 'Beta', [])],
+  })
   apply(ctx as never)
   const overlay = registrations.find(entry => entry.name === 'shell.overlay')
-  const injected = (overlay?.inject as () => BubblesInjected)()
-  const modal = registrations.find(entry => entry.name === 'shell.modal')
-  const workbench = (modal?.inject as () => WorkbenchInjected)()
-  expect(injected.hooks.surface.getSnapshot()).toEqual(ORB)
-  injected.show()
-  injected.hide()
-  injected.open(sid('session-2'))
-  injected.pointerInside(true)
+  const bubbles = (overlay?.inject as () => BubblesInjected)()
+  const workbench = workbenchInjected(registrations)
+  bubbles.show()
+  bubbles.hide()
+  bubbles.open(sid('s1'))
+  bubbles.pointerInside(true)
   expect(presentBubbles).toHaveBeenCalledTimes(1)
   expect(dismissBubbles).toHaveBeenCalledTimes(1)
   expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
-  expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('session-2')], active: sid('session-2') })
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({
+    active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s1') },
+  })
+  expect(openSession).toHaveBeenCalledWith(sid('s1'))
   expect(ctx.surface.setPointerInside).toHaveBeenCalledWith(true)
+})
+
+it('opens the most recently used Workspace page from the launcher', () => {
+  const { ctx, commands, registrations, presentModal, openSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(ws('ws-2'))
+  openSession.mockClear()
+  const resolution = commands.find(entry => entry.id === WORKBENCH_COMMAND_ID)!.resolve(contextAt(null))
+  expect(resolution.status).toBe('handled')
+  if (resolution.status === 'handled') resolution.run()
+  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
+  expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-2'))
+  expect(openSession).toHaveBeenCalledWith(sid('s2'))
+})
+
+it('falls back to the main view Workspace when no page is stored', () => {
+  const { ctx, commands, registrations } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2, mainView: true }],
+    workspaces: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  const resolution = commands.find(entry => entry.id === WORKBENCH_COMMAND_ID)!.resolve(contextAt(null))
+  if (resolution.status === 'handled') resolution.run()
+  expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-2'))
+})
+
+it('connects a Workspace page that has no Session yet', () => {
+  const { ctx, registrations, openWorkspace, openSession } = context({
+    workspaces: [view('ws-1', 'Alpha', []), view('ws-2', 'Beta', ['s2'])],
+    sessions: [{ id: 's2', updatedAt: 1 }],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  openSession.mockClear()
+  workbench.select(ws('ws-1'))
+  expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-1'))
+  expect(openWorkspace).toHaveBeenCalledWith(ws('ws-1'))
+  expect(openSession).not.toHaveBeenCalled()
+})
+
+it('cycles the Workspace pages with the next and previous commands only inside the dialog', () => {
+  const { ctx, commands, registrations, openSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(ws('ws-1'))
+  openSession.mockClear()
+  const next = commands.find(entry => entry.id === WORKBENCH_NEXT_COMMAND_ID)!
+  const previous = commands.find(entry => entry.id === WORKBENCH_PREVIOUS_COMMAND_ID)!
+  expect(next.resolve(contextAt('orb.chat')).status).toBe('pass')
+  const forwards = next.resolve(contextAt(WORKBENCH_MODAL_ID))
+  expect(forwards.status).toBe('handled')
+  if (forwards.status === 'handled') forwards.run()
+  expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-2'))
+  expect(openSession).toHaveBeenLastCalledWith(sid('s2'))
+  const backwards = previous.resolve(contextAt(WORKBENCH_MODAL_ID))
+  if (backwards.status === 'handled') backwards.run()
+  expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-1'))
+})
+
+it('follows the main view Session into its Workspace page while the dialog is open', () => {
+  const { ctx, registrations, sessions, workspaces } = context({
+    surface: WORKBENCH,
+    sessions: [{ id: 's1', updatedAt: 1, mainView: true }, { id: 's2', updatedAt: 2 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(ws('ws-1'))
+  sessions.set({
+    ...sessions.getSnapshot(),
+    byId: { [sid('s1')]: row('s1', { updatedAt: 1 }), [sid('s2')]: row('s2', { updatedAt: 2, retainedBy: { mainView: 1 } }) },
+  })
+  workspaces.set({
+    ...workspaces.getSnapshot(),
+    items: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])],
+  })
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({
+    active: ws('ws-2'), sessions: { [ws('ws-1')]: sid('s1'), [ws('ws-2')]: sid('s2') },
+  })
+})
+
+it('records the main view Session without switching pages behind a closed dialog', () => {
+  const { ctx, registrations, sessions, workspaces } = context({
+    sessions: [{ id: 's1', updatedAt: 1, mainView: true }, { id: 's2', updatedAt: 2 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(ws('ws-2'))
+  sessions.set({
+    ...sessions.getSnapshot(),
+    byId: { [sid('s1')]: row('s1', { updatedAt: 1, retainedBy: { mainView: 1 } }), [sid('s2')]: row('s2', { updatedAt: 2 }) },
+  })
+  workspaces.set({ ...workspaces.getSnapshot(), items: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])] })
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({
+    active: ws('ws-2'), sessions: { [ws('ws-1')]: sid('s1'), [ws('ws-2')]: sid('s2') },
+  })
+})
+
+it('drops pages and Session choices whose Workspace or Session left the catalogs', () => {
+  const { ctx, registrations, sessions, workspaces } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1']), view('ws-2', 'Beta', ['s2'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(ws('ws-2'))
+  workspaces.set({ ...workspaces.getSnapshot(), items: [view('ws-1', 'Alpha', ['s1'])] })
+  sessions.set({ ...sessions.getSnapshot(), ids: [sid('s1')], byId: { [sid('s1')]: row('s1', { updatedAt: 1 }) } })
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: undefined, sessions: {} })
 })
 
 it('reports a carrier that refuses a presentation command', async () => {
@@ -159,27 +319,12 @@ it('reports a carrier that refuses a presentation command', async () => {
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   apply(ctx as never)
   const overlay = registrations.find(entry => entry.name === 'shell.overlay')
-  const injected = (overlay?.inject as () => BubblesInjected)()
-  injected.hide()
+  const bubbles = (overlay?.inject as () => BubblesInjected)()
+  bubbles.hide()
   await vi.waitFor(() => {
     expect(error).toHaveBeenCalledWith('better-interact: dismissing the bubble column failed', new Error('carrier closed'))
   })
   error.mockRestore()
-})
-
-it('opens the most recently used card from the launcher command', () => {
-  const { ctx, commands, registrations, presentModal } = context()
-  apply(ctx as never)
-  const modal = registrations.find(entry => entry.name === 'shell.modal')
-  const workbench = (modal?.inject as () => WorkbenchInjected)()
-  workbench.select(sid('recent'))
-  const command = commands.find(entry => entry.id === WORKBENCH_COMMAND_ID)
-  expect(command).toBeDefined()
-  const resolution = command!.resolve(contextAt(null))
-  expect(resolution.status).toBe('handled')
-  if (resolution.status === 'handled') resolution.run()
-  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
-  expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('recent')], active: sid('recent') })
 })
 
 it('reports a carrier that refuses the workbench', async () => {
@@ -190,104 +335,34 @@ it('reports a carrier that refuses the workbench', async () => {
   apply(ctx as never)
   const resolution = commands.find(entry => entry.id === WORKBENCH_COMMAND_ID)!.resolve(contextAt(null))
   if (resolution.status === 'handled') resolution.run()
-  await vi.waitFor(() => { expect(error).toHaveBeenCalledWith('better-interact: opening the workbench failed', failure) })
+  await vi.waitFor(() => {
+    expect(error).toHaveBeenCalledWith('better-interact: opening the workbench failed', failure)
+  })
   error.mockRestore()
 })
 
-it('cycles the cards with the next and previous commands only inside the dialog', () => {
-  const { ctx, commands, registrations } = context({ ids: ['one', 'two', 'three'] })
-  apply(ctx as never)
-  const modal = registrations.find(entry => entry.name === 'shell.modal')
-  const workbench = (modal?.inject as () => WorkbenchInjected)()
-  workbench.select(sid('one'))
-  workbench.select(sid('two'))
-  workbench.select(sid('three'))
-  const next = commands.find(entry => entry.id === WORKBENCH_NEXT_COMMAND_ID)!
-  const previous = commands.find(entry => entry.id === WORKBENCH_PREVIOUS_COMMAND_ID)!
-  expect(next.resolve(contextAt('orb.chat')).status).toBe('pass')
-  const forwards = next.resolve(contextAt(WORKBENCH_MODAL_ID))
-  expect(forwards.status).toBe('handled')
-  if (forwards.status === 'handled') forwards.run()
-  expect(workbench.hooks.tabs.getSnapshot().active).toBe(sid('one'))
-  const backwards = previous.resolve(contextAt(WORKBENCH_MODAL_ID))
-  expect(backwards.status).toBe('handled')
-  if (backwards.status === 'handled') backwards.run()
-  expect(workbench.hooks.tabs.getSnapshot().active).toBe(sid('three'))
-})
-
-it('adds a new workbench when New Session moves the main view behind the dialog', async () => {
-  const { ctx, registrations, list } = context({ surface: WORKBENCH, ids: ['old'], mainView: 'old' })
+it('reports a Workspace page that cannot connect', async () => {
+  const { ctx, registrations, openWorkspace } = context({
+    workspaces: [view('ws-1', 'Alpha', [])],
+  })
+  const failure = new Error('carrier closed')
+  openWorkspace.mockRejectedValueOnce(failure)
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   apply(ctx as never)
   const workbench = workbenchInjected(registrations)
-  const created = {
-    ids: [sid('new'), sid('old')],
-    byId: {
-      [sid('new')]: row('new', { blank: true, retainedBy: { mainView: 1 } }),
-      [sid('old')]: row('old'),
-    },
-    phase: 'ready' as const,
-    projectionsBySession: {},
-  }
-  list.set(created)
+  workbench.select(ws('ws-1'))
   await vi.waitFor(() => {
-    expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('new')], active: sid('new') })
+    expect(error).toHaveBeenCalledWith('better-interact: opening the workspace page failed', failure)
   })
-  list.set(created)
-  expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('new')], active: sid('new') })
-  list.set({ ids: [sid('new')], byId: { [sid('new')]: row('new') }, phase: 'ready', projectionsBySession: {} })
-  expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('new')], active: sid('new') })
+  error.mockRestore()
 })
 
-it('adds the first main-view Session seen while the dialog is open', async () => {
-  const { ctx, registrations, list } = context({ surface: WORKBENCH, ids: [] })
+it('opens an empty catalog dialog without a page', () => {
+  const { ctx, commands, registrations, presentModal } = context({ workspaces: [], sessions: [] })
   apply(ctx as never)
   const workbench = workbenchInjected(registrations)
-  list.set({
-    ids: [sid('first')],
-    byId: { [sid('first')]: row('first', { blank: true, retainedBy: { mainView: 1 } }) },
-    phase: 'ready',
-    projectionsBySession: {},
-  })
-  await vi.waitFor(() => {
-    expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('first')], active: sid('first') })
-  })
-})
-
-it('does not add a card when the main view changes behind a closed dialog', () => {
-  const { ctx, registrations, list } = context({ surface: ORB, ids: ['old'], mainView: 'old' })
-  apply(ctx as never)
-  const workbench = workbenchInjected(registrations)
-  list.set({
-    ids: [sid('new'), sid('old')],
-    byId: {
-      [sid('new')]: row('new', { blank: true, retainedBy: { mainView: 1 } }),
-      [sid('old')]: row('old'),
-    },
-    phase: 'ready',
-    projectionsBySession: {},
-  })
-  expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [], active: undefined })
-})
-
-it('keeps cards through a pending catalog and prunes them once it is ready', () => {
-  const { ctx, registrations, list } = context({ ids: ['one'] })
-  apply(ctx as never)
-  const workbench = workbenchInjected(registrations)
-  workbench.select(sid('one'))
-  list.set({ ids: [], byId: {}, phase: 'pending', projectionsBySession: {} })
-  expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [sid('one')], active: sid('one') })
-  list.set({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} })
-  expect(workbench.hooks.tabs.getSnapshot()).toEqual({ sessionIds: [], active: undefined })
-})
-
-it('keeps the launcher and cycle commands safe without any Session', () => {
-  const { ctx, commands, presentModal } = context({ ids: [] })
-  apply(ctx as never)
-  const open = commands.find(entry => entry.id === WORKBENCH_COMMAND_ID)!.resolve(contextAt(null))
-  expect(open.status).toBe('handled')
-  if (open.status === 'handled') open.run()
+  const resolution = commands.find(entry => entry.id === WORKBENCH_COMMAND_ID)!.resolve(contextAt(null))
+  if (resolution.status === 'handled') resolution.run()
   expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
-  const next = commands.find(entry => entry.id === WORKBENCH_NEXT_COMMAND_ID)!.resolve(contextAt(WORKBENCH_MODAL_ID))
-  expect(next.status).toBe('handled')
-  if (next.status === 'handled') next.run()
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: undefined, sessions: {} })
 })

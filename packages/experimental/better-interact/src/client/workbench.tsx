@@ -1,12 +1,14 @@
-/** Workbench dialog hosting the shared conversation surface and its card strip. */
+/** Workbench dialog hosting one page per Workspace and the shared conversation surface. */
 import type { KeyboardEvent } from 'react'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/client'
 import type { HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { NS } from './locales.ts'
 import { workbenchAddress } from './resource.ts'
-import type { WorkbenchTabsState } from './workbench-tabs.ts'
+import type { WorkbenchPagesState } from './workbench-pages.ts'
 import css from './Workbench.module.css'
 
 /** Dialog size the workbench asks the carrier for: four fifths of the work area height. */
@@ -19,17 +21,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Card strip and selection actions the workbench dialog consumes. */
+/** Workspace pages and selection actions the workbench dialog consumes. */
 export interface WorkbenchInjected {
   hooks: {
-    /** Persisted strip order and the card the dialog shows. */
-    tabs: HostObservable<WorkbenchTabsState>
+    /** Persisted Workspace page selection and per-page Session choices. */
+    pages: HostObservable<WorkbenchPagesState>
   }
   /**
-   * Show one Session's workbench, appending its card when the strip has none.
-   * @param sessionId - Session whose conversation the dialog should show.
+   * Show one Workspace page, opening its current Session.
+   * @param workspaceId - Workspace whose page the dialog should show.
    */
-  select(sessionId: SessionId): void
+  select(workspaceId: WorkspaceId): void
 }
 
 /** Props of the `shell.modal` entry `better-interact.workbench`. */
@@ -40,49 +42,57 @@ export type WorkbenchDialogProps =
   & InjectFace<WorkbenchInjected>
 
 /**
- * Render the workbench: the cards of the Sessions it has hosted above the
- * current conversation.
- * @param props - Session catalog, workbench strip, resource hook, and the Conversation seat.
- * @returns the dialog, or its empty state while no card resolves.
+ * Render the workbench: one card per Workspace above the page's conversation.
+ * @param props - Workspace catalog, page selection, Session catalog, resource hook, and the Conversation seat.
+ * @returns the dialog, or its empty state while no Workspace page resolves.
  */
 export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const { SessionProvider, renderSlot, select, t } = props
-  const tabs = props.useTabs(value => value)
-  const summaries = props.useSessions(state => state.byId)
-  const active = tabs.active ?? tabs.sessionIds[0]
-  const address = workbenchAddress(active)
+  const workspaces = props.useWorkspaces(state => state.items)
+  const pages = props.usePages(value => value)
+  const sessions = props.useSessions(state => state.byId)
+  const active = pages.active !== undefined && workspaces.some(item => item.workspaceId === pages.active)
+    ? pages.active
+    : workspaces[0]?.workspaceId
+  const workspace = workspaces.find(item => item.workspaceId === active)
+  const available = workspace === undefined
+    ? []
+    : workspace.sessionIds.filter((sessionId): sessionId is SessionId => sessions[sessionId] !== undefined)
+  const newest = available.reduce<SessionId | undefined>((best, sessionId) => best === undefined
+    || (sessions[sessionId]?.updatedAt ?? 0) > (sessions[best]?.updatedAt ?? 0) ? sessionId : best, undefined)
+  const mapped = active === undefined ? undefined : pages.sessions[active]
+  const sessionId = mapped !== undefined && available.includes(mapped) ? mapped : newest
+  const address = workbenchAddress(sessionId)
   const resource = props.useResource<'betterinteract'>(address)
   const reference = resource.value?.reference
 
   /** Move the selection and focus with the arrow keys inside the strip. */
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-    if (tabs.sessionIds.length < 2) return
+    if (workspaces.length < 2) return
     event.preventDefault()
-    const index = active === undefined ? 0 : tabs.sessionIds.indexOf(active)
+    const current = active === undefined ? 0 : workspaces.findIndex(item => item.workspaceId === active)
     const step = event.key === 'ArrowRight' ? 1 : -1
-    const nextIndex = (index + step + tabs.sessionIds.length) % tabs.sessionIds.length
-    const next = tabs.sessionIds[nextIndex]
+    const nextIndex = (current + step + workspaces.length) % workspaces.length
+    const next = workspaces[nextIndex]
     if (next === undefined) return
-    select(next)
+    select(next.workspaceId)
     event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-workbench-tab]')[nextIndex]?.focus()
   }
 
   return <section className={css.root} data-better-interact-workbench="" data-shell-modal-fill=""
     data-shell-modal-surface="bare">
-    {tabs.sessionIds.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}
+    {workspaces.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}
       data-workbench-tabs="" onKeyDown={onTabKey}>
-      {tabs.sessionIds.map((sessionId) => {
-        const summary = summaries[sessionId]
-        const label = summary?.blank === true
-          ? t('tab.new')
-          : (summary?.title?.trim() || summary?.displayTitle || sessionId)
-        return <button key={sessionId} type="button" role="tab" id={`better-interact-workbench-tab-${sessionId}`}
-          aria-selected={sessionId === active} aria-controls="better-interact-workbench-panel"
-          tabIndex={sessionId === active ? 0 : -1} className={css.tab} data-workbench-tab=""
-          data-active={sessionId === active || undefined} title={label}
-          onClick={() => { select(sessionId) }}>
-          <span className={css.tabTitle}>{label}</span>
+      {workspaces.map((item) => {
+        const selected = item.workspaceId === active
+        return <button key={item.workspaceId} type="button" role="tab"
+          id={`better-interact-workbench-tab-${item.workspaceId}`}
+          aria-selected={selected} aria-controls="better-interact-workbench-panel"
+          tabIndex={selected ? 0 : -1} className={css.tab} data-workbench-tab=""
+          data-active={selected || undefined} title={item.path}
+          onClick={() => { select(item.workspaceId) }}>
+          <span className={css.tabTitle}>{item.title}</span>
         </button>
       })}
     </div>}
@@ -111,7 +121,7 @@ export type WorkbenchConversationProps =
  * @returns the conversation content rooted at the Chat view.
  */
 export function WorkbenchConversation(
-  { sessionId, useSession, useConversation, useSessions, renderFactorySlot }:WorkbenchConversationProps) {
+  { sessionId, useSession, useConversation, useSessions, renderFactorySlot }: WorkbenchConversationProps) {
   const session = useSession(value => value)
   const conversation = useConversation(value => value)
   const active = conversation.activeTargets.size > 0

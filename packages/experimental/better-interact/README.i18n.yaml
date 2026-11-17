@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/better-interact/README.md
 /:
-  en: 550880af56691ccd
+  en: ed60bcc5f1af02c7
   zh: 550880af56691ccd
 /deepseek-ai-dsh-better-interact:
   en: 9e56552dd92dc193
   zh: 66ff39b0058502a7
 /deepseek-ai-dsh-better-interact/summary:
-  en: e5fd70288577208c
-  zh: 115d4d22a98e0f28
+  en: 9a81c11e70a22cd6
+  zh: 74087e8e8071e7b4
 /deepseek-ai-dsh-better-interact/table-of-contents:
   en: d152484eb41ac6b4
   zh: 87d6b45405bb805b
 /deepseek-ai-dsh-better-interact/use-this-package:
-  en: 908094dc973b1c23
-  zh: ad9ba6e95534afae
+  en: 10d802f2e782f09c
+  zh: 7eb8a30a494f191b
 /deepseek-ai-dsh-better-interact/understand-the-implementation:
-  en: 4ed48b39d0bcb03c
-  zh: 8e8c696b1c3b9b60
+  en: 50b309da2f770928
+  zh: 0c59e863a4e03d34
 /deepseek-ai-dsh-better-interact/further-exploration:
   en: 8c8d57895facd32d
   zh: 7ce13bc00d2e4d23
@@ -33,5 +33,5 @@
   en: 1dbffb7ed522d47b
   zh: c5c0e84a7c0fd711
 /deepseek-ai-dsh-better-interact/known-limitations-and-deferred-work:
-  en: e5f065866a9c370f
-  zh: b6ae7f1304d23613
+  en: 0eefd7674d6f7d1e
+  zh: a4af7211ee96ae1e
