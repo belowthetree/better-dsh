@@ -21,11 +21,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
+/** Dialog-owned notice shown as an inline failure line. */
+export type WorkbenchNotice = 'workbench.createFailed'
+
 /** Workspace pages and selection actions the workbench dialog consumes. */
 export interface WorkbenchInjected {
   hooks: {
     /** Persisted Workspace page selection and per-page Session choices. */
     pages: HostObservable<WorkbenchPagesState>
+    /** Inline failure notice, or null while none is shown. */
+    notice: HostObservable<WorkbenchNotice | null>
   }
   /**
    * Show one Workspace page, opening its current Session.
@@ -50,6 +55,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const { SessionProvider, renderSlot, select, t } = props
   const workspaces = props.useWorkspaces(state => state.items)
   const pages = props.usePages(value => value)
+  const notice = props.useNotice(value => value)
   const sessions = props.useSessions(state => state.byId)
   const active = pages.active !== undefined && workspaces.some(item => item.workspaceId === pages.active)
     ? pages.active
@@ -96,6 +102,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
         </button>
       })}
     </div>}
+    {notice !== null && <p className={css.notice} role="alert" data-better-interact-notice="">{t(notice)}</p>}
     <div id="better-interact-workbench-panel" className={css.panel} data-better-interact-panel=""
       role="tabpanel" aria-labelledby={active === undefined ? undefined : `better-interact-workbench-tab-${active}`}>
       {reference === undefined

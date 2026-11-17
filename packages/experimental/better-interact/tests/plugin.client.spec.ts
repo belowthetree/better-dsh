@@ -7,7 +7,8 @@ import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
-  apply, inject, WORKBENCH_COMMAND_ID, WORKBENCH_NEXT_COMMAND_ID, WORKBENCH_PREVIOUS_COMMAND_ID,
+  apply, inject, WORKBENCH_COMMAND_ID, WORKBENCH_NEW_WORKSPACE_COMMAND_ID, WORKBENCH_NEXT_COMMAND_ID,
+  WORKBENCH_PREVIOUS_COMMAND_ID,
 } from '../src/client/index.ts'
 import type { BubblesInjected } from '../src/client/bubbles.tsx'
 import { WORKBENCH_MODAL_ID } from '../src/client/resource.ts'
@@ -79,6 +80,8 @@ function context(options: {
   const dismissBubbles = vi.fn(() => Promise.resolve())
   const openSession = vi.fn()
   const openWorkspace = vi.fn(() => Promise.resolve())
+  const pickDirectory = vi.fn<() => Promise<string | null>>(() => Promise.resolve(null))
+  const createWorkspace = vi.fn(async () => view('ws-new', 'New', []))
   const snapshot = options.surface ?? ORB
   const sessions = sessionList(options.sessions ?? [{ id: 's1' }])
   const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])])
@@ -91,8 +94,10 @@ function context(options: {
     locale: { register: record, bind: vi.fn(() => (key: string) => key) },
     resources: { register: vi.fn(() => () => {}) },
     sessions: { list: sessions },
-    workspaces: { list: workspaces },
-    uiWorkspace: { openSession, openWorkspace, startSession: vi.fn(), connectWorkspace: vi.fn() },
+    workspaces: { list: workspaces, create: createWorkspace },
+    uiWorkspace: {
+      openSession, openWorkspace, pickDirectory, startSession: vi.fn(), connectWorkspace: vi.fn(),
+    },
     surface: {
       snapshot: () => snapshot,
       async *follow(signal: AbortSignal) {
@@ -112,7 +117,7 @@ function context(options: {
   }
   return {
     ctx, registrations, commands, dictionaries, sessions, workspaces, presentModal, presentBubbles, dismissBubbles,
-    openSession, openWorkspace, disposers,
+    openSession, openWorkspace, pickDirectory, createWorkspace, disposers,
   }
 }
 
@@ -142,6 +147,7 @@ it('mounts the workbench dialog with its Workspace cards and conversation seat',
   })
   const workbench = workbenchInjected(registrations)
   expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: undefined, sessions: {} })
+  expect(workbench.hooks.notice.getSnapshot()).toBeNull()
   workbench.select(ws('ws-1'))
   expect(workbench.hooks.pages.getSnapshot()).toEqual({
     active: ws('ws-1'), sessions: { [ws('ws-1')]: sid('s2') },
@@ -157,7 +163,7 @@ it('labels every workbench command for the shortcut catalog', () => {
   const { ctx, commands } = context()
   apply(ctx as never)
   expect(commands.map(command => command.label()).sort()).toEqual([
-    'command.next', 'command.open', 'command.previous',
+    'command.newWorkspace', 'command.next', 'command.open', 'command.previous',
   ])
 })
 
@@ -258,6 +264,65 @@ it('cycles the Workspace pages with the next and previous commands only inside t
   const backwards = previous.resolve(contextAt(WORKBENCH_MODAL_ID))
   if (backwards.status === 'handled') backwards.run()
   expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-1'))
+})
+
+it('creates a Workspace from the picked directory and opens its page', async () => {
+  const { ctx, commands, registrations, pickDirectory, createWorkspace, openWorkspace, presentModal } = context()
+  pickDirectory.mockResolvedValueOnce('E:\\Project\\New')
+  createWorkspace.mockResolvedValueOnce(view('ws-new', 'New', []))
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  const resolution = commands.find(entry => entry.id === WORKBENCH_NEW_WORKSPACE_COMMAND_ID)!.resolve(contextAt(null))
+  expect(resolution.status).toBe('handled')
+  if (resolution.status === 'handled') resolution.run()
+  await vi.waitFor(() => { expect(openWorkspace).toHaveBeenCalledWith(ws('ws-new')) })
+  expect(createWorkspace).toHaveBeenCalledWith({ path: 'E:\\Project\\New' })
+  expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-new'))
+  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
+  expect(workbench.hooks.notice.getSnapshot()).toBeNull()
+})
+
+it('leaves the workbench closed when the directory picker is cancelled', async () => {
+  const { ctx, commands, pickDirectory, createWorkspace, presentModal } = context()
+  pickDirectory.mockResolvedValueOnce(null)
+  apply(ctx as never)
+  const resolution = commands.find(entry => entry.id === WORKBENCH_NEW_WORKSPACE_COMMAND_ID)!.resolve(contextAt(null))
+  if (resolution.status === 'handled') resolution.run()
+  await vi.waitFor(() => { expect(pickDirectory).toHaveBeenCalledOnce() })
+  expect(createWorkspace).not.toHaveBeenCalled()
+  expect(presentModal).not.toHaveBeenCalled()
+})
+
+it('reports a Workspace creation failure inside the dialog', async () => {
+  const { ctx, commands, registrations, pickDirectory, createWorkspace, presentModal } = context()
+  const failure = new Error('name conflict')
+  pickDirectory.mockResolvedValueOnce('E:\\Project\\Taken')
+  createWorkspace.mockRejectedValueOnce(failure)
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  const resolution = commands.find(entry => entry.id === WORKBENCH_NEW_WORKSPACE_COMMAND_ID)!.resolve(contextAt(null))
+  if (resolution.status === 'handled') resolution.run()
+  await vi.waitFor(() => { expect(workbench.hooks.notice.getSnapshot()).toBe('workbench.createFailed') })
+  expect(error).toHaveBeenCalledWith('better-interact: creating the workspace failed', failure)
+  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
+  error.mockRestore()
+})
+
+it('reports a directory-picker failure inside the dialog', async () => {
+  const { ctx, commands, registrations, pickDirectory, createWorkspace, presentModal } = context()
+  const failure = new Error('picker unavailable')
+  pickDirectory.mockRejectedValueOnce(failure)
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  const resolution = commands.find(entry => entry.id === WORKBENCH_NEW_WORKSPACE_COMMAND_ID)!.resolve(contextAt(null))
+  if (resolution.status === 'handled') resolution.run()
+  await vi.waitFor(() => { expect(workbench.hooks.notice.getSnapshot()).toBe('workbench.createFailed') })
+  expect(createWorkspace).not.toHaveBeenCalled()
+  expect(error).toHaveBeenCalledWith('better-interact: picking the workspace directory failed', failure)
+  expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
+  error.mockRestore()
 })
 
 it('follows the main view Session into its Workspace page while the dialog is open', () => {

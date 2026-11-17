@@ -123,6 +123,15 @@
   box-shadow: var(--dsw-elevation-window);
 }
 
+/* A failed Workspace creation reports between the tabs and the page. */
+.notice {
+  flex: none;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--dsw-alias-state-error-primary);
+  font: var(--dsw-font-xxs-12);
+}
+
 .empty {
   margin: auto;
   padding: 24px;

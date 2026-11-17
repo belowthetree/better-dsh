@@ -8,6 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { workbenchAddress } from '../src/client/resource.ts'
 import type { WorkbenchPagesState } from '../src/client/workbench-pages.ts'
 import { WorkbenchConversation, WorkbenchDialog } from '../src/client/workbench.tsx'
+import type { WorkbenchNotice } from '../src/client/workbench.tsx'
 
 type SessionRow = { readonly updatedAt: number }
 type WorkspaceRow = {
@@ -31,6 +32,7 @@ function dialogProps(options: {
   readonly workspaces?: readonly WorkspaceRow[]
   readonly sessions?: Readonly<Record<string, SessionRow>>
   readonly reference?: boolean
+  readonly notice?: WorkbenchNotice | null
 } = {}) {
   const workspaces = options.workspaces ?? [workspace('ws-1', 'Alpha', ['s1'])]
   const pages: WorkbenchPagesState = options.pages ?? { active: workspaces[0]?.workspaceId, sessions: {} }
@@ -41,6 +43,7 @@ function dialogProps(options: {
   const props = {
     useWorkspaces: (selector: (state: { items: readonly WorkspaceRow[] }) => unknown) => selector({ items: workspaces }),
     usePages: (selector: (state: WorkbenchPagesState) => unknown) => selector(pages),
+    useNotice: (selector: (state: WorkbenchNotice | null) => unknown) => selector(options.notice ?? null),
     useSessions: (selector: (state: { byId: Readonly<Record<string, SessionRow>> }) => unknown) =>
       selector({ byId: sessions }),
     useResource,
@@ -114,6 +117,12 @@ it('moves the page selection with the arrow keys', () => {
   expect(select).toHaveBeenLastCalledWith(ws('ws-2'))
   expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby'))
     .toBe('better-interact-workbench-tab-ws-1')
+})
+
+it('shows a failed Workspace creation notice', () => {
+  const { props } = dialogProps({ notice: 'workbench.createFailed' })
+  render(createElement(WorkbenchDialog, props as never))
+  expect(screen.getByRole('alert').textContent).toBe('workbench.createFailed')
 })
 
 it('leaves a single Workspace alone on the arrow keys', () => {

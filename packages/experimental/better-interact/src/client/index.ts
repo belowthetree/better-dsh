@@ -18,7 +18,7 @@ import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
-import type { WorkbenchInjected } from './workbench.tsx'
+import type { WorkbenchInjected, WorkbenchNotice } from './workbench.tsx'
 import { WorkbenchConversation, WorkbenchDialog, WORKBENCH_MODAL_SIZE } from './workbench.tsx'
 import { createWorkbenchPagesStore } from './workbench-pages.ts'
 import type { BubblesInjected } from './bubbles.tsx'
@@ -37,6 +37,9 @@ export const WORKBENCH_NEXT_COMMAND_ID = 'betterInteract.workbench.next'
 
 /** Command id showing the previous Workspace page. */
 export const WORKBENCH_PREVIOUS_COMMAND_ID = 'betterInteract.workbench.previous'
+
+/** Command id creating a Workspace from a Host-picked directory. */
+export const WORKBENCH_NEW_WORKSPACE_COMMAND_ID = 'betterInteract.workspace.new'
 
 /**
  * Session the main view retains, if any.
@@ -60,6 +63,7 @@ export function apply(ctx: Context): void {
     console.error(`better-interact: ${step} failed`, error)
   }
   const pages = createWorkbenchPagesStore()
+  const notice = createSnapshotStore<WorkbenchNotice | null>(null)
   const workspaces = (): readonly WorkspaceView[] => ctx.workspaces.list.getSnapshot().items
   const workspaceOf = (sessionId: SessionId): WorkspaceView | undefined =>
     workspaces().find(item => item.sessionIds.includes(sessionId))
@@ -82,6 +86,7 @@ export function apply(ctx: Context): void {
   const showPage = (workspaceId: WorkspaceId): void => {
     const workspace = workspaces().find(item => item.workspaceId === workspaceId)
     if (workspace === undefined) return
+    notice.set(null)
     pages.select(workspaceId)
     const sessionId = sessionOf(workspace)
     if (sessionId === undefined) {
@@ -107,27 +112,64 @@ export function apply(ctx: Context): void {
     return (newest ?? workspaces()[0])?.workspaceId
   }
 
-  /** Open the dialog on the most recently used Workspace page. */
-  const openWorkbench = (): void => {
-    const ordered = workspaces().map(item => item.workspaceId)
-    const chosen = pages.ensure(ordered, recentWorkspace())
-    if (chosen !== undefined) showPage(chosen)
+  /** Present the workbench dialog through the carrier. */
+  const presentWorkbench = (): void => {
     ctx.surface.presentModal(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE).catch((error: unknown) => {
       console.error('better-interact: opening the workbench failed', error)
     })
   }
 
+  /** Open the dialog on the most recently used Workspace page. */
+  const openWorkbench = (): void => {
+    notice.set(null)
+    const ordered = workspaces().map(item => item.workspaceId)
+    const chosen = pages.ensure(ordered, recentWorkspace())
+    if (chosen !== undefined) showPage(chosen)
+    presentWorkbench()
+  }
+
   /** Open the dialog on the Workspace page holding one Session. */
   const showSession = (sessionId: SessionId): void => {
+    notice.set(null)
     const workspace = workspaceOf(sessionId)
     if (workspace !== undefined) {
       pages.select(workspace.workspaceId)
       pages.setSession(workspace.workspaceId, sessionId)
       navigation.openSession(sessionId)
     }
-    ctx.surface.presentModal(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE).catch((error: unknown) => {
-      console.error('better-interact: opening the workbench failed', error)
-    })
+    presentWorkbench()
+  }
+
+  /** Pick a directory on the Host and open it as a Workspace page. */
+  const createFromDirectory = async (): Promise<void> => {
+    notice.set(null)
+    let path: string | null
+    try {
+      path = await navigation.pickDirectory()
+    } catch (error) {
+      fail('picking the workspace directory')(error)
+      notice.set('workbench.createFailed')
+      presentWorkbench()
+      return
+    }
+    if (path === null) return
+    let workspace: WorkspaceView
+    try {
+      workspace = await ctx.workspaces.create({ path })
+    } catch (error) {
+      fail('creating the workspace')(error)
+      notice.set('workbench.createFailed')
+      presentWorkbench()
+      return
+    }
+    pages.select(workspace.workspaceId)
+    try {
+      await navigation.openWorkspace(workspace.workspaceId)
+    } catch (error) {
+      fail('opening the workspace page')(error)
+      notice.set('workbench.createFailed')
+    }
+    presentWorkbench()
   }
 
   /** Cycle the Workspace pages while the dialog is open. */
@@ -171,8 +213,22 @@ export function apply(ctx: Context): void {
   registerCycle(WORKBENCH_NEXT_COMMAND_ID, 'command.next', 1, ['control'])
   registerCycle(WORKBENCH_PREVIOUS_COMMAND_ID, 'command.previous', -1, ['control', 'shift'])
 
+  ctx.effect(() => ctx.shortcuts.register({
+    id: WORKBENCH_NEW_WORKSPACE_COMMAND_ID as ShortcutCommandId,
+    label: () => t('command.newWorkspace'),
+    aliases: ['new workspace', 'open folder', 'create workspace'],
+    defaults: {
+      'desktop:windows': { code: 'KeyN', modifiers: ['control', 'alt'] },
+      'desktop:macos': { code: 'KeyN', modifiers: ['control', 'alt'] },
+    },
+    regions: ['page'],
+    modals: [WORKBENCH_MODAL_ID],
+    scope: 'system',
+    resolve: () => ({ status: 'handled', run: () => { void createFromDirectory() } }),
+  }), 'better-interact: new workspace command')
+
   const workbench: WorkbenchInjected = {
-    hooks: { pages: pages.store },
+    hooks: { pages: pages.store, notice },
     select: (workspaceId) => { showPage(workspaceId) },
   }
   ctx.effect(() => ctx.slots.inject('shell.modal', () => ctx.slots.register({
