@@ -29,38 +29,63 @@
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   pointer-events: auto;
-  transition: background 120ms ease, transform 120ms ease;
+  transition:
+    background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    transform var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+/* Fluent acrylic sheen: a soft light from the top edge and a faint rim. The
+   window leaves no room for a desktop-blur material, so the depth reads from
+   the layered sheen instead of transparency. */
+.orb::before {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  background:
+    radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--dsw-alias-bg-layer-3) 70%, transparent), transparent 68%),
+    linear-gradient(180deg, transparent 55%, color-mix(in srgb, var(--dsw-alias-bg-layer-1) 80%, transparent));
+  box-shadow: inset 0 1px 0 var(--dsw-alias-border-l1);
+  content: '';
+  pointer-events: none;
 }
 
 @media (hover: hover) {
   .orb[data-hovered] {
-    background: var(--dsw-alias-bg-layer-2);
+    background: var(--dsw-alias-interactive-bg-hover-solid);
   }
 }
 
 .orb[data-pressed] {
-  transform: scale(0.97);
+  transform: scale(0.98);
+}
+
+.orb[data-dragging] {
+  transform: none;
+  cursor: grabbing;
 }
 
 .orb:focus-visible {
   outline: 2px solid var(--dsw-focus-ring-color);
-  outline-offset: 2px;
+  outline-offset: -4px;
 }
 
-.orb[data-dragging] {
-  cursor: grabbing;
-}
-
+/* Fluent grabber: the drag affordance appears as a short pill on hover. */
 .grip {
   position: absolute;
-  top: 10px;
+  top: 12px;
   left: 50%;
   display: flex;
-  transform: translateX(-50%);
+  width: 22px;
+  height: 3px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: currentColor;
   color: var(--dsw-alias-label-tertiary);
+  transform: translateX(-50%);
   opacity: 0;
   pointer-events: auto;
-  transition: opacity 120ms ease;
+  transition: opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 
 .orb[data-hovered] .grip,
@@ -74,7 +99,10 @@
   height: 34px;
   border-radius: 50%;
   corner-shape: round;
-  background: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-state-business-primary);
+  /* The accent disc carries a short halo, so the resting orb still reads as a
+     Fluent presence light instead of a plain dot. */
+  box-shadow: 0 0 18px color-mix(in srgb, var(--dsw-alias-state-business-primary) 26%, transparent);
 }
 
 .speaking {
@@ -109,7 +137,7 @@
 
 .spinner {
   display: flex;
-  color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-state-business-primary);
   animation: orb-spin 900ms linear infinite;
 }
 
@@ -123,6 +151,10 @@
   transition: none;
 }
 
+.orbRoot[data-reduced-motion] .mic {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .speaking,
   .spinner,
@@ -131,6 +163,14 @@
   }
 
   .orb {
+    transition: none;
+  }
+
+  .mic {
+    transition: none;
+  }
+
+  .prompt::after {
     transition: none;
   }
 }
@@ -166,14 +206,25 @@
   width: 26px;
   height: 26px;
   padding: 0;
-  border: 0.5px solid var(--dsw-alias-border-l1);
+  border: 0;
   border-radius: 50%;
   corner-shape: round;
   appearance: none;
   background: var(--dsw-alias-bg-layer-2);
+  box-shadow: inset 0 1px 0 var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   pointer-events: auto;
+  transition:
+    background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+@media (hover: hover) {
+  .mic:hover {
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
 .mic[data-capturing] {
@@ -183,13 +234,14 @@
 
 .mic:focus-visible {
   outline: 2px solid var(--dsw-focus-ring-color);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 /* Chat box content. The frame keeps the dismissal layer, focus trap, and Escape,
    so this entry owns the surface alone: one card shaped like the shared composer
    — elevated input fill, hairline stroke, and a trailing control row. */
 .prompt {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -200,7 +252,7 @@
   border-radius: var(--dsw-radius-panel);
   background: var(--dsw-specific-input-major);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
-  box-shadow: var(--dsw-elevation-soft);
+  box-shadow: var(--dsw-elevation-soft), inset 0 1px 0 var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-primary);
   /* The draft follows the Settings content size, like the composer's card. */
   font-size: var(--dsh-content-font-size, 14px);
@@ -209,6 +261,31 @@
      elevated pair the composer's card declares. */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* Fluent focus underline: the field shows a two-pixel accent line while the
+   draft has focus, then fades it out without moving the card. */
+.prompt::after {
+  position: absolute;
+  right: 24px;
+  bottom: 2px;
+  left: 24px;
+  height: 2px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-state-business-primary);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleX(0.72);
+  transition:
+    opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    transform var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+.prompt:focus-within::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .promptInput {
@@ -240,13 +317,16 @@
   }
 }
 
+/* Fluent command row: a hairline separates the draft from its controls, and the
+   row keeps the same right-aligned voice and send pair. */
 .promptActions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
   min-height: 34px;
-  padding: 2px 8px 6px;
+  padding: 4px 8px 6px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .promptStatus {
@@ -324,6 +404,7 @@
   border-radius: 999px;
   corner-shape: round;
   background: var(--dsw-alias-button-info-fill);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dsw-alias-label-on-color) 22%, transparent);
   color: var(--dsw-alias-label-on-color);
   cursor: pointer;
   transition: background-color 100ms ease;
