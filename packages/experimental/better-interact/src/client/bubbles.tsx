@@ -8,6 +8,7 @@ import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NS } from './locales.ts'
 import { workbenchAddress } from './resource.ts'
@@ -45,8 +46,11 @@ export interface BubblesInjected {
   show(): void
   /** Ask the carrier to hide the bubble column window. */
   hide(): void
-  /** Raise the workbench for the Session the bubble column reports. */
-  open(): void
+  /**
+   * Raise the workbench of one Session, adding its card when the strip has none.
+   * @param sessionId - Session whose conversation the dialog should show.
+   */
+  open(sessionId: SessionId): void
   /** Report whether the pointer is over the bubble column, so the carrier can pass clicks through elsewhere. */
   pointerInside(inside: boolean): void
 }
@@ -310,7 +314,7 @@ export function BubbleStack(props: BubbleStackProps) {
         style={{ animationDelay: `${Math.max(0, shown.length - 1 - index) * BUBBLE_STAGGER_MS}ms` }}
         data-kind={bubbleKind(entry)}
         title={t('command.open')}
-        onClick={() => { open() }}
+        onClick={() => { open(props.sessionId) }}
       >
         {bubblePreview(entry.text)}
       </button>)}

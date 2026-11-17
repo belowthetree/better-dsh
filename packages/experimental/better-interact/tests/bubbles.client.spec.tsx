@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   BUBBLE_HOVER_LEAVE_MS, BUBBLE_MOTION_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
   assistantText, bubbleKind, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack,
@@ -53,6 +54,7 @@ function stack(options: {
   const open = vi.fn()
   const pointerInside = vi.fn()
   const props = {
+    sessionId: 'session-1' as SessionId,
     useSurface: (select: (value: SurfaceSnapshot) => unknown) => select({
       ...ORB,
       role: options.role ?? 'bubbles',
@@ -509,7 +511,7 @@ describe('BubbleStack', () => {
     const { props, open } = stack({ chat: chat({ answers: [{ turn: 1, response: 'answer' }] }) })
     render(createElement(BubbleStack, props as never))
     fireEvent.click(screen.getByRole('button'))
-    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledExactlyOnceWith('session-1')
   })
 
   it('labels the column and its bubbles for assistive technology', () => {

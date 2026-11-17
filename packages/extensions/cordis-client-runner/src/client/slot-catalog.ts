@@ -122,7 +122,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'better-interact.bubbles.stack\', () => ctx.slots.register(\n      { name: \'better-interact.bubbles.stack\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/experimental/better-interact/src/client/bubbles.tsx:34',
+    source: 'packages/experimental/better-interact/src/client/bubbles.tsx:35',
   },
   {
     key: 'better-interact.workbench.conversation',
@@ -163,7 +163,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'better-interact.workbench.conversation\', () => ctx.slots.register(\n      { name: \'better-interact.workbench.conversation\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/experimental/better-interact/src/client/workbench.tsx:15',
+    source: 'packages/experimental/better-interact/src/client/workbench.tsx:18',
   },
   {
     key: 'contextMenu.content',

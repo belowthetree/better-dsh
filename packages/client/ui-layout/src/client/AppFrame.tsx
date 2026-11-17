@@ -152,6 +152,8 @@ function modalFocusables(card: HTMLElement): HTMLElement[] {
  * One modal presentation layer: a transparent dismissal area and a focus-trapped
  * card around the active `shell.modal` entry. Escape and activation outside the
  * card dismiss the presentation through the surface carrier; clicking the card does not.
+ * The card publishes the entry id as the shortcut modal context, so a command can declare
+ * the dialogs it runs in.
  */
 function ModalLayer({ modal, renderSlot, dismissModal }: {
   modal: string
@@ -209,6 +211,7 @@ function ModalLayer({ modal, renderSlot, dismissModal }: {
         ref={card}
         className={css.modalCard}
         data-shell-modal
+        data-shortcut-modal={modal}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

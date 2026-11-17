@@ -1,18 +1,97 @@
-/* The dialog card is the frame's; the workbench fills it so the conversation
-   keeps its own transcript scroll area and the composer stays docked. The
-   section marks itself data-shell-modal-fill so the frame gives the card the
-   dialog height. */
+/* The frame gives the modal card the dialog box but no chrome: the workbench
+   draws the cards of its Sessions above the conversation panel on the
+   transparent window. The section marks itself data-shell-modal-fill so the
+   frame gives it the dialog height. */
 .root {
   display: flex;
   flex-direction: column;
+  gap: 12px;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   min-height: 0;
 }
 
+/* One card per workbench, in strip order; a long strip scrolls without a bar.
+   The strip scrolls over the elevated cards, so it rebinds the l2 scrollbar pair
+   even though its own bar stays hidden. */
+.tabs {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  min-height: 68px;
+  padding: 0 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* The cards sit on the transparent window, so they take the elevated fill that
+   separates the bubble cards from an arbitrary desktop. */
+.tab {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  box-sizing: border-box;
+  width: 96px;
+  height: 68px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-2);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
+  box-shadow: var(--dsw-elevation-panel);
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .tab:hover {
+    background: var(--dsw-alias-bg-layer-3);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.tab[data-active] {
+  background: var(--dsw-alias-bg-layer-3);
+  box-shadow: var(--dsw-elevation-panel), 0 0 0 1.5px var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.tabTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* The modal card's chrome, drawn here because the strip sits outside it. */
+.panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-bg-base);
+  box-shadow: var(--dsw-elevation-window);
+}
+
 .empty {
-  margin: 0;
+  margin: auto;
   padding: 24px;
   color: var(--dsw-alias-label-tertiary);
   font: var(--dsw-font-s-14);
