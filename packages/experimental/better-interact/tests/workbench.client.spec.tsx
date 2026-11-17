@@ -157,6 +157,7 @@ it('focuses the current bookmark when a focus request arrives', () => {
   const view = render(createElement(WorkbenchDialog, props as never))
   view.rerender(createElement(WorkbenchDialog, { ...props, useFocus: (selector: (value: number) => unknown) => selector(1) } as never))
   expect(document.activeElement?.textContent).toBe('Second')
+  expect(document.activeElement?.getAttribute('data-cursor')).toBe('true')
 })
 
 it('moves the selection ring without switching Sessions', () => {
@@ -171,9 +172,12 @@ it('moves the selection ring without switching Sessions', () => {
   bookmarks[0]?.focus()
   fireEvent.keyDown(bookmarks[0]!, { key: 'ArrowDown' })
   expect(document.activeElement).toBe(bookmarks[1])
+  expect(bookmarks[1]?.getAttribute('data-cursor')).toBe('true')
   expect(selectSession).not.toHaveBeenCalled()
   fireEvent.keyDown(bookmarks[1]!, { key: 'ArrowLeft' })
   expect(document.activeElement).toBe(bookmarks[0])
+  expect(bookmarks[0]?.getAttribute('data-cursor')).toBe('true')
+  expect(bookmarks[1]?.getAttribute('data-cursor')).toBeNull()
   expect(selectSession).not.toHaveBeenCalled()
 })
 

@@ -220,11 +220,22 @@
   content: '';
 }
 
-/* Keyboard navigation ends on the bookmark, so the focus ring doubles as the
-   visible selection the Session shortcut hands to the list. */
-.session:focus {
-  outline: 2px solid var(--dsw-focus-ring-color);
-  outline-offset: -2px;
+/* The keyboard cursor ring is a selection indicator, not the global focus
+   ring: pointer modality suppresses focus-ring paint, but the bookmark the
+   keyboard is on must stay visible while the pointer merely hovers it. */
+.session[data-cursor]::after {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--dsw-alias-state-business-primary);
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
+}
+
+/* The cursor ring already marks keyboard focus, so the global ring would only
+   double it. */
+.session:focus-visible {
+  outline: none;
 }
 
 .sessionTitle {

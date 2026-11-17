@@ -1,5 +1,5 @@
 /** Workbench dialog hosting one page per Workspace, its Session bookmarks, and the shared conversation. */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -90,6 +90,9 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const sessions = props.useSessions(state => state.byId)
   const sessionsRef = useRef<HTMLElement | null>(null)
   const lastFocus = useRef(focusRequest)
+  // The keyboard cursor is local presentation state: it marks the bookmark
+  // Enter would activate and stays distinct from the current Session.
+  const [cursor, setCursor] = useState<SessionId | null>(null)
   const active = pages.active !== undefined && workspaces.some(item => item.workspaceId === pages.active)
     ? pages.active
     : workspaces[0]?.workspaceId
@@ -180,7 +183,10 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
           return <Tooltip key={bookmarkId} label={label} shortcutKeys={hints.sessions}
             side="right" portal delayMs={300} maxWidth={360}>
             <button type="button" className={css.session} data-workbench-session=""
-              data-active={selected || undefined} aria-current={selected ? 'page' : undefined}
+              data-active={selected || undefined} data-cursor={bookmarkId === cursor || undefined}
+              aria-current={selected ? 'page' : undefined}
+              onFocus={() => { setCursor(bookmarkId) }}
+              onBlur={() => { setCursor(value => (value === bookmarkId ? null : value)) }}
               onClick={() => { selectSession(bookmarkId) }}>
               <span className={css.sessionTitle}>{label}</span>
             </button>
