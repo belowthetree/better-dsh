@@ -55,6 +55,11 @@ async function click(element: Element): Promise<void> {
   await act(async () => { fireEvent.click(element) })
 }
 
+it('names the chat box as the management conversation', () => {
+  fixture()
+  expect(document.querySelector('h2')?.textContent).toBe(zh['prompt.title'])
+})
+
 it('starts from the held transcript, focuses the input, and submits on Enter', async () => {
   const b = fixture({ transcript: 'dictated text' })
   expect(document.querySelector('[data-orb-prompt]')?.getAttribute('data-shell-modal-surface')).toBe('bare')

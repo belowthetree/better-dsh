@@ -3,7 +3,7 @@ import type { ModalSizeHint, SurfaceSnapshot } from '@deepseek-ai/dsh-client-sur
 import type { DesktopFormLayout, DesktopWorkArea } from './form-layout.ts'
 import { clampFormLayout } from './form-layout.ts'
 import type { DesktopFormRole, FormPresentationBounds } from './form-window.ts'
-import { bubblesBounds, modalBounds, orbBounds, panelBounds, presentationResizable } from './form-window.ts'
+import { bubblesBounds, modalBounds, orbBounds, ORB_SNAP_GAP, panelBounds, presentationResizable } from './form-window.ts'
 
 /** Presentations the surface window hosts; the orb window always presents the orb. */
 type SurfacePresentation = 'orb' | 'panel' | 'modal'
@@ -21,6 +21,7 @@ export type SurfaceCommand =
   | { readonly kind: 'dismissBubbles' }
   | { readonly kind: 'setPinned'; readonly pinned: boolean }
   | { readonly kind: 'dragBy'; readonly deltaX: number; readonly deltaY: number }
+  | { readonly kind: 'snap' }
   | { readonly kind: 'pointerInside'; readonly inside: boolean }
 
 /** Native effects the controller applies to the three form windows. */
@@ -109,6 +110,7 @@ export function parseSurfaceCommand(raw: unknown): SurfaceCommand | undefined {
     case 'dismissModal':
     case 'presentBubbles':
     case 'dismissBubbles':
+    case 'snap':
       return { kind: raw.kind }
     case 'presentModal': {
       if (typeof raw.id !== 'string' || raw.id.length === 0 || raw.id.length > MAX_MODAL_ID_CHARS) return undefined
@@ -241,6 +243,28 @@ export class DesktopSurfaceController {
         if (this.#bubblesVisible) this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, this.#effects.workArea()))
         this.#effects.persist(this.#layout)
         return
+      case 'snap': {
+        if (origin !== 'orb') return
+        const area = this.#effects.workArea()
+        const current = orbBounds(this.#layout, area)
+        const left = current.x - area.x
+        const top = current.y - area.y
+        const right = area.x + area.width - (current.x + current.width)
+        const bottom = area.y + area.height - (current.y + current.height)
+        const nearest = Math.min(left, top, right, bottom)
+        if (nearest > ORB_SNAP_GAP) return
+        let x = this.#layout.orb.x
+        let y = this.#layout.orb.y
+        if (nearest === left) x = area.x
+        else if (nearest === right) x = area.x + area.width - current.width
+        if (nearest === top) y = area.y
+        else if (nearest === bottom) y = area.y + area.height - current.height
+        this.#layout = clampFormLayout({ ...this.#layout, orb: { x, y } }, area)
+        this.#effects.setBounds('orb', orbBounds(this.#layout, area))
+        if (this.#bubblesVisible) this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, area))
+        this.#effects.persist(this.#layout)
+        return
+      }
       case 'pointerInside': {
         const orbHoverChanged = origin === 'orb' && this.#pointer.orb.inside !== command.inside
         this.#pointer[origin] = { reported: true, inside: command.inside }
@@ -382,14 +406,17 @@ export class DesktopSurfaceController {
   }
 
   #ignoreMouse(role: DesktopFormRole): boolean {
+    // The square orb window is the artwork itself, so it stays interactive: a
+    // click-through orb can swallow the pointer re-entry that would restore it.
+    if (role === 'orb') return false
     const pointer = this.#pointer[role]
     // The renderer owns the hit test; until it reports pointer presence the window
     // stays interactive so a first click is never lost to click-through.
     if (!pointer.reported || pointer.inside) return false
     // The surface window presents the panel and the modal, which keep every pixel interactive.
     if (role === 'surface') return false
-    // The orb and the bubble column are click-through everywhere but their own content.
-    return role === 'orb' || this.#bubblesVisible
+    // The bubble column is click-through everywhere but its own content.
+    return this.#bubblesVisible
   }
 
   #publish(): void {

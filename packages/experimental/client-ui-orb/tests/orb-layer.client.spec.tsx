@@ -7,6 +7,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
@@ -96,20 +97,22 @@ function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: Sessi
   const voice = createSnapshotStore<VoiceOutputSnapshot | null>(null)
   const reducedMotion = createSnapshotStore(false)
   const sessions = createSnapshotStore<SessionListState>(initial.sessions ?? EMPTY_LIST)
+  const theme = createSnapshotStore<ThemePreference>('system')
   const actions = {
-    openChat: vi.fn(), dragBy: vi.fn(), pointerInside: vi.fn(), toggleVoice: vi.fn(),
+    openChat: vi.fn(), dragBy: vi.fn(), pointerInside: vi.fn(), toggleVoice: vi.fn(), setTheme: vi.fn(), snap: vi.fn(),
   }
   const props = {
     useSurface: bindSnapshotSelector(surface),
     useCapture: bindSnapshotSelector(captureStore),
     useVoice: bindSnapshotSelector(voice),
     useReducedMotion: bindSnapshotSelector(reducedMotion),
+    useTheme: bindSnapshotSelector(theme),
     useSessions: bindSnapshotSelector(sessions),
     actions,
     t: makeTranslate(zh),
   } as OrbLayerProps
   render(<OrbLayer {...props} />)
-  return { surface, capture: captureStore, voice, reducedMotion, sessions, actions }
+  return { surface, capture: captureStore, voice, reducedMotion, sessions, theme, actions }
 }
 
 /** The overlay root and the orb button. */
@@ -117,6 +120,7 @@ const root = (): HTMLElement => document.querySelector('[data-orb]') as HTMLElem
 const orb = (): HTMLElement => document.querySelector('[data-orb-button]') as HTMLElement
 
 beforeEach(() => {
+  window.localStorage.clear()
   frames = new Map()
   nextFrame = 1
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -140,7 +144,8 @@ beforeEach(() => {
 it('labels the idle, capturing, transcribing, speaking, and running states', () => {
   const b = fixture()
   expect(root().dataset.state).toBe('idle')
-  expect(document.querySelector('[data-orb-glyph]')?.getAttribute('data-orb-glyph')).toBe('idle')
+  expect(document.querySelector('[data-orb-art]')).not.toBeNull()
+  expect(document.querySelector('[data-orb-glyph]')).toBeNull()
   expect(orb().getAttribute('aria-label')).toBe(zh['orb.open'])
 
   act(() => { b.capture.set(capture('capturing')) })
@@ -162,26 +167,65 @@ it('labels the idle, capturing, transcribing, speaking, and running states', () 
   expect(orb().getAttribute('aria-label')).toBe(zh['orb.openRunning'])
 })
 
-it('offers a mic control only while the capture service is mounted', () => {
+it('keeps the side-peek artwork once the orb floats away from a work-area edge', () => {
+  const original = {
+    screenX: Object.getOwnPropertyDescriptor(window, 'screenX'),
+    screenY: Object.getOwnPropertyDescriptor(window, 'screenY'),
+    outerWidth: Object.getOwnPropertyDescriptor(window, 'outerWidth'),
+    outerHeight: Object.getOwnPropertyDescriptor(window, 'outerHeight'),
+    availLeft: Object.getOwnPropertyDescriptor(window.screen, 'availLeft'),
+    availTop: Object.getOwnPropertyDescriptor(window.screen, 'availTop'),
+    availWidth: Object.getOwnPropertyDescriptor(window.screen, 'availWidth'),
+    availHeight: Object.getOwnPropertyDescriptor(window.screen, 'availHeight'),
+  }
+  Object.defineProperty(window, 'screenX', { configurable: true, value: 400 })
+  Object.defineProperty(window, 'screenY', { configurable: true, value: 300 })
+  Object.defineProperty(window, 'outerWidth', { configurable: true, value: 160 })
+  Object.defineProperty(window, 'outerHeight', { configurable: true, value: 160 })
+  Object.defineProperty(window.screen, 'availLeft', { configurable: true, value: 0 })
+  Object.defineProperty(window.screen, 'availTop', { configurable: true, value: 0 })
+  Object.defineProperty(window.screen, 'availWidth', { configurable: true, value: 1000 })
+  Object.defineProperty(window.screen, 'availHeight', { configurable: true, value: 800 })
+  try {
+    fixture()
+    const art = document.querySelector('[data-orb-art]') as HTMLImageElement
+    expect(art.getAttribute('data-orb-edge')).toBeNull()
+    expect(art.getAttribute('src')).toContain('orb-side-peek')
+  } finally {
+    for (const [key, descriptor] of Object.entries(original)) {
+      const target: object = key.startsWith('avail') ? window.screen : window
+      if (descriptor === undefined) Reflect.deleteProperty(target, key)
+      else Object.defineProperty(target, key, descriptor)
+    }
+  }
+})
+
+it('opens the settings menu on context menu and switches the artwork set', () => {
   const b = fixture()
-  expect(document.querySelector('[data-orb-mic]')).toBeNull()
-  act(() => { b.capture.set(capture('idle')) })
-  const mic = document.querySelector('[data-orb-mic]') as HTMLButtonElement
-  expect(mic.getAttribute('aria-label')).toBe(zh['orb.micStart'])
-  fireEvent.pointerDown(mic, { pointerId: 1, button: 0, clientX: 40, clientY: 60 })
-  fireEvent.pointerEnter(mic)
-  fireEvent.pointerLeave(mic)
-  expect(b.actions.pointerInside).toHaveBeenNthCalledWith(1, true)
-  expect(b.actions.pointerInside).toHaveBeenNthCalledWith(2, false)
-  fireEvent.click(mic)
-  expect(b.actions.toggleVoice).toHaveBeenCalledOnce()
+  fireEvent.contextMenu(orb())
+  const matureRow = document.querySelector('[data-orb-menu-item="mature"]') as HTMLButtonElement
+  expect(matureRow).not.toBeNull()
+  expect(root().dataset.appearance).toBe('cute')
+  expect((document.querySelector('[data-orb-art]') as HTMLImageElement).getAttribute('src')).not.toContain('mature')
+  b.actions.openChat.mockClear()
+  fireEvent.click(matureRow)
+  expect(document.querySelector('[data-orb-menu-item="mature"]')).toBeNull()
+  expect(root().dataset.appearance).toBe('mature')
+  expect((document.querySelector('[data-orb-art]') as HTMLImageElement).getAttribute('src')).toContain('mature')
   expect(b.actions.openChat).not.toHaveBeenCalled()
+  expect(window.localStorage.getItem('dsh.orb.appearance')).toBe('mature')
+})
 
-  act(() => { b.capture.set(capture('capturing')) })
-  expect(mic.getAttribute('aria-label')).toBe(zh['orb.micStop'])
-
-  act(() => { b.capture.set(null) })
-  expect(document.querySelector('[data-orb-mic]')).toBeNull()
+it('persists the theme choice and closes the settings menu on Escape', () => {
+  const b = fixture()
+  fireEvent.contextMenu(orb())
+  fireEvent.click(document.querySelector('[data-orb-menu-item="dark"]') as HTMLElement)
+  expect(b.actions.setTheme).toHaveBeenCalledExactlyOnceWith('dark')
+  expect(document.querySelector('[data-orb-menu-item="dark"]')).toBeNull()
+  fireEvent.contextMenu(orb())
+  expect(document.querySelector('[data-orb-menu-item="light"]')).not.toBeNull()
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(document.querySelector('[data-orb-menu-item="light"]')).toBeNull()
 })
 
 it('marks hover, press, and the reduced-motion preference', () => {
@@ -203,6 +247,7 @@ it('opens the chat dialog on click and reports pointer presence from the orb and
   const b = fixture()
   fireEvent.click(orb())
   expect(b.actions.openChat).toHaveBeenCalledOnce()
+  expect(b.actions.snap).not.toHaveBeenCalled()
   fireEvent.pointerEnter(orb())
   expect(b.actions.pointerInside).toHaveBeenLastCalledWith(true)
   fireEvent.pointerLeave(orb())
@@ -232,6 +277,7 @@ it('drags the orb through throttled deltas and suppresses the click it would pro
   expect(frames.size).toBe(0)
   expect(b.actions.dragBy.mock.calls).toEqual([[20, 8], [12, 0]])
   expect(orb().dataset.dragging).toBeUndefined()
+  expect(b.actions.snap).toHaveBeenCalledOnce()
   fireEvent.click(orb())
   expect(b.actions.openChat).not.toHaveBeenCalled()
 })
@@ -292,12 +338,14 @@ it('ignores a secondary press, a foreign pointer, and a cancelled gesture', () =
   expect(orb().dataset.dragging).toBeUndefined()
 })
 
-it('leaves a secondary click inert', () => {
+it('opens the settings menu on a secondary click without opening the chat', () => {
   const b = fixture()
   act(() => { b.voice.set(playback()) })
   fireEvent.contextMenu(orb())
-  expect(screen.queryByRole('menu')).toBeNull()
+  expect(screen.getByRole('menu')).not.toBeNull()
   expect(b.actions.openChat).not.toHaveBeenCalled()
+  fireEvent.pointerDown(document.querySelector('[data-orb-menu-layer]') as HTMLElement)
+  expect(screen.queryByRole('menu')).toBeNull()
 })
 
 it('draws no orb in the surface window role', () => {

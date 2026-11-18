@@ -46,6 +46,8 @@ export interface SurfaceService {
    * @param deltaY - vertical pointer delta in logical pixels.
    */
   dragBy(deltaX: number, deltaY: number): Promise<void>
+  /** Snap the orb flush to the nearest work-area edge while it rests within the snap distance. */
+  snap(): Promise<void>
   /**
    * Report whether the pointer is over interactive content.
    * @param inside - whether the pointer is over the reporting window's content.
@@ -137,6 +139,11 @@ export class SurfaceRuntime implements SurfaceService {
   /** Move the orb by a pointer delta; main clamps it to the work area. */
   async dragBy(deltaX: number, deltaY: number): Promise<void> {
     await this.command(() => this.adapter.dragBy(deltaX, deltaY))
+  }
+
+  /** Snap the orb flush to a nearby work-area edge after a drag. */
+  async snap(): Promise<void> {
+    await this.command(() => this.adapter.snap())
   }
 
   /** Report whether the pointer is over interactive content. */

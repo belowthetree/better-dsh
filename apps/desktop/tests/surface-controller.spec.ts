@@ -94,6 +94,7 @@ describe('parseSurfaceCommand', () => {
     [{ kind: 'dismissModal' }, { kind: 'dismissModal' }],
     [{ kind: 'presentBubbles' }, { kind: 'presentBubbles' }],
     [{ kind: 'dismissBubbles' }, { kind: 'dismissBubbles' }],
+    [{ kind: 'snap' }, { kind: 'snap' }],
     [{ kind: 'presentModal', id: 'voice-setup' }, { kind: 'presentModal', id: 'voice-setup' }],
     [
       { kind: 'presentModal', id: 'voice-setup', size: { heightRatio: 0.8 } },
@@ -227,7 +228,7 @@ describe('DesktopSurfaceController', () => {
     expect(controller.snapshot('surface').presentation).toBe('orb')
     expect(window.hidden).toBe(1)
     expect(lastOf(window.resizable, 'orb')).toBe(false)
-    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1300, y: 400, width: 112, height: 112 })
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1280, y: 400, width: 160, height: 160 })
   })
 
   it('restores the previous presentation when the modal dismisses', () => {
@@ -376,16 +377,53 @@ describe('DesktopSurfaceController', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'dragBy', deltaX: 20, deltaY: -30 }, 'orb')
-    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1320, y: 370, width: 112, height: 112 })
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1280, y: 370, width: 160, height: 160 })
     controller.dispatch({ kind: 'dragBy', deltaX: 10_000, deltaY: 10_000 }, 'orb')
-    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1328, y: 788, width: 112, height: 112 })
-    expect(window.persisted.at(-1)?.orb).toEqual({ x: 1328, y: 788 })
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1280, y: 740, width: 160, height: 160 })
+    expect(window.persisted.at(-1)?.orb).toEqual({ x: 1280, y: 740 })
   })
 
-  it('ignores drag commands reported by the surface window', () => {
+  it('snaps the orb flush to the nearest work-area edge after a nearby drop', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, orb: { x: 1272, y: 400 } }, effects: window })
+    controller.dispatch({ kind: 'snap' }, 'orb')
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1280, y: 400, width: 160, height: 160 })
+    expect(window.persisted.at(-1)?.orb).toEqual({ x: 1280, y: 400 })
+  })
+
+  it('snaps the orb toward the closest edge in each direction', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, orb: { x: 8, y: 8 } }, effects: window })
+    controller.dispatch({ kind: 'snap' }, 'orb')
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 0, y: 0, width: 160, height: 160 })
+    controller.dispatch({ kind: 'dragBy', deltaX: 1272, deltaY: 732 }, 'orb')
+    controller.dispatch({ kind: 'snap' }, 'orb')
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1280, y: 740, width: 160, height: 160 })
+  })
+
+  it('leaves an orb dropped away from every edge where it is', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, orb: { x: 600, y: 300 } }, effects: window })
+    controller.dispatch({ kind: 'snap' }, 'orb')
+    expect(window.bounds).toEqual([])
+    expect(window.persisted).toEqual([])
+  })
+
+  it('moves the bubble column with the snapped orb', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, orb: { x: 1272, y: 400 } }, effects: window })
+    controller.dispatch({ kind: 'presentBubbles' }, 'surface')
+    window.bounds.length = 0
+    controller.dispatch({ kind: 'snap' }, 'orb')
+    expect(boundsOf(window, 'orb')).toHaveLength(1)
+    expect(boundsOf(window, 'bubbles')).toHaveLength(1)
+  })
+
+  it('ignores drag and snap commands reported by the surface window', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'dragBy', deltaX: 40, deltaY: 40 })
+    controller.dispatch({ kind: 'snap' })
     expect(window.bounds).toEqual([])
     expect(window.persisted).toEqual([])
   })
@@ -395,26 +433,26 @@ describe('DesktopSurfaceController', () => {
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'presentModal', id: 'orb.chat' })
     controller.dispatch({ kind: 'dragBy', deltaX: 10, deltaY: 10 }, 'orb')
-    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1310, y: 410, width: 112, height: 112 })
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 1280, y: 410, width: 160, height: 160 })
     expect(controller.snapshot('surface').presentation).toBe('modal')
   })
 
-  it('keeps the orb window interactive until its renderer reports pointer presence', () => {
+  it('keeps the orb window interactive so a first click always reaches the artwork', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     expect(window.ignored).toEqual([])
     controller.dispatch({ kind: 'pointerInside', inside: false }, 'orb')
-    expect(lastOf(window.ignored, 'orb')).toBe(true)
+    expect(lastOf(window.ignored, 'orb')).toBe(false)
     controller.dispatch({ kind: 'pointerInside', inside: true }, 'orb')
     expect(lastOf(window.ignored, 'orb')).toBe(false)
   })
 
-  it('keeps the orb window click-through while the surface window presents a panel', () => {
+  it('keeps the orb window interactive while the surface window presents a panel', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
     controller.dispatch({ kind: 'pointerInside', inside: false }, 'orb')
     controller.dispatch({ kind: 'expand' })
-    expect(lastOf(window.ignored, 'orb')).toBe(true)
+    expect(lastOf(window.ignored, 'orb')).toBe(false)
     expect(lastOf(window.ignored, 'surface')).toBe(false)
   })
 
@@ -434,11 +472,11 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentBubbles' })
     controller.dispatch({ kind: 'expand' })
     controller.reflow()
-    expect(window.persisted.at(-1)?.orb).toEqual({ x: 688, y: 400 })
-    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 688, y: 400, width: 112, height: 112 })
-    expect(boundsOf(window, 'surface').at(-1)).toEqual(panelBounds({ ...LAYOUT, orb: { x: 688, y: 400 } },
+    expect(window.persisted.at(-1)?.orb).toEqual({ x: 640, y: 400 })
+    expect(boundsOf(window, 'orb').at(-1)).toEqual({ x: 640, y: 400, width: 160, height: 160 })
+    expect(boundsOf(window, 'surface').at(-1)).toEqual(panelBounds({ ...LAYOUT, orb: { x: 640, y: 400 } },
       { x: 0, y: 0, width: 800, height: 600 }))
-    expect(boundsOf(window, 'bubbles').at(-1)).toEqual(bubblesBounds({ ...LAYOUT, orb: { x: 688, y: 400 } },
+    expect(boundsOf(window, 'bubbles').at(-1)).toEqual(bubblesBounds({ ...LAYOUT, orb: { x: 640, y: 400 } },
       { x: 0, y: 0, width: 800, height: 600 }))
   })
 
@@ -450,7 +488,7 @@ describe('DesktopSurfaceController', () => {
     controller.restore()
     expect(boundsOf(window, 'orb')).toEqual([orbBounds(LAYOUT, WORK_AREA)])
     expect(lastOf(window.resizable, 'orb')).toBe(false)
-    expect(lastOf(window.ignored, 'orb')).toBe(true)
+    expect(lastOf(window.ignored, 'orb')).toBe(false)
     expect(window.hidden).toBe(1)
     expect(window.bubblesHidden).toBe(1)
     expect(window.bubblesRevealed).toBe(0)
@@ -612,7 +650,7 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentBubbles' })
     controller.dispatch({ kind: 'dragBy', deltaX: -10, deltaY: -10 }, 'orb')
     expect(boundsOf(window, 'bubbles').at(-1))
-      .toEqual(bubblesBounds({ ...LAYOUT, orb: { x: 1280, y: 380 } }, WORK_AREA))
+      .toEqual(bubblesBounds({ ...LAYOUT, orb: { x: 1260, y: 380 } }, WORK_AREA))
   })
 
   it('hides the bubble column while a modal stays open when the windows are restored', () => {

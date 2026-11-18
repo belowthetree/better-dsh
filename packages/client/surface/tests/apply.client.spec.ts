@@ -36,6 +36,7 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     dismissBubbles: async () => {},
     setPinned: async () => {},
     dragBy: async () => {},
+    snap: async () => {},
     pointerInside: () => {},
   }
   return {

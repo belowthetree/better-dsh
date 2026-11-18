@@ -6,6 +6,7 @@ import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversa
 import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/client'
 import type { HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { NS } from './locales.ts'
@@ -88,6 +89,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const focusRequest = props.useFocus(value => value)
   const hints = props.useHints(value => value)
   const sessions = props.useSessions(state => state.byId)
+  const { getTriggerProps } = props.useContextMenu()
   const sessionsRef = useRef<HTMLElement | null>(null)
   const lastFocus = useRef(focusRequest)
   // The keyboard cursor is local presentation state: it marks the bookmark
@@ -183,6 +185,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
           return <Tooltip key={bookmarkId} label={label} shortcutKeys={hints.sessions}
             side="right" portal delayMs={300} maxWidth={360}>
             <button type="button" className={css.session} data-workbench-session=""
+              {...getTriggerProps({ kind: 'session', value: { sessionId: bookmarkId, displayTitle: label } })}
               data-active={selected || undefined} data-cursor={bookmarkId === cursor || undefined}
               aria-current={selected ? 'page' : undefined}
               onFocus={() => { setCursor(bookmarkId) }}

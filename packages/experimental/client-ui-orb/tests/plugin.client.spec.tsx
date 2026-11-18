@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Plugin-level spec: seat registrations, the system command, optional services, and disposal. */
 import { act, cleanup, fireEvent } from '@testing-library/react'
-import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -18,6 +18,7 @@ import { ORB_CHAT_MODAL_ID } from '../src/client/modals.ts'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+beforeEach(() => { window.localStorage.clear() })
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
   form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
@@ -146,6 +147,11 @@ async function bench(options: BenchOptions = {}) {
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   runtime.ctx.provide('surface', surface as never)
+  const theme = {
+    getTheme: () => ({ preference: 'system' as const }),
+    setTheme: vi.fn(),
+  }
+  runtime.ctx.provide('theme', theme as never)
   runtime.ctx.provide('shortcuts', {
     register: (command: ShortcutCommand) => {
       commands.set(command.id, command)
@@ -159,7 +165,7 @@ async function bench(options: BenchOptions = {}) {
     'shell.modal': { kind: 'list', scope: 'root' },
   }, ({ renderSlot }) => <>{renderSlot('shell.overlay', {})}{renderSlot('shell.modal', {})}</>)
   runtime.renderRoot()
-  return { runtime, owner, commands, surface, locale }
+  return { runtime, owner, commands, surface, locale, theme }
 }
 
 /** Let pending observation generators and React updates settle inside act. */
@@ -412,41 +418,40 @@ it('follows the carrier presentation and reduced-motion preference', async () =>
   expect(document.querySelector('[data-orb-prompt-input]')?.getAttribute('aria-label')).toBe(zh['prompt.label'])
 })
 
-it('sends the chat box prompt to the most recent Session', async () => {
+it('creates the management Session with the manage preset and reuses it', async () => {
   const surface = surfaceDouble()
   const b = await bench({ surface: surface.service })
   const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
-  await b.runtime.sessions.add({ id: 'recent', session: { prompt } })
+  const create = vi.fn(async (opts: Parameters<typeof b.runtime.sessions.create>[0]) => {
+    expect(opts).toEqual({ agentPreset: 'manage' })
+    return b.runtime.sessions.add({ id: 'managed', session: { prompt } })
+  })
+  b.runtime.sessions.stubCreate(create)
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
   const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
   fireEvent.change(input, { target: { value: '  summarize the day  ' } })
   await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }) })
   await flush()
+  expect(create).toHaveBeenCalledOnce()
   expect(prompt).toHaveBeenCalledWith([{ type: 'text', text: 'summarize the day' }], 'queue')
-  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
-})
 
-it('creates a blank Session when the catalog is empty', async () => {
-  const surface = surfaceDouble()
-  const b = await bench({ surface: surface.service })
-  const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
-  b.runtime.sessions.stubCreate(async () => b.runtime.sessions.add({ id: 'created', session: { prompt } }))
+  // A later prompt reuses the remembered Session instead of creating another conversation.
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
-  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
-  fireEvent.change(input, { target: { value: 'hello' } })
-  await act(async () => { fireEvent.click(document.querySelector('[data-orb-prompt-send]') as HTMLElement) })
+  const second = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  fireEvent.change(second, { target: { value: 'what changed?' } })
+  await act(async () => { fireEvent.keyDown(second, { key: 'Enter' }) })
   await flush()
-  expect(prompt).toHaveBeenCalledOnce()
-  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
+  expect(create).toHaveBeenCalledOnce()
+  expect(prompt).toHaveBeenNthCalledWith(2, [{ type: 'text', text: 'what changed?' }], 'queue')
 })
 
 it('reports a rejected prompt inside the chat box', async () => {
   const surface = surfaceDouble()
   const b = await bench({ surface: surface.service })
   const prompt = vi.fn(async () => ({ ok: false as const, error: new RemoteError('gateway/internal', 'offline', {}) }))
-  await b.runtime.sessions.add({ id: 'recent', session: { prompt } })
+  b.runtime.sessions.stubCreate(async () => b.runtime.sessions.add({ id: 'managed', session: { prompt } }))
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
   const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
@@ -485,6 +490,10 @@ it('removes every registration and observation when the plugin unloads', async (
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   runtime.ctx.provide('surface', surface.service as never)
+  runtime.ctx.provide('theme', {
+    getTheme: () => ({ preference: 'system' as const }),
+    setTheme: vi.fn(),
+  } as never)
   runtime.ctx.provide('shortcuts', {
     register: (command: ShortcutCommand) => {
       commands.set(command.id, command)

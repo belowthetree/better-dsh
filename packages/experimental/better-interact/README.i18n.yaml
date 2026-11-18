@@ -3,35 +3,41 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/better-interact/README.md
 /:
-  en: ed60bcc5f1af02c7
-  zh: 550880af56691ccd
+  en: f74faad7a2a45391
+  zh: 23611dcb47eeac1a
 /deepseek-ai-dsh-better-interact:
   en: 9e56552dd92dc193
   zh: 66ff39b0058502a7
 /deepseek-ai-dsh-better-interact/summary:
-  en: 9a81c11e70a22cd6
-  zh: 74087e8e8071e7b4
+  en: f89a5c33027df253
+  zh: 157686a272bdce98
 /deepseek-ai-dsh-better-interact/table-of-contents:
   en: d152484eb41ac6b4
   zh: 87d6b45405bb805b
 /deepseek-ai-dsh-better-interact/use-this-package:
-  en: 1de518602fceede9
-  zh: f0561c42bda47242
+  en: 2a4c1c40b55de0e4
+  zh: 24c52eb057220015
+/deepseek-ai-dsh-better-interact/use-this-package/when-to-choose-it:
+  en: 1e1152411836926b
+  zh: 3509547ad3c43fb5
+/deepseek-ai-dsh-better-interact/use-this-package/minimal-configuration:
+  en: 7d6495b686962847
+  zh: e1f5a3b4a4acc6eb
 /deepseek-ai-dsh-better-interact/understand-the-implementation:
-  en: 8d15b6bbfaa59249
-  zh: 217628a6b46584ef
+  en: 0574381fa72fea13
+  zh: b5bc68e3f29eb7ed
 /deepseek-ai-dsh-better-interact/further-exploration:
-  en: 8c8d57895facd32d
-  zh: 7ce13bc00d2e4d23
-/deepseek-ai-dsh-better-interact/dev-note:
-  en: 7601e8caaebe9286
-  zh: a04d25565bd5a887
+  en: 4d2dac165a8db75d
+  zh: efef8b2a9a51027f
 /deepseek-ai-dsh-better-interact/model-experience:
   en: ff8ae84d7ae24fc0
   zh: bf0a287e1a925702
 /deepseek-ai-dsh-better-interact/model-experience/kv-cache-effect:
-  en: 1dbffb7ed522d47b
+  en: 8a9f180c3d1f78b6
   zh: c5c0e84a7c0fd711
 /deepseek-ai-dsh-better-interact/known-limitations-and-deferred-work:
-  en: 4b3096632acc2e49
-  zh: 86579607ad875abd
+  en: e4ed5422921b74d6
+  zh: 36768a0011ca280a
+/deepseek-ai-dsh-better-interact/known-limitations-and-deferred-work/dev-note:
+  en: 024ac3977c4fbaf6
+  zh: 35216dbcbb6cc257

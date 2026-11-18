@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type {} from '@deepseek-ai/dsh-client-ui-voice-output/client'
@@ -26,8 +27,8 @@ import { QuickPrompt } from './QuickPrompt.tsx'
 import type { OrbChatActions, OrbChatInjected } from './QuickPrompt.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 
-/** Required services: the frame seats, the form carrier, the command registry, and the conversation this form writes to. */
-export const inject = ['surface', 'slots', 'locale', 'shortcuts', 'sessions']
+/** Required services: the frame seats, the form carrier, the command registry, the theme, and the conversation this form writes to. */
+export const inject = ['surface', 'slots', 'locale', 'shortcuts', 'sessions', 'theme']
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap {
@@ -42,6 +43,10 @@ const SURFACE_OBSERVATION = 'surface'
 const CAPTURE_OBSERVATION = 'capture'
 /** Diagnostic name of the playback observation, used when its stream fails. */
 const PLAYBACK_OBSERVATION = 'playback'
+/** Id of the management Agent preset the chat conversation runs under. */
+const MANAGEMENT_PRESET = 'manage'
+/** Storage key remembering the management Session across orb window reloads. */
+const MANAGEMENT_SESSION_KEY = 'dsh.orb.management-session'
 
 /** Destination of one continuous observation; the surface and voice stores satisfy it. */
 interface ObservationSink<T> {
@@ -74,6 +79,33 @@ function observe<T>(
     }
   })()
   return () => { lifetime.abort() }
+}
+
+/**
+ * Read the management Session remembered by this window.
+ * @returns the stored Session id, or null without usable storage.
+ */
+function rememberedManagementSession(): string | null {
+  try {
+    return window.localStorage.getItem(MANAGEMENT_SESSION_KEY)
+  } catch (error) {
+    // The orb window may run without usable storage; the Host catalog still identifies the conversation.
+    console.debug('orb: management session preference unavailable', error)
+    return null
+  }
+}
+
+/**
+ * Remember the management Session for the next orb window mount.
+ * @param id - the Session the chat writes to.
+ */
+function rememberManagementSession(id: string): void {
+  try {
+    window.localStorage.setItem(MANAGEMENT_SESSION_KEY, id)
+  } catch (error) {
+    // Losing persistence only costs a new management Session on the next launch.
+    console.debug('orb: management session preference unavailable', error)
+  }
 }
 
 /**
@@ -117,6 +149,11 @@ export function apply(ctx: ClientContext): void {
     }, 'orb: playback observation')
   })
 
+  const theme = createSnapshotStore<ThemePreference>(ctx.theme.getTheme().preference)
+  ctx.effect(() => ctx.on('theme/change', () => {
+    theme.set(ctx.theme.getTheme().preference)
+  }), 'orb: theme preference')
+
   /** Report one carrier command failure without interrupting the gesture that issued it. */
   const reportFailure = (error: unknown): void => {
     console.error('orb: surface command failed', error)
@@ -132,15 +169,32 @@ export function apply(ctx: ClientContext): void {
     console.error('orb: voice capture command failed', error)
   }
   /**
-   * Send one prompt to the most recent conversation, creating a blank Session
-   * when the catalog is empty.
+   * Resolve the chat's management Session: the remembered Session while the
+   * Host still lists it, otherwise a new one under the management preset. The
+   * Host default workspace is the fixed workspace whose sessions that preset
+   * may read through the session-query tools.
+   * @returns the Session that receives the chat prompt.
+   */
+  const managementSession = async (): Promise<Awaited<ReturnType<typeof ctx.sessions.create>>> => {
+    const sessions = ctx.sessions
+    const remembered = rememberedManagementSession()
+    const known = remembered === null
+      ? undefined
+      : sessions.list.getSnapshot().ids.find(id => String(id) === remembered)
+    if (known !== undefined) return known
+    const created = await sessions.create({ agentPreset: MANAGEMENT_PRESET })
+    rememberManagementSession(String(created))
+    return created
+  }
+
+  /**
+   * Send one prompt to the orb's management conversation.
    * @param text - trimmed prompt text.
    * @returns after the Host accepted the prompt.
    */
   const submitPrompt = async (text: string): Promise<void> => {
-    const sessions = ctx.sessions
-    const target = sessions.list.getSnapshot().ids[0] ?? await sessions.create()
-    await sessions.using(target, { source: 'orbPrompt' }, async (reference) => {
+    const target = await managementSession()
+    await ctx.sessions.using(target, { source: 'orbPrompt' }, async (reference) => {
       const binding = await reference.ready
       const result = await binding.session.prompt([{ type: 'text', text }], 'queue')
       if (!result.ok) throw result.error
@@ -173,8 +227,14 @@ export function apply(ctx: ClientContext): void {
     dragBy: (deltaX, deltaY) => { issue(() => ctx.surface.dragBy(deltaX, deltaY)) },
     pointerInside: (inside) => { ctx.surface.setPointerInside(inside) },
     toggleVoice,
+    snap: () => { issue(() => ctx.surface.snap()) },
   }
-  const overlay: OrbOverlayInjected = { hooks: { surface, capture, voice, reducedMotion }, actions }
+  /** Persist one theme preference so every client window follows it. */
+  const setTheme = (preference: ThemePreference): void => { ctx.theme.setTheme(preference) }
+  const overlay: OrbOverlayInjected = {
+    hooks: { surface, capture, voice, reducedMotion, theme },
+    actions: { ...actions, setTheme },
+  }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'orb', locale: NS, inject: () => overlay,
   }, OrbLayer))

@@ -63,6 +63,7 @@ function fakeSurface(dismissModal: () => Promise<void> = async () => {}): FakeSu
       dismissBubbles: async () => {},
       setPinned: async () => {},
       dragBy: async () => {},
+      snap: async () => {},
       pointerInside: () => {},
     },
     push: (snapshot) => {

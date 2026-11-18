@@ -112,6 +112,10 @@ export interface DesktopSurfaceApi {
    */
   dragBy(deltaX: number, deltaY: number): Promise<void>
   /**
+   * Snap the orb flush to the nearest work-area edge while it rests within the snap distance.
+   */
+  snap(): Promise<void>
+  /**
    * Report whether the pointer is over interactive content, so main can pass
    * clicks through.
    * @param inside - whether the pointer is over the reporting window's content.

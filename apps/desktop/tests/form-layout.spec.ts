@@ -27,12 +27,12 @@ const LAYOUT: DesktopFormLayout = { version: 1, orb: { x: 300, y: 200 }, pinned:
 describe('form layout defaults', () => {
   it('places the orb at the right edge cut by the screen margin, vertically centred, unpinned', () => {
     expect(defaultFormLayout({ x: 100, y: 50, width: 800, height: 600 }))
-      .toEqual({ version: 1, orb: { x: 764, y: 294 }, pinned: false })
+      .toEqual({ version: 1, orb: { x: 716, y: 270 }, pinned: false })
   })
 
   it('places the default orb on a display left of the primary one', () => {
     expect(defaultFormLayout({ x: -1920, y: 0, width: 1920, height: 1080 }))
-      .toEqual({ version: 1, orb: { x: -136, y: 484 }, pinned: false })
+      .toEqual({ version: 1, orb: { x: -184, y: 460 }, pinned: false })
   })
 })
 
@@ -43,7 +43,7 @@ describe('form layout clamping', () => {
 
   it('moves an orb past the right and bottom edges back inside', () => {
     expect(clampFormLayout({ version: 1, orb: { x: 5000, y: 5000 }, pinned: true }, WORK_AREA))
-      .toEqual({ version: 1, orb: { x: 1808, y: 968 }, pinned: true })
+      .toEqual({ version: 1, orb: { x: 1760, y: 920 }, pinned: true })
   })
 
   it('moves an orb past the left and top edges back inside', () => {

@@ -55,6 +55,8 @@ export interface SurfaceAdapter {
    * @param deltaY - vertical pointer delta in logical pixels.
    */
   dragBy(deltaX: number, deltaY: number): Promise<void>
+  /** Snap the orb flush to the nearest work-area edge while it rests within the snap distance. */
+  snap(): Promise<void>
   /**
    * Report whether the pointer is over interactive content.
    * @param inside - whether the pointer is over the reporting window's content.
@@ -89,6 +91,7 @@ export function inertSurfaceAdapter(): SurfaceAdapter {
     dismissBubbles: () => Promise.resolve(),
     setPinned: () => Promise.resolve(),
     dragBy: () => Promise.resolve(),
+    snap: () => Promise.resolve(),
     pointerInside: () => {},
   }
 }
@@ -115,6 +118,7 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
     dismissBubbles: () => api.dismissBubbles(),
     setPinned: pinned => api.setPinned(pinned),
     dragBy: (deltaX, deltaY) => api.dragBy(deltaX, deltaY),
+    snap: () => api.snap(),
     pointerInside: (inside) => { api.pointerInside(inside) },
   }
 }

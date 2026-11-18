@@ -48,6 +48,7 @@ function dialogProps(options: {
   const select = vi.fn()
   const selectSession = vi.fn()
   const useResource = vi.fn(() => ({ value: options.reference === false ? {} : { reference: { sessionId: 's1' } } }))
+  const getTriggerProps = vi.fn(() => ({}))
   const props = {
     useWorkspaces: (selector: (state: { items: readonly WorkspaceRow[]; archivedSessionIds: readonly string[] }) => unknown) =>
       selector({ items: workspaces, archivedSessionIds: (options.archived ?? []).map(sid) }),
@@ -64,13 +65,14 @@ function dialogProps(options: {
     useSessions: (selector: (state: { byId: Readonly<Record<string, SessionRow>> }) => unknown) =>
       selector({ byId: sessions }),
     useResource,
+    useContextMenu: () => ({ getTriggerProps }),
     SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     renderSlot,
     select,
     selectSession,
     t: (key: string) => key,
   }
-  return { props, renderSlot, select, selectSession, useResource, pages }
+  return { props, renderSlot, select, selectSession, useResource, pages, getTriggerProps }
 }
 
 it('renders the empty state while no Workspace page exists', () => {
@@ -95,6 +97,14 @@ it('renders one card per Workspace and selects the clicked one', () => {
   expect(cards[1]?.getAttribute('aria-selected')).toBe('true')
   fireEvent.click(cards[0]!)
   expect(select).toHaveBeenCalledExactlyOnceWith(ws('ws-1'))
+})
+
+it('binds every Session bookmark to the shared Session context menu', () => {
+  const { props, getTriggerProps } = dialogProps()
+  render(createElement(WorkbenchDialog, props as never))
+  expect(getTriggerProps).toHaveBeenCalledWith({
+    kind: 'session', value: { sessionId: sid('s1'), displayTitle: 's1' },
+  })
 })
 
 it('binds the conversation to the page Session, falling back to its newest', () => {

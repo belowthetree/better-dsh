@@ -45,6 +45,7 @@ function fakeAdapter(): FakeAdapter {
     dismissBubbles: async () => { state.commands.push('dismissBubbles') },
     setPinned: async (pinned) => { state.commands.push(`setPinned:${String(pinned)}`) },
     dragBy: async (deltaX, deltaY) => { state.commands.push(`dragBy:${String(deltaX)},${String(deltaY)}`) },
+    snap: async () => { state.commands.push('snap') },
     pointerInside: (inside) => { state.commands.push(`pointerInside:${String(inside)}`) },
   }
   return {
@@ -116,10 +117,11 @@ describe('SurfaceRuntime commands', () => {
     await runtime.dismissBubbles()
     await runtime.setPinned(true)
     await runtime.dragBy(6, -2)
+    await runtime.snap()
     runtime.setPointerInside(true)
     expect(fake.commands).toEqual([
       'expand', 'collapse', 'presentModal:voice-setup', 'dismissModal', 'presentBubbles', 'dismissBubbles',
-      'setPinned:true', 'dragBy:6,-2', 'pointerInside:true',
+      'setPinned:true', 'dragBy:6,-2', 'snap', 'pointerInside:true',
     ])
     expect(runtime.snapshot()).toBe(panel)
   })

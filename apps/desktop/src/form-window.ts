@@ -8,8 +8,8 @@ import { clampFormLayout, type DesktopFormLayout, type DesktopWorkArea } from '.
 /** Role of one form window: the resident orb, the surface window, or the bubble column. */
 export type DesktopFormRole = 'orb' | 'surface' | 'bubbles'
 
-/** Orb width and height in logical pixels. */
-export const ORB_SIZE = 112
+/** Orb width and height in logical pixels; the square carrier shows the mascot artwork unbounded. */
+export const ORB_SIZE = 160
 
 /** Expanded quick-prompt size in logical pixels. */
 export const PANEL_SIZE = { width: 560, height: 160 } as const
@@ -51,6 +51,9 @@ export const BUBBLES_GAP = 12
 
 /** Gap between a presentation and the work area edge, in logical pixels. */
 export const SCREEN_MARGIN = 24
+
+/** Grab distance in logical pixels within which a released orb snaps flush to the nearest work-area edge. */
+export const ORB_SNAP_GAP = 24
 
 /** A presentation's position and size in logical screen coordinates. */
 export interface FormPresentationBounds {

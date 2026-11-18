@@ -24,7 +24,7 @@ const LAYOUT: DesktopFormLayout = { version: 1, orb: { x: 300, y: 200 }, pinned:
 
 describe('form presentation constants', () => {
   it('pins the orb, panel, modal, margin, and minimum panel sizes', () => {
-    expect(ORB_SIZE).toBe(112)
+    expect(ORB_SIZE).toBe(160)
     expect(PANEL_SIZE).toEqual({ width: 560, height: 160 })
     expect(PANEL_MIN_SIZE).toEqual({ width: 420, height: 120 })
     expect(MODAL_SIZE).toEqual({ width: 768, height: 560 })
@@ -41,19 +41,19 @@ describe('orb bounds', () => {
 
   it('clamps an orb whose layout lies outside the work area', () => {
     const outside: DesktopFormLayout = { version: 1, orb: { x: 5000, y: -50 }, pinned: false }
-    expect(orbBounds(outside, WORK_AREA)).toEqual({ x: 1808, y: 0, width: ORB_SIZE, height: ORB_SIZE })
+    expect(orbBounds(outside, WORK_AREA)).toEqual({ x: 1760, y: 0, width: ORB_SIZE, height: ORB_SIZE })
   })
 })
 
 describe('panel bounds', () => {
   it('opens left of the orb when that side fits', () => {
     expect(panelBounds({ version: 1, orb: { x: 1784, y: 484 }, pinned: false }, WORK_AREA))
-      .toEqual({ x: 1224, y: 484, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
+      .toEqual({ x: 1200, y: 484, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
   })
 
   it('opens right of the orb when the left side does not fit', () => {
     expect(panelBounds({ version: 1, orb: { x: 0, y: 0 }, pinned: false }, WORK_AREA))
-      .toEqual({ x: 112, y: 0, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
+      .toEqual({ x: 160, y: 0, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
   })
 
   it('clamps to the work area edge when neither side fits', () => {
@@ -65,7 +65,7 @@ describe('panel bounds', () => {
   it('follows a work area that starts at a negative screen origin', () => {
     const display: DesktopWorkArea = { x: -1920, y: 0, width: 1920, height: 1080 }
     expect(panelBounds({ version: 1, orb: { x: -136, y: 484 }, pinned: false }, display))
-      .toEqual({ x: -696, y: 484, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
+      .toEqual({ x: -720, y: 484, width: PANEL_SIZE.width, height: PANEL_SIZE.height })
   })
 })
 
@@ -76,7 +76,7 @@ describe('bubble bounds', () => {
       { x: 0, y: 0, width: 1920, height: 1080 },
     )
     expect(bounds).toEqual({
-      x: 1532 - BUBBLES_WINDOW_MARGIN,
+      x: 1540 - BUBBLES_WINDOW_MARGIN,
       y: SCREEN_MARGIN - BUBBLES_WINDOW_MARGIN,
       width: BUBBLES_WIDTH + 2 * BUBBLES_WINDOW_MARGIN,
       height: 364 + 2 * BUBBLES_WINDOW_MARGIN,
@@ -89,10 +89,10 @@ describe('bubble bounds', () => {
     const layout = { version: 1, orb: { x: 1800, y: 160 }, pinned: false } as const
     const bounds = bubblesBounds(layout, { x: 0, y: 0, width: 1920, height: 1080 })
     expect(bounds).toEqual({
-      x: 1532 - BUBBLES_WINDOW_MARGIN,
+      x: 1540 - BUBBLES_WINDOW_MARGIN,
       y: SCREEN_MARGIN - BUBBLES_WINDOW_MARGIN,
       width: BUBBLES_WIDTH + 2 * BUBBLES_WINDOW_MARGIN,
-      height: 124 + 2 * BUBBLES_WINDOW_MARGIN,
+      height: ORB_SIZE + 2 * BUBBLES_WINDOW_MARGIN,
     })
   })
 
@@ -207,7 +207,7 @@ describe('form window options', () => {
       layout: { version: 1, orb: { x: -40, y: 5000 }, pinned: true },
       workArea: WORK_AREA,
     })
-    expect(options).toMatchObject({ x: 0, y: 968, width: ORB_SIZE, height: ORB_SIZE })
+    expect(options).toMatchObject({ x: 0, y: 920, width: ORB_SIZE, height: ORB_SIZE })
   })
 
   it('hides the title bar on macOS', () => {

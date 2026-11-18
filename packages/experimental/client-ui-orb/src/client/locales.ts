@@ -16,6 +16,7 @@ export const zh = {
   'orb.micStop': '停止录音并打开对话框',
   'command.voice': '开始或结束语音输入',
   'prompt.label': '向助手提问',
+  'prompt.title': '管理对话',
   'prompt.placeholder': '有什么可以帮你？',
   'prompt.send': '发送',
   'prompt.failed': '发送失败，请重试',
@@ -28,6 +29,12 @@ export const zh = {
   'prompt.voiceFailed': '语音识别失败，请重试',
   'command.toggle': '打开或关闭助手对话框',
   'command.open': '打开助手对话框',
+  'orb.menu.label': '设置',
+  'orb.menu.cute': '可爱形象',
+  'orb.menu.mature': '成熟形象',
+  'orb.menu.light': '浅色',
+  'orb.menu.dark': '深色',
+  'orb.menu.system': '跟随系统',
 } as const
 
 /** Keys accepted by the orb translator. */
@@ -45,6 +52,7 @@ export const en: Record<OrbKey, string> = {
   'orb.micStop': 'Stop dictating and open the dialog',
   'command.voice': 'Start or stop voice input',
   'prompt.label': 'Ask the assistant',
+  'prompt.title': 'Manage conversation',
   'prompt.placeholder': 'Ask anything',
   'prompt.send': 'Send',
   'prompt.failed': 'Sending failed. Try again.',
@@ -57,6 +65,12 @@ export const en: Record<OrbKey, string> = {
   'prompt.voiceFailed': 'Voice recognition failed. Try again.',
   'command.toggle': 'Show or hide the assistant dialog',
   'command.open': 'Open the assistant dialog',
+  'orb.menu.label': 'Settings',
+  'orb.menu.cute': 'Cute form',
+  'orb.menu.mature': 'Mature form',
+  'orb.menu.light': 'Light',
+  'orb.menu.dark': 'Dark',
+  'orb.menu.system': 'System',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -78,6 +92,7 @@ export const ja = {
   'orb.micStop': '録音を停止してダイアログを開く',
   'command.voice': '音声入力の開始または停止',
   'prompt.label': 'アシスタントに質問',
+  'prompt.title': '管理対話',
   'prompt.placeholder': '何でも聞いてください',
   'prompt.send': '送信',
   'prompt.failed': '送信に失敗しました。再試行してください。',
@@ -90,6 +105,12 @@ export const ja = {
   'prompt.voiceFailed': '音声認識に失敗しました。再試行してください。',
   'command.toggle': 'アシスタントダイアログの表示を切り替える',
   'command.open': 'アシスタントダイアログを開く',
+  'orb.menu.label': '設定',
+  'orb.menu.cute': 'かわいい姿',
+  'orb.menu.mature': '大人の姿',
+  'orb.menu.light': 'ライト',
+  'orb.menu.dark': 'ダーク',
+  'orb.menu.system': 'システム',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish copy, checked against the English keys. */
@@ -104,6 +125,7 @@ export const es = {
   'orb.micStop': 'Detener el dictado y abrir el diálogo',
   'command.voice': 'Iniciar o detener la entrada de voz',
   'prompt.label': 'Pregunta al asistente',
+  'prompt.title': 'Conversación de gestión',
   'prompt.placeholder': 'Pregunta lo que quieras',
   'prompt.send': 'Enviar',
   'prompt.failed': 'No se pudo enviar. Inténtalo de nuevo.',
@@ -116,6 +138,12 @@ export const es = {
   'prompt.voiceFailed': 'El reconocimiento de voz falló. Inténtalo de nuevo.',
   'command.toggle': 'Mostrar u ocultar el diálogo del asistente',
   'command.open': 'Abrir el diálogo del asistente',
+  'orb.menu.label': 'Ajustes',
+  'orb.menu.cute': 'Forma adorable',
+  'orb.menu.mature': 'Forma adulta',
+  'orb.menu.light': 'Claro',
+  'orb.menu.dark': 'Oscuro',
+  'orb.menu.system': 'Sistema',
 } satisfies Record<keyof typeof en, string>
 
 /** French copy, checked against the English keys. */
@@ -130,6 +158,7 @@ export const fr = {
   'orb.micStop': 'Arrêter la dictée et ouvrir le dialogue',
   'command.voice': 'Démarrer ou arrêter la saisie vocale',
   'prompt.label': "Demander à l'assistant",
+  'prompt.title': 'Conversation de gestion',
   'prompt.placeholder': 'Posez votre question',
   'prompt.send': 'Envoyer',
   'prompt.failed': "Échec de l'envoi. Réessayez.",
@@ -142,6 +171,12 @@ export const fr = {
   'prompt.voiceFailed': 'La reconnaissance vocale a échoué. Réessayez.',
   'command.toggle': "Afficher ou masquer le dialogue de l'assistant",
   'command.open': "Ouvrir le dialogue de l'assistant",
+  'orb.menu.label': 'Paramètres',
+  'orb.menu.cute': 'Forme mignonne',
+  'orb.menu.mature': 'Forme adulte',
+  'orb.menu.light': 'Clair',
+  'orb.menu.dark': 'Sombre',
+  'orb.menu.system': 'Système',
 } satisfies Record<keyof typeof en, string>
 
 /** German copy, checked against the English keys. */
@@ -156,6 +191,7 @@ export const de = {
   'orb.micStop': 'Diktat beenden und Dialog öffnen',
   'command.voice': 'Spracheingabe starten oder beenden',
   'prompt.label': 'Den Assistenten fragen',
+  'prompt.title': 'Verwaltungsgespräch',
   'prompt.placeholder': 'Fragen Sie alles',
   'prompt.send': 'Senden',
   'prompt.failed': 'Senden fehlgeschlagen. Versuche es erneut.',
@@ -168,6 +204,12 @@ export const de = {
   'prompt.voiceFailed': 'Spracherkennung fehlgeschlagen. Versuche es erneut.',
   'command.toggle': 'Assistentendialog ein- oder ausblenden',
   'command.open': 'Assistentendialog öffnen',
+  'orb.menu.label': 'Einstellungen',
+  'orb.menu.cute': 'Niedliche Form',
+  'orb.menu.mature': 'Erwachsene Form',
+  'orb.menu.light': 'Hell',
+  'orb.menu.dark': 'Dunkel',
+  'orb.menu.system': 'System',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian copy, checked against the English keys. */
@@ -182,6 +224,7 @@ export const ru = {
   'orb.micStop': 'Остановить диктовку и открыть диалог',
   'command.voice': 'Начать или остановить ввод голосом',
   'prompt.label': 'Спросить ассистента',
+  'prompt.title': 'Диалог управления',
   'prompt.placeholder': 'Спросите что угодно',
   'prompt.send': 'Отправить',
   'prompt.failed': 'Не удалось отправить. Повторите попытку.',
@@ -194,6 +237,12 @@ export const ru = {
   'prompt.voiceFailed': 'Не удалось распознать речь. Повторите попытку.',
   'command.toggle': 'Показать или скрыть диалог ассистента',
   'command.open': 'Открыть диалог ассистента',
+  'orb.menu.label': 'Настройки',
+  'orb.menu.cute': 'Милая форма',
+  'orb.menu.mature': 'Взрослая форма',
+  'orb.menu.light': 'Светлая',
+  'orb.menu.dark': 'Тёмная',
+  'orb.menu.system': 'Системная',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese copy, checked against the English keys. */
@@ -208,6 +257,7 @@ export const pt = {
   'orb.micStop': 'Parar o ditado e abrir a caixa de diálogo',
   'command.voice': 'Iniciar ou parar a entrada de voz',
   'prompt.label': 'Pergunte ao assistente',
+  'prompt.title': 'Conversa de gerenciamento',
   'prompt.placeholder': 'Pergunte o que quiser',
   'prompt.send': 'Enviar',
   'prompt.failed': 'Falha ao enviar. Tente novamente.',
@@ -220,4 +270,10 @@ export const pt = {
   'prompt.voiceFailed': 'O reconhecimento de voz falhou. Tente novamente.',
   'command.toggle': 'Mostrar ou ocultar a caixa de diálogo do assistente',
   'command.open': 'Abrir a caixa de diálogo do assistente',
+  'orb.menu.label': 'Configurações',
+  'orb.menu.cute': 'Forma fofa',
+  'orb.menu.mature': 'Forma adulta',
+  'orb.menu.light': 'Claro',
+  'orb.menu.dark': 'Escuro',
+  'orb.menu.system': 'Sistema',
 } satisfies Record<keyof typeof en, string>

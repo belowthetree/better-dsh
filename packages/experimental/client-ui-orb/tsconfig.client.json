@@ -46,6 +46,9 @@
       "path": "../../client/ui-slots"
     },
     {
+      "path": "../../client/ui-theme/tsconfig.client.json"
+    },
+    {
       "path": "../client-ui-voice-output/tsconfig.client.json"
     },
     {

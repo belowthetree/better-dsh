@@ -42,6 +42,7 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     dismissBubbles: () => command('dismissBubbles', []),
     setPinned: pinned => command('setPinned', [pinned]),
     dragBy: (deltaX, deltaY) => command('dragBy', [deltaX, deltaY]),
+    snap: () => command('snap', []),
     pointerInside: (inside) => { calls.push({ name: 'pointerInside', args: [inside] }) },
   }
   return {
@@ -79,6 +80,7 @@ describe('inert carrier', () => {
     await adapter.dismissBubbles()
     await adapter.setPinned(true)
     await adapter.dragBy(12, -4)
+    await adapter.snap()
     adapter.pointerInside(true)
   })
 
@@ -139,6 +141,7 @@ describe('desktop carrier', () => {
     await adapter.dismissBubbles()
     await adapter.setPinned(true)
     await adapter.dragBy(8, -3)
+    await adapter.snap()
     adapter.pointerInside(false)
     expect(bridge.calls).toEqual([
       { name: 'expand', args: [] },
@@ -150,6 +153,7 @@ describe('desktop carrier', () => {
       { name: 'dismissBubbles', args: [] },
       { name: 'setPinned', args: [true] },
       { name: 'dragBy', args: [8, -3] },
+      { name: 'snap', args: [] },
       { name: 'pointerInside', args: [false] },
     ])
   })
