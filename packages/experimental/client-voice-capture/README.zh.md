@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 提供浏览器端的语音采集能力：一个麦克风录音器、一份持久化的输入设备选择、规范的 WAV 编码以及语音 Remote 的识别调用，并以 Cordis 服务 `ctx.voiceCapture` 暴露。插件自行挂载实验性语音 Remote 贡献，因此挂载本包的组合无需再配置一条语音行。 [client-ui-voice-input](../client-ui-voice-input/README.zh.md) 中的输入框控件只是其中一个消费者；后续的悬浮球与按键说话控件观察同一份快照，并且采集不再因为某个控件卸载、失去焦点或页面隐藏而结束。
 
@@ -18,7 +18,7 @@ kind: "package-reference"
 - [延伸阅读](#further-exploration)
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
-- [开发者说明](#dev-note)
+- [开发备注](#dev-note)
 
 -----
 
@@ -74,7 +74,7 @@ kind: "package-reference"
 - **没有投递策略** —— 服务从不插入或提交文本；每个消费者决定识别结果的去向。暂存的转写只是一次交接；若消费者始终没有挂载，它会留在快照中直到下一次 `begin()`。
 
 <a id="dev-note"></a>
-### 开发者说明
+### 开发备注
 
 <details>
 <summary>维护者工作背景——点击展开</summary>
