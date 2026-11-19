@@ -71,13 +71,21 @@ function targetId(args: { readonly session_id?: string }, caller: Caller): Sessi
   return args.session_id === undefined ? caller.id : brandString<SessionIdValue>(args.session_id)
 }
 
-async function authorizeTarget(
+/**
+ * Resolve the header of one target the caller may read, or refuse the target.
+ * @param ctx - context providing the Session query service.
+ * @param caller - agent-bound caller identity and workspace.
+ * @param target - requested Session id.
+ * @param signal - caller cancellation.
+ * @returns the authorized target header, or the caller's own header for a self target.
+ */
+async function authorizeTargetHeader(
   ctx: Context,
   caller: Caller,
   target: SessionIdValue,
   signal: AbortSignal,
-): Promise<void> {
-  if (target === caller.id) return
+): Promise<SessionHeader> {
+  if (target === caller.id) return caller.header
   const cwd = caller.header.cwd
   if (cwd === undefined) throw serviceBoundary.unauthorizedTarget()
   const records = await serviceBoundary.call(ctx, signal, 'target authorization', () =>
@@ -85,7 +93,18 @@ async function authorizeTarget(
       { kind: 'id', values: [target] },
       { kind: 'cwd', values: [cwd] },
     ], signal))
-  if (records.length !== 1) throw serviceBoundary.unauthorizedTarget()
+  const record = records.length === 1 ? records[0] : undefined
+  if (record === undefined) throw serviceBoundary.unauthorizedTarget()
+  return record.header
+}
+
+async function authorizeTarget(
+  ctx: Context,
+  caller: Caller,
+  target: SessionIdValue,
+  signal: AbortSignal,
+): Promise<void> {
+  await authorizeTargetHeader(ctx, caller, target, signal)
 }
 
 function recordAuthorized(record: SessionRecord, caller: Caller): boolean {
@@ -244,6 +263,7 @@ export const workspaceAccess = {
   callerOf,
   targetId,
   authorizeTarget,
+  authorizeTargetHeader,
   recordAuthorized,
   assertObservedTargetAuthorized,
   authorizeSessionIds,

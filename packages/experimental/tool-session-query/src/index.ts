@@ -1,5 +1,6 @@
 /**
- * Model-facing, workspace-authorized session-history search and read tools.
+ * Model-facing, workspace-authorized session history search, read, latest-reply,
+ * and optional cross-session message tools.
  *
  * @module @deepseek-ai/dsh-tool-session-query
  */
@@ -9,8 +10,10 @@ import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { toolInput } from './input.ts'
+import { executeSendMessage, MAX_SESSION_MESSAGE_CHARS } from './message.ts'
 import { operations } from './operations.ts'
 import { presentation } from './presentation.ts'
+import { executeLatestReply, MAX_LATEST_REPLY_CHARS } from './reply.ts'
 
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'tool-session-query'
@@ -24,23 +27,27 @@ export const DEFAULT_MAX_SEARCH_RESULTS = 100
 /** Default cooperative deadline for either full-text search tool. */
 export const DEFAULT_SEARCH_TIMEOUT_MS = 30_000
 
-/** Deployment-owned search count and timeout bounds. */
+/** Deployment-owned search count, timeout, and cross-session message bounds. */
 export interface Config {
   /** Maximum authorized hits returned by one search call. Defaults to 100. */
   maxSearchResults?: number
   /** Cooperative full-text search deadline in milliseconds. Defaults to 30000. */
   searchTimeoutMs?: number
+  /** Whether to register the cross-session message tool. Defaults to false. */
+  allowSessionMessages?: boolean
 }
 
 /** Schemastery config for Loader defaults and generated configuration docs. */
 export const Config: z<Config> = z.object({
   maxSearchResults: z.number().step(1).min(1).default(DEFAULT_MAX_SEARCH_RESULTS),
   searchTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_SEARCH_TIMEOUT_MS),
+  allowSessionMessages: z.boolean().default(false),
 })
 
 interface ResolvedConfig {
   readonly maxSearchResults: number
   readonly searchTimeoutMs: number
+  readonly allowSessionMessages: boolean
 }
 
 const TEXT_OUTPUT = {
@@ -51,15 +58,20 @@ const TEXT_OUTPUT = {
 const PROMPT_TEXT =
   'Use session_search to find relevant work from prior sessions, or session_event_search to search earlier '
   + 'events in one session. Search results are cursor-free and workspace-scoped. Follow a useful hit with '
-  + 'session_trace, session_event_trace, or session_event_read when you need lineage, relationships, or exact data.'
+  + 'session_trace, session_event_trace, or session_event_read when you need lineage, relationships, or exact data. '
+  + 'Use session_latest_reply to read the newest reply in an authorized session.'
 
-/** Register all five tools and their shared model guidance. */
+const MESSAGE_PROMPT_TEXT =
+  'Use session_send_message to deliver a text message to another authorized session; it returns once accepted '
+  + 'and does not wait for the reply. Read the answer with session_latest_reply.'
+
+/** Register the read tools plus the optional cross-session message tool. */
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
   ctx.systemPrompt.section({
     name: 'tool:session-query',
     order: ctx.systemPrompt.getSectionOrder('TOOL_SESSION_QUERY'),
-    text: PROMPT_TEXT,
+    text: resolved.allowSessionMessages ? `${PROMPT_TEXT} ${MESSAGE_PROMPT_TEXT}` : PROMPT_TEXT,
   })
 
   ctx.tools.register(defineTool({
@@ -119,6 +131,46 @@ export function apply(ctx: Context, config: Config): void {
     execute: (args, exec) => operations.executeEventRead(ctx, args, exec),
     presentCall: args => presentation.presentEventTargetCall('Read event', args),
   }))
+
+  ctx.tools.register(defineTool({
+    name: 'session_latest_reply',
+    description: `Read the newest non-empty assistant text reply from one authorized session. Returns its event sequence, time, and up to ${String(MAX_LATEST_REPLY_CHARS)} characters of text; use session_event_read with that sequence for the complete event.`,
+    parameters: {
+      session_id: {
+        type: 'string',
+        description: 'Target Session ID. Omit to read the caller\'s own reply. The target must share the caller\'s workspace.',
+      },
+    },
+    output: TEXT_OUTPUT,
+    isConcurrencySafe: () => true,
+    execute: (args, exec) => executeLatestReply(ctx, args, exec),
+    presentCall: args => presentation.presentLatestReplyCall(args),
+  }))
+
+  if (resolved.allowSessionMessages) {
+    ctx.inject(['sessionController'], (scope) => {
+      scope.tools.register(defineTool({
+        name: 'session_send_message',
+        description: 'Send a text message to another authorized session in the caller workspace. The target receives it as a user prompt; the call returns once accepted and does not wait for the reply.',
+        parameters: {
+          session_id: {
+            type: 'string',
+            required: true,
+            description: 'Target Session ID. It must share the caller\'s workspace and cannot be the caller.',
+          },
+          message: {
+            type: 'string',
+            required: true,
+            description: `Message text, from 1 to ${String(MAX_SESSION_MESSAGE_CHARS)} characters.`,
+          },
+        },
+        output: TEXT_OUTPUT,
+        isConcurrencySafe: () => false,
+        execute: (args, exec) => executeSendMessage(scope, args, exec),
+        presentCall: args => presentation.presentSendMessageCall(args),
+      }))
+    })
+  }
 }
 
 function resolveConfig(config: Config): ResolvedConfig {
@@ -132,5 +184,5 @@ function resolveConfig(config: Config): ResolvedConfig {
       `tool-session-query: searchTimeoutMs must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}`,
     )
   }
-  return { maxSearchResults, searchTimeoutMs }
+  return { maxSearchResults, searchTimeoutMs, allowSessionMessages: config.allowSessionMessages ?? false }
 }

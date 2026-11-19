@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-此可选 Bundle 为 Desktop 组合球体形态：Surface 服务、球体与面板外观、共享麦克风捕获、官方语音识别与合成 seam、带认证的语音 Remote、语音播放消费者，以及球体的只读 `manage` Agent 预设。声明球体形态的 Desktop 自有 profile 会挂载它；随附 profile 保持经典窗口并默认关闭此 Bundle。
+此可选 Bundle 为 Desktop 组合球体形态：Surface 服务、球体与面板外观、共享麦克风捕获、官方语音识别与合成 seam、带认证的语音 Remote、语音播放消费者，以及球体的 `manage` Agent 预设。声明球体形态的 Desktop 自有 profile 会挂载它；随附 profile 保持经典窗口并默认关闭此 Bundle。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用此包
 
-此 Bundle 仅适用于 Desktop。插件管理页将其显示为关闭状态；启用后相关包可用，但不会改变经典 profile。按 Desktop 外壳形态文档创建声明球体形态的 profile，然后用 `--profile <名称>` 启动 Desktop。窗口以收起的球体打开；点击升起居中快捷对话框，其中包含提问输入框、语音输入开关与发送按钮。Enter 或发送按钮把提问发送到球体专属的 `manage` 对话（首次使用时在 Host 默认工作区创建），并升起管理工作台——一张显示共享对话记录、流式回答与后续提问输入框的宽卡片；Shift+Enter 换行，被拒绝的提问保留在对话框内并显示失败提示，Escape 或点击背景可关闭任一张卡片。球体右键菜单与 `orb.workbench` 命令可在不发送内容的情况下重新升起工作台。对话框自绘卡片表面，使用共享的 elevation 材质。对话框的语音开关使用共享采集服务录音，并把识别出的文字追加到输入框末尾而不发送。Ctrl+Alt+D 在 Windows 与 macOS 上通过操作系统全局快捷键打开快捷对话框；球体开关没有默认键位，可在“设置 → 快捷键 → 全局”中分配。球体可拖动，其右键菜单用于选择合成音色、静音播放，并在自动朗读策略之间循环。球体上的麦克风按钮与 `voice.pushToTalk` 系统级命令可在对话框关闭时开始采集；结束后升起对话框并填入其输入框。语音识别与合成需要外部 DeepSeek 套件在同一 profile 中注册 `deepseek-cloud` 与 `deepseek-tts` Provider；两者都是计费的云请求。Bundle 声明球体对话框创建管理会话所用的 `manage` 预设（管理对话）：它只挂载会话查询读取工具，不挂载文件、Shell 或修改类工具。若要在没有安装包的情况下评审组装后的形态，按 [Desktop README](../../../apps/desktop/README.zh.md) 的本地形态评审步骤操作。
+此 Bundle 仅适用于 Desktop。插件管理页将其显示为关闭状态；启用后相关包可用，但不会改变经典 profile。按 Desktop 外壳形态文档创建声明球体形态的 profile，然后用 `--profile <名称>` 启动 Desktop。窗口以收起的球体打开；点击升起居中快捷对话框，其中包含提问输入框、语音输入开关与发送按钮。Enter 或发送按钮把提问发送到球体专属的 `manage` 对话（首次使用时在 Host 默认工作区创建），并升起管理工作台——一张显示共享对话记录、流式回答与后续提问输入框的宽卡片；Shift+Enter 换行，被拒绝的提问保留在对话框内并显示失败提示，Escape 或点击背景可关闭任一张卡片。球体右键菜单与 `orb.workbench` 命令可在不发送内容的情况下重新升起工作台。对话框自绘卡片表面，使用共享的 elevation 材质。对话框的语音开关使用共享采集服务录音，并把识别出的文字追加到输入框末尾而不发送。Ctrl+Alt+D 在 Windows 与 macOS 上通过操作系统全局快捷键打开快捷对话框；球体开关没有默认键位，可在“设置 → 快捷键 → 全局”中分配。球体可拖动，其右键菜单用于选择合成音色、静音播放，并在自动朗读策略之间循环。球体上的麦克风按钮与 `voice.pushToTalk` 系统级命令可在对话框关闭时开始采集；结束后升起对话框并填入其输入框。语音识别与合成需要外部 DeepSeek 套件在同一 profile 中注册 `deepseek-cloud` 与 `deepseek-tts` Provider；两者都是计费的云请求。Bundle 声明球体对话框创建管理会话所用的 `manage` 预设（管理对话）：它挂载工作区与会话列表、会话查询、读取最新回复和发送消息的工具，不挂载文件、Shell 或删除/改写类工具。若要在没有安装包的情况下评审组装后的形态，按 [Desktop README](../../../apps/desktop/README.zh.md) 的本地形态评审步骤操作。
 
 -----
 
@@ -54,7 +54,7 @@ kind: "package-bundle"
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 `manage` 预设：固定的中文 persona、工作区 Agent 指令、当前时间、会话查询工具 schema 与提问工具只在 Session 挂载它时进入请求，压缩也可能丢弃较早的工具结果。
+间接地，通过 `manage` 预设：固定的中文 persona、工作区 Agent 指令、当前时间、工作区与会话列表、会话查询、读取最新回复和发送消息的工具 schema，以及提问工具只在 Session 挂载它时进入请求，压缩也可能丢弃较早的工具结果。
 
 #### KV Cache effect
 

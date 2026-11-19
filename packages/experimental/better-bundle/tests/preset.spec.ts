@@ -33,7 +33,10 @@ interface PresetConfig {
 type ObjectConfig = Readonly<Record<string, unknown>>
 
 /** Plugin rows without a configuration schema, which must declare no config. */
-const UNCONFIGURED = new Set(['@deepseek-ai/dsh-command-compact'])
+const UNCONFIGURED = new Set([
+  '@deepseek-ai/dsh-command-compact',
+  '@deepseek-ai/dsh-tool-session-list',
+])
 
 /**
  * Wrap one plugin configuration schema as a row-config validator.

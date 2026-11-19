@@ -36,6 +36,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { Config as ToolSessionQueryConfig } from '@deepseek-ai/dsh-tool-session-query'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
+import { MAX_LATEST_REPLY_CHARS } from '../src/reply.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -69,12 +70,14 @@ function createSession(
   cwd: string | undefined,
   createdAt = 1,
   parentSession?: SessionIdValue,
+  origin?: 'subagent',
 ): Session {
   return ctx.sessions.create(brandString<SessionId>(id), {
     meta: {
       createdAt,
       ...cwd === undefined ? {} : { cwd },
       ...parentSession === undefined ? {} : { parentSession },
+      ...origin === undefined ? {} : { origin },
     },
   })
 }
@@ -93,6 +96,23 @@ function openStep(session: Session, text = 'prior needle'): void {
 
 function fakeAgent(session: Session): Agent {
   return { id: session.id, session } as unknown as Agent
+}
+
+function appendReply(session: Session, text: string, turn = 1): SessionEvent {
+  return session.append(
+    'assistant/message',
+    {
+      stream: [],
+      turn,
+      step: 1,
+      message: createMessage({
+        role: 'assistant',
+        content: text.length === 0 ? [] : [{ type: 'text', text }],
+        source: { kind: 'model', ...{ provider: 'test', model: 'test' } },
+      }),
+    },
+    { surfaceOp: 'append' },
+  )
 }
 
 function sessionHit(
@@ -256,8 +276,18 @@ function errorCode(result: ToolExecutionResult): string | undefined {
   return result.isError ? result.error.info?.code : undefined
 }
 
+async function mountMessages(): Promise<{ mounted: Mounted; prompt: ReturnType<typeof vi.fn> }> {
+  const mounted = await mount({ allowSessionMessages: true })
+  const prompt = vi.fn(async () => ({ accepted: true as const }))
+  mounted.ctx.provide('sessionController', { prompt } as never)
+  await vi.waitFor(() => {
+    expect(mounted.ctx.tools.get('session_send_message')).toBeDefined()
+  })
+  return { mounted, prompt }
+}
+
 describe('registration and schemas', () => {
-  it('registers the five cursor-free tools, prompt, timeouts, and pure generic presenters, then disposes them', async () => {
+  it('registers the six cursor-free tools, prompt, timeouts, and pure generic presenters, then disposes them', async () => {
     const mounted = await mount({ maxSearchResults: 7, searchTimeoutMs: 1234 })
     const names = mounted.ctx.tools.schemas().map(schema => schema.name)
     expect(names).toEqual([
@@ -266,7 +296,9 @@ describe('registration and schemas', () => {
       'session_trace',
       'session_event_trace',
       'session_event_read',
+      'session_latest_reply',
     ])
+    expect(mounted.ctx.tools.get('session_send_message')).toBeUndefined()
     const sessionSchema = mounted.ctx.tools.schemas().find(schema => schema.name === 'session_search')
     expect(sessionSchema?.parameters).not.toHaveProperty('properties.cursor')
     expect(sessionSchema?.parameters).not.toHaveProperty('properties.limit')
@@ -277,6 +309,7 @@ describe('registration and schemas', () => {
       session_trace: {},
       session_event_trace: { seq: 0 },
       session_event_read: { seq: 0 },
+      session_latest_reply: {},
     }
     for (const [name, args] of Object.entries(parallelArgs)) {
       expect(mounted.ctx.tools.get(name)?.isConcurrencySafe?.(args)).toBe(true)
@@ -300,9 +333,15 @@ describe('registration and schemas', () => {
       })
     expect(mounted.ctx.tools.get('session_event_read')?.presentCall?.({ seq: 4 }))
       .toEqual({ card: 'generic', kind: 'read', title: 'Read event 4', rawInput: { seq: 4 } })
+    expect(mounted.ctx.tools.get('session_latest_reply')?.presentCall?.({}))
+      .toEqual({ card: 'generic', kind: 'read', title: 'Read latest reply' })
+    expect(mounted.ctx.tools.get('session_latest_reply')?.presentCall?.({ session_id: 'other' }))
+      .toEqual({ card: 'generic', kind: 'read', title: 'Read latest reply from other', rawInput: 'other' })
     const assembly = await mounted.ctx.systemPrompt.assemble()
     expect(assembly.sections.find(section => section.name === 'tool:session-query')?.text)
-      .toContain('prior sessions')
+      .toContain('newest reply')
+    expect(assembly.sections.find(section => section.name === 'tool:session-query')?.text)
+      .not.toContain('session_send_message')
 
     await mounted.fiber.dispose()
     expect(mounted.ctx.tools.schemas().map(schema => schema.name)).toEqual([])
@@ -347,7 +386,9 @@ describe('registration and schemas', () => {
 
   it('expresses the complete Node timer range in the Loader config schema', () => {
     expect(new ToolSessionQuery.Config({ searchTimeoutMs: MAX_TIMER_DELAY_MS }))
-      .toEqual({ maxSearchResults: 100, searchTimeoutMs: MAX_TIMER_DELAY_MS })
+      .toEqual({ maxSearchResults: 100, searchTimeoutMs: MAX_TIMER_DELAY_MS, allowSessionMessages: false })
+    expect(new ToolSessionQuery.Config({ allowSessionMessages: true }))
+      .toMatchObject({ allowSessionMessages: true })
     expect(() => new ToolSessionQuery.Config({ searchTimeoutMs: 1.5 })).toThrow()
     expect(() => new ToolSessionQuery.Config({ searchTimeoutMs: MAX_TIMER_DELAY_MS + 1 })).toThrow()
   })
@@ -2114,5 +2155,162 @@ describe('trace and exact read rendering', () => {
   ])('rejects invalid exact-read integers for %s', async (name, args, expected = 'SESSION_QUERY_INVALID_FILTER') => {
     const mounted = await mount()
     expect(errorCode(await mounted.call(name, args))).toBe(expected)
+  })
+})
+
+describe('latest reply and cross-session messages', () => {
+  it('reads the newest non-empty reply and distinguishes an empty session', async () => {
+    const mounted = await mount()
+    const target = createSession(mounted.ctx, 'reply-target', '/work')
+    appendReply(target, 'the newest answer')
+
+    const latest = await mounted.call('session_latest_reply', { session_id: target.id })
+    expect(latest.isError).toBe(false)
+    expect(JSON.parse(text(latest))).toMatchObject({
+      session_id: target.id,
+      seq: 0,
+      turn: 1,
+      text: 'the newest answer',
+      truncated: false,
+    })
+
+    const empty = createSession(mounted.ctx, 'reply-empty', '/work')
+    const missing = await mounted.call('session_latest_reply', { session_id: empty.id })
+    expect(missing.isError).toBe(false)
+    expect(JSON.parse(text(missing))).toEqual({
+      session_id: empty.id,
+      seq: null,
+      replied_at: null,
+      turn: null,
+      text: null,
+      truncated: false,
+    })
+  })
+
+  it('skips tool-only and replaced assistant messages', async () => {
+    const mounted = await mount()
+    const target = createSession(mounted.ctx, 'reply-surfaces', '/work')
+    appendReply(target, 'visible answer')
+    appendReply(target, '')
+
+    const visible = await mounted.call('session_latest_reply', { session_id: target.id })
+    expect(JSON.parse(text(visible))).toMatchObject({ text: 'visible answer', seq: 0 })
+
+    const shadowed = createSession(mounted.ctx, 'reply-shadowed', '/work')
+    appendReply(shadowed, 'replaced answer')
+    shadowed.append(
+      'user/message',
+      createUserMessage({ content: [{ type: 'text', text: 'replacement' }], source: { kind: 'user' } }),
+      {
+        surfaceOp: { op: 'replace', startSeq: SessionSeq(0), endSeq: SessionSeq(0) },
+        sourceEventSeqs: [SessionSeq(0)],
+      },
+    )
+    const replaced = await mounted.call('session_latest_reply', { session_id: shadowed.id })
+    expect(JSON.parse(text(replaced))).toMatchObject({ text: null, seq: null })
+  })
+
+  it('bounds a long reply and marks it truncated', async () => {
+    const mounted = await mount()
+    const target = createSession(mounted.ctx, 'reply-long', '/work')
+    const answer = 'x'.repeat(MAX_LATEST_REPLY_CHARS + 5)
+    appendReply(target, answer)
+
+    const result = await mounted.call('session_latest_reply', { session_id: target.id })
+    const value = JSON.parse(text(result)) as { text: string; truncated: boolean }
+    expect(value.truncated).toBe(true)
+    expect(value.text).toHaveLength(MAX_LATEST_REPLY_CHARS)
+  })
+
+  it('keeps the caller readable and refuses another workspace', async () => {
+    const mounted = await mount()
+    appendReply(mounted.caller, 'own answer')
+    const own = await mounted.call('session_latest_reply', {})
+    expect(JSON.parse(text(own))).toMatchObject({ text: 'own answer' })
+
+    const outside = createSession(mounted.ctx, 'reply-outside', '/elsewhere')
+    appendReply(outside, 'private answer')
+    expect(errorCode(await mounted.call('session_latest_reply', { session_id: outside.id })))
+      .toBe('SESSION_QUERY_TOOL_UNAUTHORIZED')
+  })
+
+  it('registers the message tool only when enabled and its controller is present', async () => {
+    const disabled = await mount()
+    expect(disabled.ctx.tools.get('session_send_message')).toBeUndefined()
+    const pending = await mount({ allowSessionMessages: true })
+    expect(pending.ctx.tools.get('session_send_message')).toBeUndefined()
+
+    const { mounted } = await mountMessages()
+    expect(mounted.ctx.tools.get('session_send_message')).toBeDefined()
+    expect(mounted.ctx.tools.get('session_send_message')?.isConcurrencySafe?.({})).toBe(false)
+    expect(mounted.ctx.tools.get('session_send_message')?.presentCall?.({ session_id: 'other', message: 'x' }))
+      .toEqual({ card: 'generic', kind: 'other', title: 'Send message to other', rawInput: { session_id: 'other' } })
+    const assembly = await mounted.ctx.systemPrompt.assemble()
+    expect(assembly.sections.find(section => section.name === 'tool:session-query')?.text)
+      .toContain('session_send_message')
+  })
+
+  it('delivers a message and returns acceptance without waiting', async () => {
+    const { mounted, prompt } = await mountMessages()
+    const target = createSession(mounted.ctx, 'message-target', '/work')
+
+    const result = await mounted.call('session_send_message', {
+      session_id: target.id,
+      message: '  hello target  ',
+    })
+    expect(result.isError).toBe(false)
+    expect(JSON.parse(text(result))).toEqual({ accepted: true, session_id: target.id })
+    const request = prompt.mock.calls[0]?.[0] as {
+      readonly requestId: string
+      readonly sessionId: string
+      readonly mode: string
+      readonly content: readonly unknown[]
+    }
+    expect(request.sessionId).toBe(target.id)
+    expect(request.mode).toBe('queue')
+    expect(request.requestId.length).toBeGreaterThan(0)
+    expect(request.content).toEqual([{ type: 'text', text: 'hello target' }])
+  })
+
+  it('validates the target and text before prompting', async () => {
+    const { mounted, prompt } = await mountMessages()
+    const target = createSession(mounted.ctx, 'message-validation', '/work')
+
+    expect(errorCode(await mounted.call('session_send_message', {
+      session_id: mounted.caller.id,
+      message: 'self',
+    }))).toBe('INVALID_ARGS')
+    expect(errorCode(await mounted.call('session_send_message', {
+      session_id: target.id,
+      message: '   ',
+    }))).toBe('INVALID_ARGS')
+    expect(errorCode(await mounted.call('session_send_message', {
+      session_id: target.id,
+      message: 'x'.repeat(12_001),
+    }))).toBe('INVALID_ARGS')
+    const outside = createSession(mounted.ctx, 'message-outside', '/elsewhere')
+    expect(errorCode(await mounted.call('session_send_message', {
+      session_id: outside.id,
+      message: 'outside',
+    }))).toBe('SESSION_QUERY_TOOL_UNAUTHORIZED')
+    const child = createSession(mounted.ctx, 'message-child', '/work', 1, undefined, 'subagent')
+    expect(errorCode(await mounted.call('session_send_message', {
+      session_id: child.id,
+      message: 'child',
+    }))).toBe('SESSION_MESSAGE_TOOL_SUBAGENT')
+    expect(prompt).not.toHaveBeenCalled()
+  })
+
+  it('reports a target refusal without exposing the target as unreachable', async () => {
+    const { mounted, prompt } = await mountMessages()
+    const target = createSession(mounted.ctx, 'message-refused', '/work')
+    prompt.mockRejectedValueOnce(new Error('session is archived'))
+
+    const result = await mounted.call('session_send_message', {
+      session_id: target.id,
+      message: 'refused',
+    })
+    expect(errorCode(result)).toBe('SESSION_MESSAGE_TOOL_REFUSED')
+    expect(text(result)).toContain('session is archived')
   })
 })

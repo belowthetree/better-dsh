@@ -1,5 +1,5 @@
 ---
-description: "面向 agent（智能体）开发者与维护者、经工作区授权且面向模型的会话历史工具，用于选择、配置或排查既往会话搜索、追踪与事件读取。"
+description: "面向 agent 开发者与维护者的、按工作区授权的模型侧会话历史、最新回复与可选跨会话消息工具。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用实验性的 `dsh-tool-session-query` 工具可让模型搜索既往会话、检查事件匹配、追踪会话或事件关系，并读取精确事件数据。它的五个只读工具返回无游标文本；只有目标会话的 `cwd` 与调用方完全匹配时才允许跨会话访问，没有 `cwd` 的调用方只能检查自己。搜索会排除调用方会话，并在达到部署结果上限时要求模型缩小查询。本包是 opt-in；启用后，每次模型请求都会增加固定指引与五个工具 schema。
+使用实验性的 `dsh-tool-session-query` 工具，让模型搜索早先会话、检查事件匹配、追踪会话或事件关系、读取精确事件数据，并读取某个会话的最新回复。它的六个只读工具返回无游标文本，并且仅当目标会话的 `cwd` 与调用方完全相同时才授权跨会话访问；没有 `cwd` 的调用方只能检查自己。可选的第七个工具向另一个已授权会话投递一条文本消息，不等待对方回复。本包为可选启用；启用后会给每个模型请求加入固定指引以及六或七个工具 schema。
 
 ## 目录
 
@@ -25,36 +25,39 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当 agent 应该能搜索自己的既往会话并检查其关系与事件时挂载本包。常用路径是显式的：在 `ctx.sessionQuery`（由 `dsh-session-query-sqlite` 支撑）之上挂载插件，然后让模型调用这些工具。
+当 agent 需要搜索自己的早先会话、检查其关系与事件，或读取另一个会话的最新回复时，挂载本包。常见路径是显式的：把插件挂载到 `ctx.sessionQuery` 之上（由 `dsh-session-query-sqlite` 支撑），再让模型调用这些工具。
 
 ### 何时选择
 
-当部署需要模型驱动的既往工作检索时选择它——例如 coding agent（编程智能体）在开始任务前搜索更早会话中做过的事。只需要程序化检索时避免使用：`ctx.sessionQuery` 本身服务代码调用方，无需面向模型的 schema、提示词与授权层。
+当部署希望由模型驱动地检索早先工作——例如编码 agent 在开始任务前搜索自己以前的会话——选择本包。仅当该 agent 还可以向同一工作区中的其他会话投递提示时，才启用 `allowSessionMessages`。仅需要程序化检索，或没有可信消费方应该在另一个会话中启动工作时，不要启用消息工具：`ctx.sessionQuery` 本身即可服务代码调用方，不需要模型侧 schema、提示和授权层。
 
 ### 配置
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `maxSearchResults` | `100` | 一次搜索调用返回的最大已授权命中数 |
-| `searchTimeoutMs` | `30000` | 附加到两个全文搜索工具的协作式截止时间 |
+| `maxSearchResults` | `100` | 一次搜索调用返回的最大授权命中数 |
+| `searchTimeoutMs` | `30000` | 附加到两个全文搜索工具上的协作式截止时间 |
+| `allowSessionMessages` | `false` | 在 Session Controller 服务也存在时注册消息工具 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-tool-session-query)是每个受支持字段及其 JSDoc 的穷尽式真源。
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-tool-session-query)是每个已接受字段及其 JSDoc 的穷尽式真源。
 
-### 模型可以做什么
+### 模型能做什么
 
 | 工具 | 模型得到什么 |
 |---|---|
-| `session_search` | 匹配字面查询的会话，经排序，带标题与最佳匹配摘录；始终省略调用方会话 |
-| `session_event_search` | 一个已授权会话内匹配字面查询的事件；针对当前会话时，在调用它的步骤之前停止 |
-| `session_trace` | 一个会话的已授权祖先链与后代树；未授权边界以不含隐藏 id 的标记出现 |
-| `session_event_trace` | 一个事件的位置替换与被引用源事件关系 |
-| `session_event_read` | 一个完整未删节事件（JSON），以及可选的相邻事件摘要 |
+| `session_search` | 匹配字面查询的会话，按排序返回标题和最佳匹配摘录；始终省略调用方会话 |
+| `session_event_search` | 一个已授权会话内匹配字面查询的事件；对当前会话会在发起本次调用的 step 之前停止 |
+| `session_trace` | 一个会话的已授权祖先链与后代树；未授权边界显示为不含隐藏 id 的标记 |
+| `session_event_trace` | 一个事件的位置替换与被引用的源事件关系 |
+| `session_event_read` | 一个完整未删节事件的 JSON，以及可选的相邻事件摘要 |
+| `session_latest_reply` | 最新的、含非空文本的当前 assistant 消息，及其事件序号、时间、轮次和最多 20000 字符文本 |
+| `session_send_message` | 一条文本消息作为用户提示进入另一个会话收件箱后的接受回执；不等待目标轮次完成 |
 
-工作区授权是保守的：跨会话访问要求目标与调用方会话的 `cwd` 严格相等，没有 `cwd` 的调用方只能检查自己。请求的父 id 会在搜索前去重并按权限检查；缺失与跨工作区猜测行为完全相同。搜索结果无游标：结果达到上限时请模型缩小查询，绝不暴露提供方游标、偏移、分页大小或模型可控上限。工具边界的时间戳是带时区限定的 ISO 8601，并转换为包含端点的 epoch 毫秒过滤器。
+工作区授权是保守的：跨会话访问要求目标会话与调用方会话的 `cwd` 完全相等，没有 `cwd` 的调用方只能检查自己。消息工具只接受调用方工作区内、header 非 subagent 的另一个会话，并拒绝调用方自己的 id。投递经过 Session Controller：冷目标会按记录下的预设恢复，已归档目标会被与 Client 提示相同的门禁拒绝，空闲目标会启动一个轮次。请求的父 id 在搜索前会去重并做授权检查；不存在的猜测与跨工作区猜测行为一致。搜索结果无游标：达到上限时会要求模型收窄查询，绝不暴露 Provider 游标、偏移、页大小或模型可控上限。工具边界上的时间戳是带时区的 ISO 8601，并转换为包含端点的 epoch 毫秒过滤值。
 
 ### 失败与恢复
 
-每个可信查询服务调用都经过一个错误净化器：调用方取消被精确保留，语料库与提供方诊断进入内部日志，不安全或不可打印的失败回退到固定 `SESSION_QUERY_TOOL_FAILED` 代码与消息。本地参数校验与授权错误保留精确的工具自有消息（目标在调用方工作区之外时为 `SESSION_QUERY_TOOL_UNAUTHORIZED`）。本包不执行字节或字符截断，也不导入 spill 后端；需要限制内联输出的部署应挂载 `@deepseek-ai/dsh-spill-policy`，它可以在保留完整结果的同时替换过大的已渲染文本。
+每次可信查询服务调用都经过同一个错误清洗器：调用方取消被原样保留，语料与 Provider 诊断写入内部日志，不安全或不可打印的失败回退为固定的 `SESSION_QUERY_TOOL_FAILED` 代码与消息。本地参数校验与授权错误保留精确的工具自有消息（目标在调用方工作区之外时为 `SESSION_QUERY_TOOL_UNAUTHORIZED`）。消息工具把目标侧拒绝报告为 `SESSION_MESSAGE_TOOL_REFUSED`，把 subagent 目标报告为 `SESSION_MESSAGE_TOOL_SUBAGENT`；接受意味着提示已进入收件箱，不意味着轮次已完成。读取结果保持完整，只有最新回复工具会在 20000 字符处截断其文本字段并置 `truncated: true`；用返回的序号调用 `session_event_read` 可取得完整事件。需要为其他工具限制内联输出的部署可挂载 `@deepseek-ai/dsh-spill-policy`，它可以在保留完整结果的同时替换过大的渲染文本。
 
 -----
 
@@ -62,35 +65,40 @@ kind: "package-reference"
 ## 理解实现
 
 <details>
-<summary>实现细节——点击展开</summary>
+<summary>实现内部细节——点击展开</summary>
 
-本节解释工具背后的设计决策，并指出实现它们的代码位置；可观察行为已在[使用本包](#use-this-package)中完整说明。
+本节解释工具背后的设计决策，并指向实现它们的代码；可观察行为已完整覆盖在[使用本包](#use-this-package)中。
 
 ### 设计理念
 
-本消费方建立在一个分离与三项承诺之上：
+该消费方建立在一个分离与四项承诺之上：
 
-- **窄而只读的工具。** 五个带扁平 snake-case schema 的工具，每个都引导一个后续步骤；游标、偏移、分页大小或模型可控上限永远不会到达模型。
-- **授权来自调用方，绝不由模型提供。** 调用方身份来自 `ToolExecution.exec.agent`；工作区是字符串精确 `cwd` 相等，并对照每次结果观察到的 header 重新校验。
-- **一个模型边界净化器。** 每个可信 `ctx.sessionQuery` 调用都经过服务边界，它保留取消，并将诊断与分类失败限制在边界内。
-- **不引入第二种截断格式。** 结果保持完整；通用 spill 策略负责有界内联输出。
+- **精简读取工具加一个可选写入工具。** 六个读取工具与一个消息工具，全部使用扁平 snake-case schema；游标、偏移、页大小或模型可控上限绝不进入模型。
+- **权限来自调用方，绝不来自模型。** 调用方身份来自 `ToolExecution.exec.agent`；工作区是精确字符串 `cwd` 相等，并针对每个结果观察到 header 再检查一次。
+- **一个模型边界清洗器。** 每次可信 `ctx.sessionQuery` 调用都经过服务边界，由它保留取消并包含诊断与分类失败。
+- **一个显式投递 seam。** 消息工具调用 Session Controller 的 prompt 操作，因此恢复、归档、排队与策略仍归该服务所有，而不是在工具中重新实现。
+- **没有第二种截断格式。** 读取结果保持完整；只有最新回复文本受限，其他受限内联输出由通用 spill 策略负责。
 
-设计历史记录在[面向模型的会话查询工具笔记](../../../.agents/notes/archived/feature/2026-07-24-model-facing-session-query-tools.md)与 [session-search-not-shipped-default 笔记](../../../.agents/notes/archived/feature/2026-08-02-session-search-not-shipped-default.md)中。
+设计历史见[模型侧会话查询工具记录](../../../.agents/notes/archived/feature/2026-07-24-model-facing-session-query-tools.md)与[会话搜索默认不发布记录](../../../.agents/notes/archived/feature/2026-08-02-session-search-not-shipped-default.md)。
 
 ### 源码地图
 
-| 文件 | 职责 |
+| 文件 | 角色 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：配置、提示词章节、五个工具注册 |
-| [`src/input.ts`](src/input.ts) | 模型 schema、参数规范化、过滤器构造 |
-| [`src/workspace-access.ts`](src/workspace-access.ts) | 调用方身份、工作区授权、标题访问、血缘投影 |
+| [`src/index.ts`](src/index.ts) | 插件入口：配置、提示区段、读取工具注册、条件消息注册 |
+| [`src/input.ts`](src/input.ts) | 模型 schema、参数归一化、过滤条件构造 |
+| [`src/workspace-access.ts`](src/workspace-access.ts) | 调用方身份、工作区授权、标题访问、谱系投影 |
 | [`src/service-boundary.ts`](src/service-boundary.ts) | 可信调用与模型安全错误转换 |
-| [`src/operations.ts`](src/operations.ts) | 五个操作工作流 |
+| [`src/operations.ts`](src/operations.ts) | 五个搜索、追踪与事件读取工作流 |
+| [`src/reply.ts`](src/reply.ts) | 最新回复的 surface 扫描、边界与 JSON 结果 |
+| [`src/message.ts`](src/message.ts) | 目标检查与 Session Controller 提示投递 |
 | [`src/presentation.ts`](src/presentation.ts) | 文本结果渲染与工具调用卡片 |
 
-### 操作流程
+### 操作流
 
-每个执行器先派生调用方，把模型的参数规范化为服务过滤器，对照调用方工作区授权目标（或请求的父 id），然后通过服务边界收集结果。两个搜索工具在观察世代仍有效时内部翻页消费提供方游标，停在 `maxSearchResults`；由于一次搜索会消费与世代绑定的提供方游标，两个搜索工具与同级工具调用排他执行，而三个精确追踪/读取工具选择并行执行。血缘输出用不含隐藏会话 id 的标记替换未授权祖先与后代边界。
+每个读取执行器都会推导调用方、把模型参数归一化为服务过滤条件、针对调用方工作区授权目标（或请求的父 id），并通过服务边界收集结果。两个搜索工具在观察到的 generation 保持有效时通过 Provider 游标内部分页，直到 `maxSearchResults`；由于一次搜索会消耗绑定 generation 的 Provider 游标，两个搜索工具与兄弟工具调用互斥执行，而精确追踪、事件读取与最新回复工具可选择并行执行。最新回复工具观察目标，移除被后续 surface 替换遮蔽的消息，并选择最新的、含文本的当前 assistant 消息。谱系输出会把未授权的祖先与后代边界替换为不含隐藏会话 id 的标记。
+
+消息工具先授权目标 header，拒绝自身或 subagent 目标，然后用新生成的 request id 以 queue 模式调用 `ctx.sessionController.prompt`。Controller 拥有目标恢复、归档执行与收件箱准入；工具只串行化自身的调用并返回接受回执。
 
 </details>
 
@@ -99,77 +107,86 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## 进一步探索
 
-当包级约定不够用时阅读以下页面。它们从工具表面逐步进入底层服务、schema 目录与设计证据。
+当包级契约不够时阅读这些页面。它们从工具表面移动到下层服务、schema 目录与设计证据。
 
-- [生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-session-query)——模型看到的五个工具 schema。
-- [dsh-session-query](../../session-query/session-query/README.zh.md)——这些工具调用的服务。
+- [生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-session-query)——模型看到的六个读取 schema 与条件消息 schema。
+- [dsh-session-query](../../session-query/session-query/README.zh.md)——这些读取工具调用的服务。
 - [dsh-session-query-sqlite](../../session-query/session-query-sqlite/README.zh.md)——两个搜索工具背后的全文后端。
-- [会话查询子系统参考](../../../docs/subsystems/session-query.zh.md)——工具之下的类型级约定。
-- [面向模型的会话查询工具](../../../.agents/notes/archived/feature/2026-07-24-model-facing-session-query-tools.md)——工作区授权、无游标结果与 spill 决策。
+- [dsh-api-session-controller](../../api/session-controller/README.zh.md)——消息工具用于恢复并提示目标的服务。
+- [Session Query 子系统参考](../../../docs/subsystems/session-query.zh.md)——工具之下的类型级契约。
+- [模型侧会话查询工具](../../../.agents/notes/archived/feature/2026-07-24-model-facing-session-query-tools.md)——工作区授权、无游标结果与 spill 决策。
 
 -----
 
 <a id="model-experience"></a>
 ## 模型体验
 
-### 系统提示词
+### 系统提示
 
 #### 模型看到什么
 
-模型会收到一个固定的既往历史指引章节。
+模型收到一个固定的早先历史指引区段。启用 `allowSessionMessages` 且存在 Session Controller 时，同一区段会追加一句投递指引。
 
-##### 既往历史指引
+##### 早先历史指引
 
 ```markdown
-Use session_search to find relevant work from prior sessions, or session_event_search to search earlier events in one session. Search results are cursor-free and workspace-scoped. Follow a useful hit with session_trace, session_event_trace, or session_event_read when you need lineage, relationships, or exact data.
+Use session_search to find relevant work from prior sessions, or session_event_search to search earlier events in one session. Search results are cursor-free and workspace-scoped. Follow a useful hit with session_trace, session_event_trace, or session_event_read when you need lineage, relationships, or exact data. Use session_latest_reply to read the newest reply in an authorized session.
+```
+
+##### 投递指引
+
+```markdown
+Use session_send_message to deliver a text message to another authorized session; it returns once accepted and does not wait for the reply. Read the answer with session_latest_reply.
 ```
 
 #### Token 影响
 
-插件挂载期间，每次请求都存在一个固定精简章节。
+插件挂载期间，每个请求都有一个固定的简短区段；消息功能增加一句话。
 
 #### KV Cache 影响
 
-插件与指引文本不变时，前缀稳定。
+在插件、指引文本与消息工具可见性不变时，前缀保持稳定。
 
 ### 工具 schema
 
 #### 模型看到什么
 
-模型会看到生成的 [`session_search`、`session_event_search`、`session_trace`、`session_event_trace` 与 `session_event_read` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-session-query)。搜索过滤器会增加固定 schema token，而游标、工作区路径、输出分页与模型可控结果上限仍不存在。
+模型看到生成的[会话查询工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-session-query)：`session_search`、`session_event_search`、`session_trace`、`session_event_trace`、`session_event_read` 与 `session_latest_reply`，以及启用消息功能且存在 Session Controller 时的 `session_send_message`。搜索过滤条件会增加固定 schema token，而游标、工作区路径、输出分页与模型可控结果上限仍然缺席。
 
 #### Token 影响
 
-可见期间，每次请求都会发送五个固定只读 schema。
+可见时每个请求发送六个固定只读 schema；启用消息功能会增加一个写入 schema。
 
 #### KV Cache 影响
 
-工具可见性与定义不变时，前缀稳定。
+在工具可见性与定义不变时，前缀保持稳定。
 
 ### 工具结果
 
 #### 模型看到什么
 
-每次成功调用都会发出一个纯文本块。搜索结果包含标题与最佳匹配摘录；追踪包含全部已授权关系；事件读取包含未经删节的目标 JSON。通用 spill 策略可以用其预览、不透明定位信息与取回指引替换过大的内联文本。
+每次成功的读取调用输出一个纯文本块。搜索结果包含标题与最佳匹配摘录；追踪包含全部已授权关系；事件读取包含未删节的目标 JSON。最新回复调用输出 JSON，含会话 id、事件序号、回复时间、轮次、受限文本与截断标志。成功的消息调用输出含 `accepted: true` 与目标会话 id 的 JSON。
 
 #### Token 影响
 
-结果取决于数据，并保留在已记录工具历史中直到压缩（compaction）；`maxSearchResults` 限制搜索命中数。
+结果依赖数据，并在压缩前保留在已记录的工具历史中；`maxSearchResults` 限制搜索命中数，最新回复文本限制为 20000 字符。
 
 #### KV Cache 影响
 
-仅追加的结果文本位于可重用请求前缀之后，不会使较早的缓存条目失效。
+仅追加的结果文本跟在可复用请求前缀之后，不会使早先的缓存条目失效。
 
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
 
 
-这些限制说明本包何时不合适，或何时需要特别的运维注意。它们是当前包约束，不是任务积压。
+这些限制界定本包何时不适合或需要特殊运维注意。它们是当前包约束，不是任务清单。
 
-- **搜索有上限且无延续**——搜索最多返回部署上限，匹配更多时会请模型缩小查询；不提供延续 token。
-- **保守的工作区身份**——工作区身份是字符串精确 `cwd` 相等，因此符号链接等价的路径不共享权限。
-- **无 spill 策略时内联载荷**——未挂载通用 spill 策略的自定义组合会以内联方式接收完整追踪与事件载荷。
+- **搜索有上限且无续传**——搜索最多返回部署上限，并在还有更多匹配时要求模型收窄查询；没有续传 token。
+- **保守的工作区身份**——工作区身份是精确字符串 `cwd` 相等，因此符号链接等价的路径不共享授权。
+- **异步投递**——消息工具只报告接受；没有完成回执、回复等待、重试或重复抑制，目标可能把提示排在正在运行的轮次之后。
+- **用户权限投递**——目标收到的是无 principal 的用户提示，因此模型读到的任何内容都可能影响投递；仅在可信所有者控制对话时挂载消息工具。
+- **没有 spill 策略时的内联载荷**——没有通用 spill 策略的自定义组合会内联接受完整追踪与事件载荷；只有最新回复文本本身受限。
 
 <a id="dev-note"></a>
 ### 开发备注
@@ -177,10 +194,10 @@ Use session_search to find relevant work from prior sessions, or session_event_s
 <details>
 <summary>维护者的工作上下文——点击展开</summary>
 
-本开发备注是维护者的工作上下文：开放设计问题与尚未决定的探索方向。它明确不具权威性——已交付的行为、限制与既定理由以上文、包代码和相关 Agent Note 为准。
+本开发备注是维护者的工作上下文：未决的设计问题与方向，尚未决定。它明确非权威——已交付行为、限制与已接受理由位于上述章节、包代码与链接的 Agent Note 中。
 
-#### 未来：更宽泛的工作区语义
+#### 未来：更广的工作区语义
 
-字符串精确 `cwd` 相等是刻意保守的选择；符号链接感知或规范路径的工作区身份会改变哪些会话共享权限，尚未决定。
+精确字符串 `cwd` 相等是刻意保守的；符号链接感知或规范路径的工作区身份会改变哪些会话共享授权，尚未决定。
 
 </details>

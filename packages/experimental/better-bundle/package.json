@@ -55,6 +55,7 @@
     "@deepseek-ai/dsh-text-to-speech": "workspace:*",
     "@deepseek-ai/dsh-time-context": "workspace:*",
     "@deepseek-ai/dsh-tool-ask-user": "workspace:*",
+    "@deepseek-ai/dsh-tool-session-list": "workspace:*",
     "@deepseek-ai/dsh-tool-session-query": "workspace:*",
     "@deepseek-ai/dsh-api-text-to-speech": "workspace:*"
   },

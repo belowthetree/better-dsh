@@ -45,6 +45,10 @@ interface EventTargetCallArgs extends SessionTargetCallArgs {
   readonly seq: number
 }
 
+interface SendMessageCallArgs {
+  readonly session_id: string
+}
+
 function formatSessionSearch(
   collected: SearchCollection<SessionSearchHit>,
   titles: CompleteTitleMap,
@@ -240,6 +244,24 @@ function presentEventTargetCall(
   }
 }
 
+function presentLatestReplyCall(args: SessionTargetCallArgs): GenericCallView {
+  return {
+    card: 'generic',
+    kind: 'read',
+    title: args.session_id === undefined ? 'Read latest reply' : `Read latest reply from ${args.session_id}`,
+    ...args.session_id === undefined ? {} : { rawInput: args.session_id },
+  }
+}
+
+function presentSendMessageCall(args: SendMessageCallArgs): GenericCallView {
+  return {
+    card: 'generic',
+    kind: 'other',
+    title: `Send message to ${args.session_id}`,
+    rawInput: { session_id: args.session_id },
+  }
+}
+
 /** Text output and call-card presentation for every session-query tool. */
 export const presentation = {
   formatSessionSearch,
@@ -252,4 +274,6 @@ export const presentation = {
   presentEventSearchCall,
   presentSessionTraceCall,
   presentEventTargetCall,
+  presentLatestReplyCall,
+  presentSendMessageCall,
 }

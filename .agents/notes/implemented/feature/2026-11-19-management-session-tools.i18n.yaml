@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-19-management-session-tools.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-19-management-session-tools.md
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging:
+  en: b0827841f2f3ef1c
+  zh: 2cd2fda109eda982
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging/problem:
+  en: a419344b79fc15a4
+  zh: 456676d03d8499a5
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging/decision:
+  en: 888912e020f76f92
+  zh: 309336c0f97e955c
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging/decision/listing:
+  en: 3c293d1000f026cb
+  zh: f34b4be3815e1515
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging/decision/latest-reply:
+  en: aca4f93c75bfd63c
+  zh: 0365eb5bd16e82ae
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging/decision/sending:
+  en: 7a51b46aea95068f
+  zh: 8bd3b1d841c3f0a9
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging/alternatives-considered:
+  en: b2b5e647d6f43a08
+  zh: e8d23c29dd951271
+/agent-note-management-session-tools-for-listing-latest-reply-and-messaging/consequences:
+  en: df9ba10fa17287eb
+  zh: 2b74e95035a1b73d
