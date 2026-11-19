@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package lets applications persist and resume session event logs through a backend-independent API. Readers can create, open, inspect, list, append to, read, flush, and close stored sessions while preserving contiguous append-only history. A completed flush is the durability barrier; readers never receive torn tails or invalid records, and only one writer per session is allowed within a backend instance. Use the shipped [JSONL backend](../session-persistence-jsonl/README.md) for one compressed log per session, or implement another backend with the same observable guarantees.
+This package lets applications persist and resume session event logs through a backend-independent API. Readers can create, open, inspect, list, permanently remove, append to, read, flush, and close stored sessions while preserving contiguous append-only history. A completed flush is the durability barrier; readers never receive torn tails or invalid records, and only one writer per session is allowed within a backend instance. Use the shipped [JSONL backend](../session-persistence-jsonl/README.md) for one compressed log per session, or implement another backend with the same observable guarantees.
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ Shipped profiles use the [JSONL](../session-persistence-jsonl/README.md) backend
 
 ### What the service provides
 
-With a backend mounted, five service methods address stored sessions:
+With a backend mounted, six service methods address stored sessions:
 
 ```text
 const handle = await ctx.sessionPersistence.create(header)     // store a new session, take write ownership
@@ -41,8 +41,11 @@ const handle = await ctx.sessionPersistence.open(id, 'write')  // claim single-w
 const reader = await ctx.sessionPersistence.open(id, 'read')   // observe without ownership
 const snap = await ctx.sessionPersistence.stat(id)             // header + revision (+ eventCount / sizeBytes) without a log read
 const all = await ctx.sessionPersistence.list()                // one snapshot per visible stored session
+await ctx.sessionPersistence.delete(id)                        // permanently remove one stored session's artifacts
 await ctx.sessionPersistence.flush()                           // backend-wide durability barrier over every active write handle
 ```
+
+`delete(id, { signal })` permanently removes one stored session and every artifact the backend keeps for it. The base implementation refuses with `SessionPersistenceDeleteUnsupportedError`; a backend opts in by overriding it. A supporting backend must refuse while it owns or has an open handle for the session (`SessionPersistenceBusyError`) or another process holds its write ownership (`SessionAlreadyOwnedError`), must refuse an absent session with `SessionPersistenceNotFoundError`, and must make the removal durable before resolving. The shipped JSONL backend implements deletion; the SQLite provider refuses it. Deleting stored history is not archive: archive is a registry-level visibility set over a log that stays stored.
 
 Service-level `flush()` drains every active write handle's routed events and materializes its session, exactly as each handle's own `flush` would; failures aggregate per session as an `AggregateError` without abandoning the sweep, and a handle closed mid-sweep counts as flushed because close itself drains durably.
 

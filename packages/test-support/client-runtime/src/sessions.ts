@@ -315,7 +315,7 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'create' | 'refreshProjections' | 'refresh' | 'search' | 'fork'
+    method: 'create' | 'delete' | 'refreshProjections' | 'refresh' | 'search' | 'fork'
     args: unknown[]
   }[] = []
 
@@ -617,6 +617,13 @@ export class TestSessions implements ISessions {
    */
   stubCreate(impl: (opts: Parameters<ISessions['create']>[0]) => Promise<SessionId>): void {
     this.createStub = impl
+  }
+
+  /** Delete a catalogued fixture and record the service-level call. */
+  async delete(sessionId: SessionId): Promise<void> {
+    this.calls.push({ method: 'delete', args: [sessionId] })
+    this.require(sessionId)
+    await this.remove(sessionId)
   }
 
   /** Create through the installed test behavior and require a catalogued fixture. */

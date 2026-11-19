@@ -10,7 +10,7 @@ import { RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
 import { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { ok, streamHandle, type RemoteMock } from '@deepseek-ai/dsh-remote-mock'
 import { createClientTest, webApp } from '@deepseek-ai/dsh-client-test-runtime/src/assembly/index.ts'
-import { ClientSessions, SessionCreateError, SessionForkError } from '../src/client/sessions/service.ts'
+import { ClientSessions, SessionCreateError, SessionDeleteError, SessionForkError } from '../src/client/sessions/service.ts'
 import { scopeOf } from '../src/client/scope.ts'
 import type {
   SessionAssistantStreamBaseline, SessionFollowFrame, SessionFollowRequest, SessionHistoryRecord,
@@ -1073,6 +1073,36 @@ describe('fork', () => {
     expect(b.svc.binding(sid('child'))).toBeUndefined()
     expect(b.svc.retainInfo(sid('child')).getSnapshot().referenceCount).toBe(0)
     expect(b.mock.log.requests(FOLLOW)).toHaveLength(0)
+  })
+})
+
+describe('delete', () => {
+  it('forwards permanent deletion and removes the local row without opening history', async ({ bench }) => {
+    const b = bench()
+    const target = sid('dead')
+    await feedList(b, [{ id: 'dead' }])
+    expect(b.svc.list.getSnapshot().ids).toEqual([target])
+
+    await expect(b.svc.delete(target)).resolves.toBeUndefined()
+
+    expect(b.mock.remote.session.delete).toHaveBeenCalledExactlyOnceWith({ sessionId: target })
+    expect(b.svc.list.getSnapshot().ids).toEqual([])
+    expect(b.svc.binding(target)).toBeUndefined()
+    expect(b.mock.log.requests(FOLLOW)).toHaveLength(0)
+  })
+
+  it('rejects with the Host business failure and keeps the row', async ({ bench }) => {
+    const b = bench()
+    const target = sid('busy')
+    await feedList(b, [{ id: 'busy' }])
+    const failure = new RemoteError('session/delete-active', 'session is live', { sessionId: target })
+    b.mock.remote.session.delete.mockResolvedValueOnce(err(failure))
+
+    const error = await b.svc.delete(target).catch((cause: unknown) => cause)
+
+    expect(error).toBeInstanceOf(SessionDeleteError)
+    expect(error).toMatchObject({ sessionId: target, rpcError: failure })
+    expect(b.svc.list.getSnapshot().ids).toEqual([target])
   })
 })
 

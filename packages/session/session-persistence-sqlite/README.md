@@ -119,6 +119,7 @@ These constraints apply when selecting this provider.
 - Retained JSONL files contain the imported prefix and exclude later SQLite events; they cannot restore the latest history on their own.
 - All processes writing imported Sessions must use the SQLite provider.
 - SQLite accepts the current Session format; a future event-format upgrade needs its own SQLite history migration.
+- Permanent deletion is unsupported: this provider inherits the seam's `SessionPersistenceDeleteUnsupportedError`, and imported JSONL source files remain intact.
 
 <a id="dev-note"></a>
 ### Dev Note

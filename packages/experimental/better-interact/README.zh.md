@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-Better DSH 把 agent 从需要造访的地方变成桌面上的常驻存在。悬浮球让 agent 始终在场；回答以气泡形式在它旁边升起，Ctrl+Alt+W 打开一个悬浮工作台，每个工作区一页，每个会话一个书签。键盘优先：Ctrl+Tab 切换工作区，Ctrl+Q 进入会话导航，Ctrl+Alt+N 从文件夹添加工作区；右键点击会话书签可打开共享的会话菜单，其中包含归档。它复用 shell 的会话内容，因此转录、工具与输入框保持不变。它是 Desktop orb 形态的体验，不替代 classic shell。
+Better DSH 把 agent 从需要造访的地方变成桌面上的常驻存在。悬浮球让 agent 始终在场；回答以气泡形式在它旁边升起，Ctrl+Alt+W 打开一个悬浮工作台，每个工作区一页，每个会话一个书签。键盘优先：Ctrl+Tab 切换工作区，Ctrl+Q 进入会话导航，Ctrl+Alt+N 从文件夹添加工作区；右键点击会话书签可打开共享的会话菜单，其中包含归档与永久删除。它复用 shell 的会话内容，因此转录、工具与输入框保持不变。它是 Desktop orb 形态的体验，不替代 classic shell。
 
 ## 目录
 

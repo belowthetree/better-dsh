@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-file-upload'
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
-import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
+import type { SessionObservation, SessionRecord } from '@deepseek-ai/dsh-session-query'
 import { Remote, RemoteError, TypertRemoteService, principalOf } from '@deepseek-ai/dsh-typert-protocol'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
@@ -47,6 +47,8 @@ import type {
   SessionFollowRequest,
   SessionForkRequest,
   SessionForkValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionListRequest,
   SessionListValue,
   SessionOpenWorkspacePathRequest,
@@ -430,6 +432,101 @@ export class SessionController extends TypertRemoteService {
       }
     }
     return this.commands.fork(request)
+  }
+
+  /**
+   * Permanently remove one stored Session, its durable log, and its Workspace
+   * accounting. A running Session, a Session whose live Agent another consumer
+   * owns, or a parent of subagent Sessions is refused; an idle Agent this
+   * controller owns is stopped before its log is removed. A backend without
+   * deletion support refuses every call.
+   * @param request - the stored Session to remove.
+   * @param signal - caller cancellation before removal starts.
+   * @returns acknowledgement that the stored Session is gone.
+   */
+  @Remote('delete')
+  async delete(request: SessionDeleteRequest, signal: AbortSignal): Promise<SessionDeleteValue> {
+    const sessionId = request.sessionId
+    signal.throwIfAborted()
+    const running = (): boolean => this.ctx.agents.get(sessionId)?.status === 'running'
+    if (running()) {
+      throw new RemoteError('session/delete-active', `session "${sessionId}" is running; stop its work before deleting`, { sessionId })
+    }
+    const persistence = this.ctx.get('sessionPersistence')
+    if (persistence === undefined) {
+      throw new RemoteError('session/not-found', `session "${sessionId}" is not stored`, { sessionId })
+    }
+    const stored = await persistence.stat(sessionId, { signal })
+    if (stored === undefined) {
+      throw new RemoteError('session/not-found', `session "${sessionId}" is not stored`, { sessionId })
+    }
+    let records: readonly SessionRecord[]
+    try {
+      records = await this.ctx.sessionQuery.listSessions(signal)
+    } catch (error: unknown) {
+      throw new RemoteError('gateway/internal', `cannot inspect session "${sessionId}" before deleting: ${String(error)}`, {})
+    }
+    const childSessionIds = records
+      .filter(record => record.header.origin === 'subagent' && record.header.parentSession === sessionId)
+      .map(record => record.header.id)
+    if (childSessionIds.length > 0) {
+      throw new RemoteError(
+        'session/delete-has-children',
+        `session "${sessionId}" has subagent children; delete them first`,
+        { sessionId, childSessionIds },
+      )
+    }
+    if (running()) {
+      throw new RemoteError('session/delete-active', `session "${sessionId}" started work while deleting`, { sessionId })
+    }
+    if (this.ctx.agents.get(sessionId) !== undefined) {
+      let disposed = false
+      try {
+        disposed = await this.agents.disposeAgent(sessionId)
+      } catch (error: unknown) {
+        throw new RemoteError('session/delete-active', `session "${sessionId}" could not be stopped: ${String(error)}`, { sessionId })
+      }
+      if (!disposed) {
+        throw new RemoteError('session/delete-active', `session "${sessionId}" is owned by another live consumer`, { sessionId })
+      }
+    }
+    if (this.ctx.sessions.get(sessionId) !== undefined) {
+      throw new RemoteError('session/delete-active', `session "${sessionId}" is still live after stopping`, { sessionId })
+    }
+    // A created-but-unmaterialized Session disappears with its Agent; only
+    // materialized artifacts need the backend delete.
+    const needsDelete = await persistence.stat(sessionId, { signal }) !== undefined
+    if (needsDelete) {
+      try {
+        await persistence.delete(sessionId, { signal })
+      } catch (error: unknown) {
+        const name = error instanceof Error ? error.name : ''
+        if (name === 'SessionPersistenceDeleteUnsupportedError') {
+          throw new RemoteError('session/delete-unavailable', 'the mounted persistence backend cannot delete sessions', { sessionId })
+        }
+        if (name === 'SessionPersistenceBusyError' || name === 'SessionAlreadyOwnedError') {
+          throw new RemoteError('session/delete-active', `session "${sessionId}" is still in use`, { sessionId })
+        }
+        if (name === 'SessionPersistenceNotFoundError') {
+          throw new RemoteError('session/not-found', `session "${sessionId}" is not stored`, { sessionId })
+        }
+        throw new RemoteError('gateway/internal', `failed to delete session "${sessionId}": ${String(error)}`, {})
+      }
+    }
+    try {
+      for (const workspace of this.ctx.workspaceRegistry.list()) await workspace.detachSession(sessionId)
+      await this.ctx.workspaceRegistry.unarchiveSession(sessionId)
+      await this.ctx.workspaceRegistry.unpinSession(sessionId)
+    } catch (error: unknown) {
+      this.ctx.logger.warn(`session-controller: session "${sessionId}" was removed but its Workspace accounting was not: ${String(error)}`)
+    }
+    try {
+      await this.ctx.get('sessionProjectionCache')?.evict(sessionId)
+    } catch (error: unknown) {
+      this.ctx.logger.warn(`session-controller: session "${sessionId}" was removed but its projection checkpoint was not: ${String(error)}`)
+    }
+    this.ctx.emit('api-session/removed', sessionId)
+    return { deleted: true }
   }
 
   /**

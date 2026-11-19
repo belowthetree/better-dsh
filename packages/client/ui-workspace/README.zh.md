@@ -11,7 +11,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包让用户浏览分组或扁平的 Session 列表、为新 Session 选择 Workspace，并通过添加、重命名、重排序、搜索、fork、归档和删除 Workspace 来管理 Workspace 与 Session；Session 行菜单及其悬停按钮是可由客户端插件扩展的 slot 列表。待处理交互显示为警告点，subagent 来源的 Session 则保持隐藏。处于空闲状态且未归档、其 Session 有活动定时任务的 Session 行会显示时钟标记，其悬浮卡片会列出这些任务。规范化后仍有差异的文件夹路径会保留为独立 Workspace。添加 Workspace 需要组合目录选择器；没有目录选择器时，添加操作不可用。
+本包让用户浏览分组或扁平的 Session 列表、为新 Session 选择 Workspace，并通过添加、重命名、重排序、搜索、fork、归档、永久删除和删除 Workspace 来管理 Workspace 与 Session；Session 行菜单及其悬停按钮是可由客户端插件扩展的 slot 列表。待处理交互显示为警告点，subagent 来源的 Session 则保持隐藏。处于空闲状态且未归档、其 Session 有活动定时任务的 Session 行会显示时钟标记，其悬浮卡片会列出这些任务。规范化后仍有差异的文件夹路径会保留为独立 Workspace。添加 Workspace 需要组合目录选择器；没有目录选择器时，添加操作不可用。
 
 ## 目录
 
@@ -67,6 +67,8 @@ Session 行内的 Rename 操作打开一个以该行显示标题预填的对话�
 
 对静止的 Session，Archive 不经确认对话框直接提交，并保留 Session 的记账位置。仍有工作在跑的 Session 是唯一会先询问的情形：Host 拒绝普通归档并列出这些工作，侧栏随即打开"停止并归档"对话框，按族列出——进行中的回合、运行中的子代理、后台任务、定时提醒，各带名称——并写明恢复路径；确认后请 Host 按停止按钮同样的方式停止这些工作，归档集合持久化后即完成归档，停止在后台收敛；取消则让 Session 继续运行并保持可见。视图选项以一组显式三选一控制显隐：隐藏已归档（默认项）隐藏已归档 Session，全部对话（显示已归档）将其纳入列表，仅显示已归档则隐藏普通 Session，并丢弃没有归档 Session 的 Workspace；树形分组下，被丢弃 Workspace 的子级挂到最近一个仍显示的祖先下。可见的归档行置灰，并提供无障碍说明，告知取消归档后才能打开；Rename、Fork 与取消归档仍然可用。归档成功后的提示提供"撤销"动作，并在归档行仍被隐藏时附带"筛选已归档会话"动作，后者直接把筛选切到全部对话（显示已归档）；停止并归档显示同样的提示但措辞不同，撤销只恢复 Session，不会让被停止的工作继续。取消归档移除归档标记，但不恢复置顶，也不改变保存的位置。列表为空时显示居中的"图标在上、文字在下"占位；仅显示已归档视图用自己的文案（暂无已归档会话），并附"查看其他会话"文字按钮，点击把筛选切回隐藏已归档。
 
+永久删除是 Session 菜单中位于归档之后的删除动作。它只对未在运行、且访问快照包含 `session/delete` 的 Session 出现；选择后打开确认框，写明 Session 名称，并说明其完整日志与工作区记账将被永久移除。确认后由 Host 删除，若它正是主视图所选会话则清除主选择；取消则不做任何改动。Host 会拒绝运行中的 Session、有 subagent 子会话的父会话，以及不支持删除的后端。该动作出现在所有打开共享 Session 菜单的界面中，包括通用工作台的会话书签。
+
 会话更新时间使用 tertiary 文本色，包括已归档行。标题宽于所在行时，静止状态以省略号裁切。把指针停在行上，标题会滚动到远端——例如 fork 递增后的标题——并在揭示时不显示省略号；指针离开后标题回到开头。
 
 快捷键速查提供新建会话、搜索会话、添加工作区、重命名会话、分叉会话、归档会话和切换已读/未读。桌面默认使用平台的主修饰键，搜索为 Mod+K；Windows 和 macOS Web 使用[快捷键服务的平台默认值](../shortcuts/README.zh.md)；Linux Web 在用户配置前不绑定这些命令。按钮提示和会话行菜单显示当前有效绑定。点击菜单项操作该行，按快捷键操作主会话。Desktop 和 Windows/macOS Web 的重命名均使用 Mod+Alt+G，将 Mod+Shift+R 留给浏览器刷新。导航抽屉允许这些命令，其他对话框遵循命令的模态限制。新建会话始终回到该工作区可复用的空白会话，即使有其他对话框遮挡。重命名要求主区域正在显示非空会话，且没有其他模态对话框遮挡；切换到其他主面板后，后台保留的会话不可作为重命名目标。其他 Windows 和 macOS Desktop 绑定也可从终端输入区域和模态对话框中执行；其他环境遵循命令的区域和模态限制。搜索和重命名的打开请求归本包管理，输入草稿保留在浏览器中。目录选择或工作区接纳尚未结束时，目录选择器拒绝重复打开。分叉捕获主视图已持有并发起历史打开的会话，保留自动迁移；它使用与行菜单相同的 Host 操作选择最近已完成轮次，不读取更早的 Client 历史。没有会话或会话为空时不可用；没有已完成轮次的源会话由 Host 拒绝。快捷键分叉被拒绝时保留当前选择、显示本地化提示，并允许重试；非预期失败还会保留诊断日志。该提示共用应用级 Workspace 通知通道：只显示最新提示，移除浏览区域不会关闭它。
@@ -83,7 +85,7 @@ Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**
 
 工作区标题的右键和省略号共用本包声明的 `workspace` 右键操作对象。重命名和删除沿用现有确认对话框，打开前再次检查工作区是否存在及操作权限；本机目录显示由 [ui-open-in-app](../ui-open-in-app/README.zh.md) 提供。没有修改权限时仍可使用本机和插件菜单操作。打开菜单不改变展开状态或选中的会话。
 
-会话行通过 [ui-context-menu](../ui-context-menu/README.zh.md) 在右键与省略号按钮间共享现有操作贡献。操作对象固定为被点击的会话，不改变选中状态；`sidebar.workspaces.session.menu.item` 仍是组件扩展位置。内置分组依次为置顶、重命名、分叉；复制 Session ID 和可选的本机目录显示；归档，复制 Session ID 与归档之前各有一条分割线。
+会话行通过 [ui-context-menu](../ui-context-menu/README.zh.md) 在右键与省略号按钮间共享现有操作贡献。操作对象固定为被点击的会话，不改变选中状态；`sidebar.workspaces.session.menu.item` 仍是组件扩展位置。内置分组依次为置顶、重命名、分叉；复制 Session ID 和可选的本机目录显示；归档与删除，复制 Session ID、归档和删除之前各有一条分割线。
 
 -----
 
@@ -91,7 +93,7 @@ Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**
 
 `mainView` 引用保留 `conversation` 子要素。主视图离开一个非空白、未归档的 Session 时，导航先以不带子要素的 `recentViews` 引用保留它，因此其历史仍已加载，切回时无需再请求历史，而 Conversation 组装在重新显示前停止。运行中、等待用户或完成未读的最近访问会话始终保留且不计数；其余最近访问会话最多保留 `recentViewLimit` 个（默认 10），不含主视图 Session。`recentViewLimit` 是插件 Host `Config` 的 volatile 字段，在其 `cordis.yml` 行中设置，并经 [Client Modules](../modules/README.zh.md#synced-plugin-configuration) 同步到浏览器；修改后无需刷新页面即生效，按新上限释放或保留最近访问会话，已释放的 Session 不会回来。浏览器收到值之前，所有计数的最近访问会话都会保留。超出时先释放最早离开的未置顶会话，再释放最早离开的置顶会话；被释放的最近访问会话只有在主视图再次离开该 Session 时才会回来。Session 回到主视图、被移除或归档，或插件卸载时，会释放其最近访问引用。
 
-Session 行与 Workspace 行的可用操作来自浏览器根的访问 Hook：`useWorkspaceAccess` 门控 Workspace 的新建、重命名、删除与排序动作，`useSessionAccess` 门控 Session 行的重命名、分叉、拖拽、置顶、归档与取消归档动作，以及搜索结果的恢复控件。被拒绝的动作不渲染，但每个发往 Host 的请求仍以其授权为准。Ungrouped 标题行不提供新建会话，因为它没有可在其中新建会话的后备 Workspace。启动恢复会 retain 主 reference，不改变已选面板，也不取消后续导航。归档主 Session 会释放其 reference 并清除主选择。选择失败时保留当前全局面板。Session 行读取 `usePanelInfo`，在全局面板活跃时不显示 Session 选中样式；仅把焦点移到搜索框或目录选择器不会离开该面板。
+Session 行与 Workspace 行的可用操作来自浏览器根的访问 Hook：`useWorkspaceAccess` 门控 Workspace 的新建、重命名、删除与排序动作，`useSessionAccess` 门控 Session 行的重命名、分叉、拖拽、置顶、归档、取消归档与删除动作，以及搜索结果的恢复控件。被拒绝的动作不渲染，但每个发往 Host 的请求仍以其授权为准。Ungrouped 标题行不提供新建会话，因为它没有可在其中新建会话的后备 Workspace。启动恢复会 retain 主 reference，不改变已选面板，也不取消后续导航。归档或删除主 Session 会释放其 reference 并清除主选择。选择失败时保留当前全局面板。Session 行读取 `usePanelInfo`，在全局面板活跃时不显示 Session 选中样式；仅把焦点移到搜索框或目录选择器不会离开该面板。
 
 导航和启动恢复通过所选 Session 的 `follow` 获取投影，不会另行刷新该 Session 或其父会话的投影；例外是恢复已保存的空白会话时先重新加载该 Session 的投影，因为列表中的值是缓存提示，Host 非正常退出后可能落后于其日志。
 
@@ -162,7 +164,7 @@ function WorkspaceField({ label, renderFactorySlot }: PropsRenderFactories & { l
 <a id="session-row-actions"></a>
 ### Session 行 action
 
-内置 Session 菜单动作通过 `ctx.contextMenus` 注册结构化贡献：置顶（100）、重命名（200）、已读／未读（250）、分支（300）、复制 ID（450）和归档（600）。本机目录定位由 ui-open-in-app 提供（500）。重命名、已读／未读、分支和归档关联已有命令 ID，以显示实时快捷键；点击仍针对捕获的 Session 调用现有业务回调。置顶和归档同时保留悬停按钮 Slot 条目。
+内置 Session 菜单动作通过 `ctx.contextMenus` 注册结构化贡献：置顶（100）、重命名（200）、已读／未读（250）、分支（300）、复制 ID（450）、归档（600）和删除（650）。本机目录定位由 ui-open-in-app 提供（500）。重命名、已读／未读、分支和归档关联已有命令 ID，以显示实时快捷键；点击仍针对捕获的 Session 调用现有业务回调。置顶和归档同时保留悬停按钮 Slot 条目；删除没有悬停按钮，并在 frame 级 overlay 中请求确认。
 
 旧 `sidebar.workspaces.session.menu.item` Slot 保留给外部 React 条目，提供 `sessionId`、`displayTitle` 和用于关闭菜单的 `useMenuOpenState`。旧条目保持彼此顺序，集中显示在归档之前；其 priority 不再替换内置数据动作。新贡献使用[菜单服务](../ui-context-menu/README.zh.md)。内置动作在菜单打开时持续响应权限和置顶／归档状态；阅读动作还会响应未读提醒和同步就绪状态。对话框与提示仍为应用级浮层。
 
@@ -290,7 +292,7 @@ Workspace 与 Session 悬浮卡片会复制对应行被截断的值：激活 Wor
 这些限制涵盖搜索、导航、归档和文件夹选择。
 
 - **没有模糊内容搜索或事件深链接**：内容后端采用字面 token/短语匹配，选择结果会打开 Session，而不是匹配的事件。
-- **没有 Session 删除**：会话可以归档但绝不会被删除；已归档的行通过「已归档会话」视图筛选与搜索结果中的取消归档操作原位恢复，删除 Workspace 注册记录不会删除 Session。
+- **永久删除仅限空闲根会话**：运行中的 Session 与有 subagent 子会话的父会话只能先归档或处理完子会话；不接受删除的后端（当前为 SQLite）会拒绝该动作。
 - **待处理的用户交互不会聚合到折叠的分组上**：折叠分组内正在等待的行不会点亮分组头指示，只有展开该分组后才可见。
 - **树形列表键盘导航尚不完整**：Workspace 行和搜索结果行不接受 Tab 聚焦，浏览器树形列表也未实现方向键导航。
 - **原生文件夹选择依赖本地 Host 载体**：在 `-native` 组合下，进程内部署或远程浏览器部署无法打开本地操作系统对话框；可远程的选取是 `-browse` 组合的应用内流程。

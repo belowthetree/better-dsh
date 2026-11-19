@@ -4,7 +4,7 @@
 
 事件日志的**持久性 seam**。[session.md](session.zh.md) 描述了内存中的 `Session`：仅追加的 `SessionEvent` 日志即为真源。本页描述如何使该日志持久化：抽象的 `SessionPersistence` 服务、它的提供方模型与随产品交付的 JSONL 后端、flush 检查点、崩溃恢复，以及随日志一同存储的元数据头。日志承载的事件词汇在生成的[持久化日志事件目录](../persistence-catalog.zh.md)中逐项列举。
 
-该 seam 是一个[能力 seam](../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)：一个抽象服务（[dsh-session-persistence](../../packages/session/session-persistence)，`ctx.sessionPersistence`）在现有 `SessionEvent` 上暴露 `create`/`open`/`stat`/`list`——**没有平行的持久化事件类型**——其中 `create` 与 `open` 返回逐会话的 `SessionHandle`（`read`/`append`/`flush`/`close`），它承载全部日志访问与单写者所有权。仓库随产品交付 [dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl) 作为其 provider；仓库外 provider 可以实现同一服务约定。见[基于句柄的持久化 Agent Note](../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)与 [session-persistence reference](../../packages/session/session-persistence/README.zh.md)。
+该 seam 是一个[能力 seam](../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)：一个抽象服务（[dsh-session-persistence](../../packages/session/session-persistence)，`ctx.sessionPersistence`）在现有 `SessionEvent` 上暴露 `create`/`open`/`stat`/`list`/`delete`——**没有平行的持久化事件类型**——其中 `create` 与 `open` 返回逐会话的 `SessionHandle`（`read`/`append`/`flush`/`close`），它承载全部日志访问与单写者所有权。仓库随产品交付 [dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl) 作为其 provider；仓库外 provider 可以实现同一服务约定。见[基于句柄的持久化 Agent Note](../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)与 [session-persistence reference](../../packages/session/session-persistence/README.zh.md)。
 
 ## `SessionHandle`——通向已存储会话的一条打开通道
 
@@ -104,6 +104,10 @@ interface SessionHandle extends AsyncDisposable {
 ## flush 检查点
 
 `session/event` 是一个*同步*通知；挂载的后端按会话 id 把它路由进活跃写句柄的有界 write-behind 窗口，而不阻塞生产方（后端一次性安装这些监听器，因为持久化已保证每个 id 只有一个活跃写句柄）。第一个待处理事件会开启固定的内部批处理窗口，后续事件会加入但不会重置其截止时间。窗口到期后会通过该会话的写句柄启动一次持久化 `append`；该次写入期间接纳的事件会获得自己的截止时间，并形成后续批次。`session/flush` 会取消等待并排空至完全停稳，因此循环仍将其用作在领取下一个普通轮次之前的顺序与错误观察检查点。后台写入被拒绝时会按序保留对应事件、暂停自动路径，并通过 logger 报告；下一次显式 flush 会重试，并向其调用方响亮地拒绝。`session/disposed` 会执行同样的最终排空并关闭句柄，而 `close()` 本身会经由仍然打开的存储排空已路由的缓冲，因此后端 teardown 的关闭清扫不丢任何数据。该窗口只限制有意的批处理等待，不限制事件循环调度或后端完成持久化的延迟。
+
+## 永久删除
+
+`delete(id, { signal })` 永久移除一个已存储会话的后端产物。seam 的默认实现以 `SessionPersistenceDeleteUnsupportedError` 拒绝；提供方通过覆写该方法选择支持。JSONL 提供方先取得会话的跨进程写锁，再在拒绝任何打开的本地句柄或未实体化 create（`SessionPersistenceBusyError`）之后移除会话自有目录；SQLite 提供方继承该拒绝。这与归档不同：归档是在仍保留的日志与工作区位置上叠加注册表级可见性集合，而删除会终结日志。支持删除的提供方必须对不存在的会话以 `SessionPersistenceNotFoundError` 拒绝，并在完成前使删除持久化。
 
 ## 崩溃恢复保留被中断的轮次
 
@@ -340,10 +344,10 @@ interface SessionPersistenceSnapshot {
 
 ## 后端
 
-随产品交付的多个 provider 实现抽象 `SessionPersistence` 约定（`create`/`open`/`stat`/`list`，逐会话 `SessionHandle` 承载 `read`/`append`/`flush`/`close`，全程可选支持取消），并通过共享的持久化契约套件：
+随产品交付的多个 provider 实现抽象 `SessionPersistence` 约定（`create`/`open`/`stat`/`list`/`delete`，逐会话 `SessionHandle` 承载 `read`/`append`/`flush`/`close`，全程可选支持取消），并通过共享的持久化契约套件：
 
-- **[dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl)**——逐会话仅追加的逻辑 JSONL 日志，默认存储为带 checksum 的连续 Zstandard frame，也可配置为原始行；具备崩溃安全的原子实体化、逐批 `fsync` 的 append，以及在第一次新 append 之前截断撕裂尾部。`stat`/`list` 携带 `sizeBytes` 与尽力而为的、由 `fs.stat` 派生的修订号。
-- **[dsh-session-persistence-sqlite](../../packages/session/session-persistence-sqlite)**——带索引元数据及前驱关联 Segment 的逻辑 JSON 事件存储，每次写入存为一帧 JSON 行，默认以 Zstandard 压缩。此可选提供者在首次打开时导入现有 JSONL，并协调并发读者及每个 Session 的唯一写者；`stat`/`list` 不导入历史。
+- **[dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl)**——逐会话仅追加的逻辑 JSONL 日志，默认存储为带 checksum 的连续 Zstandard frame，也可配置为原始行；具备崩溃安全的原子实体化、逐批 `fsync` 的 append，以及在第一次新 append 之前截断撕裂尾部。`stat`/`list` 携带 `sizeBytes` 与尽力而为的、由 `fs.stat` 派生的修订号。`delete` 在跨进程写锁下移除会话自有目录。
+- **[dsh-session-persistence-sqlite](../../packages/session/session-persistence-sqlite)**——带索引元数据及前驱关联 Segment 的逻辑 JSON 事件存储，每次写入存为一帧 JSON 行，默认以 Zstandard 压缩。此可选提供者在首次打开时导入现有 JSONL，并协调并发读者及每个 Session 的唯一写者；`stat`/`list` 不导入历史，且不支持永久删除。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

@@ -444,6 +444,37 @@ export interface SessionArchiveConfirmInjected {
   stopAndArchiveSession: (sessionId: SessionId) => Promise<void>
 }
 
+/** A permanent-delete confirmation the delete action asked for. */
+export interface SessionDeleteConfirmRequest {
+  /** Session to permanently remove. */
+  sessionId: SessionId
+  /** The row's display title, named in the dialog. */
+  displayTitle: string
+}
+/**
+ * Permanent-delete dialog share: the pending confirmation, its settlement,
+ * and the Host deletion hop.
+ */
+export interface SessionDeleteConfirmInjected {
+  hooks: {
+    /** The confirmation asked for, until the dialog consumes or cancels it. */
+    deleteRequest: HostObservable<SessionDeleteConfirmRequest | null>
+  }
+  /** Consume or cancel the pending confirmation. */
+  settleSessionDelete: () => void
+  /**
+   * Permanently remove the Session, its durable log, and its Workspace
+   * accounting. Rejects with the Host's business failure.
+   */
+  deleteSession: (sessionId: SessionId) => Promise<void>
+}
+
+/** Delete action share: the row only raises the request; the dialog entry answers it. */
+export interface DeleteSessionInjected {
+  /** Ask for the permanent-delete confirmation. */
+  requestSessionDelete: (sessionId: SessionId, displayTitle: string) => void
+}
+
 /** Fork action share. */
 export interface ForkSessionInjected {
   /** Fork a Session at its last completed turn; the child arrives through the Host list. */
@@ -515,6 +546,13 @@ export type SessionArchiveConfirmProps =
   & PropsLocale<'workspace'>
   & Omit<SessionArchiveConfirmInjected, 'hooks'>
   & PropsHooks<SessionArchiveConfirmInjected['hooks']>
+
+/** Props of the permanent-delete dialog entry in `shell.overlay`. */
+export type SessionDeleteConfirmProps =
+  PropsRuntime<'shell.overlay'>
+  & PropsLocale<'workspace'>
+  & Omit<SessionDeleteConfirmInjected, 'hooks'>
+  & PropsHooks<SessionDeleteConfirmInjected['hooks']>
 
 /** Props of the existing overlay's keyed notice dispatcher. */
 export type RowToastProps =

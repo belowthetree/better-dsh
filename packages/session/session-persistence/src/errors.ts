@@ -36,6 +36,23 @@ export class SessionAlreadyOwnedError extends Error {
   }
 }
 
+/** The mounted persistence backend cannot permanently remove stored sessions. */
+export class SessionPersistenceDeleteUnsupportedError extends Error {
+  constructor() {
+    super('this session-persistence backend does not support permanent session deletion')
+    this.name = 'SessionPersistenceDeleteUnsupportedError'
+  }
+}
+
+/** A delete was refused while this process still holds an open handle for the session. */
+export class SessionPersistenceBusyError extends Error {
+  /** @param sessionId - the session with an open handle. */
+  constructor(readonly sessionId: SessionId) {
+    super(`session "${sessionId}" is in use by an open persistence handle`)
+    this.name = 'SessionPersistenceBusyError'
+  }
+}
+
 /** A mutation (`append`/`flush`) was called on a read handle. */
 export class SessionReadOnlyError extends Error {
   /**

@@ -160,6 +160,13 @@ export interface ISessions {
     allowMigration?: boolean
   }): Promise<SessionId>
   /**
+   * Permanently delete a stored Session, its durable log, and its Workspace
+   * accounting. A live Session or a parent of subagent Sessions is refused.
+   * @param sessionId - the Session to remove.
+   * @returns resolution after the Host removes the artifacts and catalogues the removal.
+   */
+  delete(sessionId: SessionId): Promise<void>
+  /**
    * Borrow an already-retained Agent-scoped Context without extending its lifetime.
    * @param id - session id.
    * @returns the live scoped Context, or undefined without a retained generation.

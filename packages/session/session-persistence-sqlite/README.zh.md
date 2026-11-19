@@ -119,6 +119,7 @@ SQLite 保存 thread 元数据、前驱关联的 Segment 元数据和帧：每�
 - 保留的 JSONL 文件只包含导入前缀，不包含后续 SQLite 事件；单靠它们无法恢复最新历史。
 - 所有写入已导入 Session 的进程都必须使用 SQLite 提供者。
 - SQLite 接受当前 Session 格式；未来事件格式升级需要独立的 SQLite 历史迁移。
+- 不支持永久删除：此提供者继承 seam 的 `SessionPersistenceDeleteUnsupportedError`，已导入的 JSONL 源文件保持不变。
 
 <a id="dev-note"></a>
 ### 开发备注

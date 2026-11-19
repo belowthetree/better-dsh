@@ -5,6 +5,7 @@ import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { registerSessionMenus } from '../src/client/session-actions/context-menus.tsx'
 import { en, zh } from '../src/client/locales.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -23,6 +24,10 @@ function bench() {
     items: [], pinnedSessionIds: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
   })
   ctx.provide('workspaces', { list } as never)
+  const sessions = createSnapshotStore<SessionListState>({
+    ids: [], byId: {}, phase: 'ready', projectionsBySession: {},
+  })
+  ctx.provide('sessions', { list: sessions } as never)
   const status = provideSessionStatus(ctx)
   const permissions = new Map<string, ReturnType<typeof createSnapshotStore<boolean>>>()
   const access = (action: string) => {
@@ -32,11 +37,12 @@ function bench() {
   }
   ctx.provide('remoteAccess', { source: (_kind: string, _id: string, action: string) => access(action) } as never)
   const actions = { pinSession: vi.fn(), unpinSession: vi.fn(), archiveSession: vi.fn(), unarchiveSession: vi.fn(),
-    forkSession: vi.fn(), requestSessionRename: vi.fn(), copySessionId: vi.fn(async () => {}), markSession: vi.fn() }
+    forkSession: vi.fn(), requestSessionRename: vi.fn(), requestSessionDelete: vi.fn(),
+    copySessionId: vi.fn(async () => {}), markSession: vi.fn() }
   const fiber = ctx.plugin({ apply: (plugin: Context) => { registerSessionMenus(plugin, actions) } })
   const target = { kind: 'session' as const, value: { sessionId: brandString<SessionId>('background'), displayTitle: 'Background' } }
   const open = () => registry.resolve(target)
-  return { ctx, fiber, registry, locale, list, status, access, actions, target, open }
+  return { ctx, fiber, registry, locale, list, sessions: { list: sessions }, status, access, actions, target, open }
 }
 
 it('preserves built-in order, groups, icons, command identities, and captured action targets', async () => {
@@ -52,6 +58,7 @@ it('preserves built-in order, groups, icons, command identities, and captured ac
     ['session.fork/fork', 'Fork session', true, 'session.fork', undefined, undefined],
     ['session.id/copy', 'Copy Session ID', true, undefined, true, undefined],
     ['session.archive/archive', 'Archive session', true, 'session.archive', true, true],
+    ['session.delete/delete', 'Delete session', true, undefined, true, true],
   ])
   menu.dispose()
   for (const id of views.map(item => item.id)) b.open().select(id)
@@ -61,6 +68,7 @@ it('preserves built-in order, groups, icons, command identities, and captured ac
   expect(b.actions.forkSession).toHaveBeenCalledWith('background')
   expect(b.actions.copySessionId).toHaveBeenCalledWith('background')
   expect(b.actions.archiveSession).toHaveBeenCalledWith('background')
+  expect(b.actions.requestSessionDelete).toHaveBeenCalledWith('background', 'Background')
   const unpin = b.open()
   b.list.set({ ...b.list.getSnapshot(), pinnedSessionIds: [b.target.value.sessionId] })
   expect(unpin.source.getSnapshot()[0]).toMatchObject({ label: 'Unpin session' })
@@ -69,11 +77,33 @@ it('preserves built-in order, groups, icons, command identities, and captured ac
   const restore = b.open()
   b.list.set({ ...b.list.getSnapshot(), archivedSessionIds: [b.target.value.sessionId] })
   expect(restore.source.getSnapshot().some(item => item.id === 'session.pin/pin')).toBe(false)
-  const archive = restore.source.getSnapshot().at(-1)!
+  const archive = restore.source.getSnapshot().find(item => item.id === 'session.archive/archive')!
   expect(archive).toMatchObject({ label: 'Unarchive session' })
   expect(archive.commandId).toBeUndefined()
   restore.select(archive.id)
   expect(b.actions.unarchiveSession).toHaveBeenCalledWith('background')
+})
+
+it('hides permanent deletion while the Session runs or the endpoint is unavailable', async () => {
+  const b = bench()
+  await b.fiber.await()
+  const id = b.target.value.sessionId
+  const menu = b.open()
+  expect(menu.source.getSnapshot().some(item => item.id === 'session.delete/delete')).toBe(true)
+  b.sessions.list.set({
+    ...b.sessions.list.getSnapshot(),
+    ids: [id],
+    byId: { [id]: { id, displayTitle: 'Background', running: true, blank: false, updatedAt: 0, retainedBy: {} } },
+  })
+  expect(menu.source.getSnapshot().some(item => item.id === 'session.delete/delete')).toBe(false)
+  b.sessions.list.set({
+    ...b.sessions.list.getSnapshot(),
+    byId: { [id]: { id, displayTitle: 'Background', running: false, blank: false, updatedAt: 0, retainedBy: {} } },
+  })
+  expect(menu.source.getSnapshot().some(item => item.id === 'session.delete/delete')).toBe(true)
+  b.access('session/delete').set(false)
+  expect(menu.source.getSnapshot().some(item => item.id === 'session.delete/delete')).toBe(false)
+  menu.dispose()
 })
 
 it('reacts to permission and locale updates, prevents withdrawn actions, and disposes subscriptions', async () => {
@@ -85,6 +115,7 @@ it('reacts to permission and locale updates, prevents withdrawn actions, and dis
   b.access('workspace/archiveSession').set(false)
   b.access('workspace/pinSession').set(false)
   b.access('sessionStatus/mark').set(false)
+  b.access('session/delete').set(false)
   expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['session.id/copy'])
   menu.select('session.rename/rename')
   expect(b.actions.requestSessionRename).not.toHaveBeenCalled()

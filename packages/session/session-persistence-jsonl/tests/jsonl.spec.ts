@@ -10,6 +10,7 @@ import { scheduler } from 'node:timers/promises'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq, type SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
+import { SessionPersistenceBusyError, SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import {
   assertNoRetiredHeaderFields, encodeSegment, eventLines, generationLogFilename, generationLogPath,
@@ -2974,5 +2975,64 @@ describe('JsonlSessionPersistence listing concurrency', () => {
     await expect(listingCtx.sessionPersistence.list()).rejects.toBe(laterSessionFailure)
     listingProbe.failures.set(earlierSession, earlierSessionFailure)
     await expect(listingCtx.sessionPersistence.list()).rejects.toBe(earlierSessionFailure)
+  })
+})
+
+describe('JsonlSessionPersistence: permanent deletion', () => {
+  let ctx: Context
+  beforeEach(async () => {
+    root = await freshRoot()
+    ctx = new Context()
+    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+  })
+  afterEach(async () => { await ctx.fiber.dispose() })
+
+  it('removes the stored log, directory, and list entry', async () => {
+    const m = meta('delete-stored', '/work')
+    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
+    const dir = sessionDir(root, m.cwd, m.id)
+    expect((await stat(dir)).isDirectory()).toBe(true)
+
+    await ctx.sessionPersistence.delete(m.id)
+
+    expect(await ctx.sessionPersistence.stat(m.id)).toBeUndefined()
+    expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).not.toContain(m.id)
+    await expect(ctx.sessionPersistence.open(m.id, 'read')).rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+    await expect(stat(dir)).rejects.toThrow()
+  })
+
+  it('refuses an unknown id', async () => {
+    await expect(ctx.sessionPersistence.delete(brandString<SessionId>('delete-missing')))
+      .rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+  })
+
+  it('refuses an open write handle, then succeeds after close', async () => {
+    const m = meta('delete-open-writer', '/work')
+    const writer = await ctx.sessionPersistence.create(m)
+    await writer.append(oneTurnLog())
+    await expect(ctx.sessionPersistence.delete(m.id)).rejects.toBeInstanceOf(SessionPersistenceBusyError)
+    await writer.close()
+    await ctx.sessionPersistence.delete(m.id)
+    expect(await ctx.sessionPersistence.stat(m.id)).toBeUndefined()
+  })
+
+  it('refuses an open read handle, then succeeds after close', async () => {
+    const m = meta('delete-open-reader', '/work')
+    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
+    const reader = await ctx.sessionPersistence.open(m.id, 'read')
+    await expect(ctx.sessionPersistence.delete(m.id)).rejects.toBeInstanceOf(SessionPersistenceBusyError)
+    await reader.close()
+    await ctx.sessionPersistence.delete(m.id)
+    expect(await ctx.sessionPersistence.stat(m.id)).toBeUndefined()
+  })
+
+  it('refuses an unmaterialized pending session and observes a pre-aborted signal', async () => {
+    const m = meta('delete-pending', '/work')
+    const creator = await ctx.sessionPersistence.create(m)
+    await expect(ctx.sessionPersistence.delete(m.id)).rejects.toBeInstanceOf(SessionPersistenceBusyError)
+    await creator.close()
+
+    const aborted = AbortSignal.abort()
+    await expect(ctx.sessionPersistence.delete(m.id, { signal: aborted })).rejects.toHaveProperty('name', 'AbortError')
   })
 })

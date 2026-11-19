@@ -99,6 +99,7 @@ function fakeSessions(ctx: Context): {
     list,
     searchResultLimit: 50,
     create: () => Promise.reject(new Error('unused fake Sessions operation')),
+    delete: () => Promise.reject(new Error('unused fake Sessions operation')),
     retain: () => reference,
     using: async (_target, _options, operation) => await operation(reference),
     retainInfo: () => ({

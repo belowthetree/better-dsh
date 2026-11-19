@@ -949,3 +949,20 @@ describe('SessionProjectionCache summary reads', () => {
     expect(cache.cachedSnapshot(headerOf(brandString<SessionId>('summary-absent')), summaryKeys)).toBeUndefined()
   })
 })
+
+describe('SessionProjectionCache eviction', () => {
+  it('removes one durable checkpoint and tolerates an absent id', async () => {
+    const { ctx, root, cache } = await harness()
+    const id = brandString<SessionId>('evict-me')
+    const session = ctx.sessions.create(id)
+    await cache.write(session)
+    expect(cache.cachedSnapshot(session.header)).toBeDefined()
+    expect(await storedRows(root, id)).toBeDefined()
+
+    await cache.evict(id)
+
+    expect(cache.cachedSnapshot(session.header)).toBeUndefined()
+    expect(await storedRows(root, id)).toBeUndefined()
+    await expect(cache.evict(id)).resolves.toBeUndefined()
+  })
+})

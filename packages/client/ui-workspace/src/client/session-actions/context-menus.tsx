@@ -7,11 +7,12 @@ import type { MenuContribution, ContextMenuTargetMap } from '@deepseek-ai/dsh-cl
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-session-status/client'
 import type {
-  ArchiveSessionInjected, ForkSessionInjected, PinSessionInjected, RenameSessionInjected, SessionIdInjected,
+  ArchiveSessionInjected, DeleteSessionInjected, ForkSessionInjected, PinSessionInjected, RenameSessionInjected,
+  SessionIdInjected,
 } from '../contract/slots.ts'
 
 type Actions = Omit<PinSessionInjected & ArchiveSessionInjected, 'hooks'>
-  & ForkSessionInjected & RenameSessionInjected & SessionIdInjected
+  & ForkSessionInjected & RenameSessionInjected & SessionIdInjected & DeleteSessionInjected
   & { readonly markSession: (sessionId: SessionId, unread: boolean) => void }
 
 /**
@@ -83,4 +84,15 @@ export function registerSessionMenus(ctx: Context, actions: Actions): void {
       run: () => { (restoring ? actions.unarchiveSession : actions.archiveSession)(target.sessionId) },
     }]
   })
+  register('delete', 650, ['session/delete'], (target) => {
+    // A live Session is removed only after its work stops; the menu offers no
+    // delete until then, and the Host enforces the same refusal.
+    if (!allowed(target, 'session/delete')) return []
+    if (ctx.sessions.list.getSnapshot().byId[target.sessionId]?.running === true) return []
+    return [{
+      id: 'delete', label: t('menu.deleteSession'), icon: { key: 'workspace.delete' },
+      danger: true, separatorBefore: true, afterContent: true,
+      run: () => { actions.requestSessionDelete(target.sessionId, target.displayTitle) },
+    }]
+  }, [ctx.sessions.list])
 }

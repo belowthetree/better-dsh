@@ -24,10 +24,12 @@ import {
   SessionPersistence, SessionFormatUnsupportedError,
   SessionPersistenceCorruptionError,
   SessionAlreadyExistsError, SessionPersistenceNotFoundError,
+  SessionPersistenceBusyError,
   assertStoredId, materializeCreateHeader, sessionFormatVersionRefusal, validateStoredEvents,
   type SessionAccess, type SessionHandle,
   type SessionHandleReadResult,
   type SessionLocation, type SessionPersistenceCreateOptions,
+  type SessionPersistenceDeleteOptions,
   type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
   type SessionPersistenceRevision as PersistenceRevision,
@@ -642,6 +644,42 @@ export class JsonlSessionPersistence extends SessionPersistence {
     }
     signal?.throwIfAborted()
     return snapshots
+  }
+
+  /**
+   * Permanently remove one stored session's artifact directory. The session
+   * directory holds every generation and the write lock, so removing it
+   * removes the complete history. The cross-process lock is acquired first,
+   * and every open local handle refuses the delete, so neither a live writer
+   * nor a cold reader keeps a descriptor into a removed tree.
+   * @param id - the stored session to remove.
+   * @param options - optional cancellation before removal starts.
+   * @throws {SessionPersistenceBusyError} while a local handle or pending create tracks the id.
+   * @throws {SessionAlreadyOwnedError} while another process holds the write lock.
+   * @throws {SessionPersistenceNotFoundError} when no artifact exists.
+   */
+  override async delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void> {
+    const signal = options?.signal
+    signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    signal?.throwIfAborted()
+    if (this.tracker.hasPending(id) || [...this.tracker.openHandles].some(handle => handle.id === id)) {
+      throw new SessionPersistenceBusyError(id)
+    }
+    const selected = await this.findLog(id, signal)
+    if (selected === undefined) throw new SessionPersistenceNotFoundError(id)
+    const dir = dirname(selected.currentPath)
+    const lease = await this.acquireLease(id, undefined, dir)
+    try {
+      signal?.throwIfAborted()
+      await rm(dir, { recursive: true, force: true })
+    } finally {
+      await lease.release()
+    }
+    this.coldLogMemo.delete(id)
+    for (const path of this.listedHeaders.keys()) {
+      if (dirname(path) === dir) this.listedHeaders.delete(path)
+    }
   }
 
   // --- handle-facing storage internals (package-private via the handle class below) ---

@@ -134,6 +134,16 @@ export class SessionProjectionCache extends Service {
    * @param expected - the log identity the caller holds (live or stored header).
    * @returns the identity-matching record, or `undefined` (absent or unrelated).
    */
+  /**
+   * Remove one Session's durable checkpoint after its log is permanently
+   * deleted. The checkpoint is derived data, so this is best-effort and does
+   * not refuse an absent record.
+   * @param sessionId - the removed Session whose checkpoint must not outlive it.
+   */
+  async evict(sessionId: SessionId): Promise<void> {
+    await this.requireTable().delete(sessionId)
+  }
+
   private recordFor(id: SessionId, expected: CurrentCheckpointIdentity): CheckpointRecord | undefined {
     const record = this.requireTable().get(id)
     if (record === undefined) return undefined

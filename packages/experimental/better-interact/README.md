@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Better DSH turns the agent from a place you visit into a presence on the desktop. A resident orb keeps the agent present; answers rise beside it as bubbles, and Ctrl+Alt+W opens a floating workbench where each Workspace is a page and each Session a bookmark. Keyboard-first: Ctrl+Tab for Workspaces, Ctrl+Q for Session navigation, Ctrl+Alt+N to add a Workspace from a folder; right-clicking a Session bookmark opens the shared Session menu, including archive. It reuses the shell's conversation, so transcripts, tools, and the composer are unchanged. It is a Desktop orb-form experience, not a replacement for the classic shell.
+Better DSH turns the agent from a place you visit into a presence on the desktop. Answers rise beside the resident orb as bubbles, and Ctrl+Alt+W opens a floating workbench where each Workspace is a page and each Session a bookmark. Keyboard-first: Ctrl+Tab for Workspaces, Ctrl+Q for Session navigation, Ctrl+Alt+N to add a Workspace from a folder; right-clicking a Session bookmark opens the shared Session menu, including archive and permanent deletion. It reuses the shell's conversation, so transcripts, tools, and the composer are unchanged. It is a Desktop orb-form experience, not a replacement for the classic shell.
 
 ## Table of Contents
 
