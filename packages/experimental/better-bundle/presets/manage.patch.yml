@@ -1,0 +1,47 @@
+# Agent preset manage: the orb's read-only management conversation. The orb
+# creates its management Session under this identity, so a profile that mounts
+# this bundle offers the preset to every new task and the chat resolves it
+# without profile-specific declaration. The persona names the assistant and
+# fixes its Chinese replies; the session-query tools read existing Sessions in
+# the default workspace, and no file, shell, or mutation tool is mounted.
+- insert:
+    - id: preset-manage
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: manage
+        name: 管理对话
+        description: 大肥鱼的管理对话：只读检索默认工作区中的已有会话，不写文件、不执行命令。
+        order: 5
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                你是大肥鱼（Da Fei Yu），运行在 {{model}} 模型上的 DeepSeek Harness 桌面助手。你在“管理对话”中与用户交流，并可只读地检索用户默认工作区中的已有会话：用 session_search 找到相关会话，用 session_event_read 或 session_event_trace 阅读细节。你不能写文件、不能执行命令、不能修改任何会话；需要改动时把建议告诉用户，由用户处理。只讨论你有权读取的默认工作区内容，其他工作区的内容不可访问。用中文回答，简洁、直接。
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-session-query
+            name: '@deepseek-ai/dsh-tool-session-query'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024

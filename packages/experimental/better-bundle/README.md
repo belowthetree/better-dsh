@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This optional bundle composes the orb form for Desktop: the surface service, the orb and panel chrome, shared microphone capture, official speech recognition and synthesis seams, the authenticated speech Remotes, and the speech playback consumer. A Desktop-owned profile that declares the orb form mounts it; shipped profiles keep the classic window and leave it disabled.
+This optional bundle composes the orb form for Desktop: the surface service, the orb and panel chrome, shared microphone capture, official speech recognition and synthesis seams, the authenticated speech Remotes, the speech playback consumer, and the orb's read-only `manage` Agent preset. A Desktop-owned profile that declares the orb form mounts it; shipped profiles keep the classic window and leave it disabled.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ This optional bundle composes the orb form for Desktop: the surface service, the
 <a id="use-this-package"></a>
 ## Use this package
 
-The bundle is Desktop-only. In Plugins it appears switched off; enabling it makes the packages available but does not change the classic profile. Create a profile whose manifest requests the orb form, as documented in the Desktop shell forms section, then launch Desktop with `--profile <name>`. The window opens as a collapsed orb; clicking it raises a centered chat dialog holding a prompt input, a voice input toggle, and a send button, and Escape or a backdrop click dismisses it again. The dialog draws its own card surface with the shared elevation material. Enter or the send button submits the prompt to the most recent conversation, creating a blank one when none exists, and then closes the dialog; Shift+Enter inserts a newline, and a rejected prompt stays in the dialog with a failure line. The dialog's voice toggle records on the shared capture service and appends the recognized text to the input without sending it. Ctrl+Alt+D opens the chat dialog through an OS-global shortcut on Windows and macOS, and the orb toggle remains unbound until assigned under Settings, Shortcuts, Global. The orb can be dragged, and the orb context menu selects the synthesis voice, mutes playback, and cycles the auto-speak policy. A microphone button on the orb and the `voice.pushToTalk` system command start a capture while the orb is collapsed; finishing raises the dialog and fills its input. Speech recognition and synthesis require the external DeepSeek suite to register the `deepseek-cloud` and `deepseek-tts` providers in the same profile; both are billed cloud requests. To review the assembled form without a packaged build, follow the local form review steps in the [Desktop README](../../../apps/desktop/README.md).
+The bundle is Desktop-only. In Plugins it appears switched off; enabling it makes the packages available but does not change the classic profile. Create a profile whose manifest requests the orb form, as documented in the Desktop shell forms section, then launch Desktop with `--profile <name>`. The window opens as a collapsed orb; clicking it raises a centered quick chat dialog holding a prompt input, a voice input toggle, and a send button. Enter or the send button sends the prompt to the orb's dedicated `manage` conversation — created in the Host default workspace on first use — and raises the management workbench, a wide card showing the shared conversation transcript, streaming answer, and follow-up composer; Shift+Enter inserts a newline, a rejected prompt stays in the dialog with a failure line, and Escape or a backdrop click dismisses either card. The orb context menu and the `orb.workbench` command reopen the workbench without sending anything. The dialog draws its own card surface with the shared elevation material. The dialog's voice toggle records on the shared capture service and appends the recognized text to the input without sending it. Ctrl+Alt+D opens the quick chat dialog through an OS-global shortcut on Windows and macOS, and the orb toggle remains unbound until assigned under Settings, Shortcuts, Global. The orb can be dragged, and the orb context menu selects the synthesis voice, mutes playback, and cycles the auto-speak policy. A microphone button on the orb and the `voice.pushToTalk` system command start a capture while the orb is collapsed; finishing raises the dialog and fills its input. Speech recognition and synthesis require the external DeepSeek suite to register the `deepseek-cloud` and `deepseek-tts` providers in the same profile; both are billed cloud requests. The bundle declares the `manage` preset (管理对话) that the orb's chat creates its management Session under: it mounts the session-query read tools and no file, shell, or mutation tool. To review the assembled form without a packaged build, follow the local form review steps in the [Desktop README](../../../apps/desktop/README.md).
 
 -----
 
@@ -35,7 +35,7 @@ The bundle is Desktop-only. In Plugins it appears switched off; enabling it make
 <details>
 <summary>Maintainer details — click to expand</summary>
 
-The static `cordis.patch.yml` inserts the surface row, the orb plugin, the capture service, the recognition and synthesis seams with their DeepSeek provider ids, both authenticated Remotes, the composer microphone control, and the playback consumer. The form itself is not declared here: window options are read synchronously from the profile manifest before the Host starts, so the profile manifest is the runtime authority and the bundle only composes the plugins that form needs. The classic window, its focused-window shortcuts, and Web behavior stay unchanged because none of these rows mount without the profile selection.
+The static `cordis.patch.yml` inserts the surface row, the orb plugin, the capture service, the recognition and synthesis seams with their DeepSeek provider ids, both authenticated Remotes, the composer microphone control, and the playback consumer. A second static patch, `presets/manage.patch.yml`, declares the `manage` Agent preset the orb's management Session mounts. The form itself is not declared here: window options are read synchronously from the profile manifest before the Host starts, so the profile manifest is the runtime authority and the bundle only composes the plugins that form needs. The classic window, its focused-window shortcuts, and Web behavior stay unchanged because none of these rows mount without the profile selection.
 
 </details>
 
@@ -54,11 +54,11 @@ The static `cordis.patch.yml` inserts the surface row, the orb plugin, the captu
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as the form composes presentation, capture, and playback plugins without adding model requests; ordinary user submission owns model-visible text.
+Indirectly, through the `manage` preset, whose fixed Chinese persona, workspace agent instructions, current time, session-query tool schemas, and user-question tool enter a request only while a Session mounts it, and compaction may drop older tool results.
 
 #### KV Cache effect
 
-No direct effect; the composed plugins change no prompt content, so cached prefixes stay unchanged.
+No direct effect outside the `manage` preset. Repeated management turns keep the persona, instructions, and tool schemas in one stable prefix while appended transcripts grow the suffix; compaction rewrites history when it runs.
 
 ## Known Limitations and Deferred Work
 
@@ -68,6 +68,7 @@ No direct effect; the composed plugins change no prompt content, so cached prefi
 - Both speech seams expect the out-of-tree `@dsh-external/dsh-deepseek-suite` to register `deepseek-cloud` and `deepseek-tts` in the same profile. A missing provider fails at first use rather than at load.
 - The orb has no attention badge, the context menu does not offer new session or quit, and a collapsed panel does not focus the composer automatically.
 - Push-to-talk is press-to-start, press-to-stop: Electron global shortcuts expose no key-up event, and playback is not streaming.
+- The `manage` preset publishes its own Chinese name and description, so the roster groups it with custom presets instead of the localized built-in four.
 
 -----
 

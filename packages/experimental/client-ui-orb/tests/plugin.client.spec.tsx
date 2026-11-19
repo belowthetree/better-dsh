@@ -15,13 +15,16 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import * as plugin from '../src/client/index.ts'
 import { QuickPrompt } from '../src/client/QuickPrompt.tsx'
 import { ORB_CHAT_MODAL_ID } from '../src/client/modals.ts'
+import {
+  ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE, OrbWorkbench, OrbWorkbenchConversation,
+} from '../src/client/OrbWorkbench.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 beforeEach(() => { window.localStorage.clear() })
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
   modalOpen: false,
 })
 
@@ -196,9 +199,14 @@ it('registers the overlay chrome, the chat dialog, and the system commands', asy
   expect(overlay.map(entry => entry.options.id)).toEqual(['orb'])
   expect(overlay[0]?.locale).toBe('orb')
   const modal = b.runtime.slots.entries('shell.modal')
-  expect(modal.map(entry => entry.options.id)).toEqual([ORB_CHAT_MODAL_ID])
+  expect(modal.map(entry => entry.options.id)).toEqual([ORB_CHAT_MODAL_ID, ORB_WORKBENCH_MODAL_ID])
   expect(modal[0]?.locale).toBe('orb')
   expect(modal[0]?.component).toBe(QuickPrompt)
+  expect(modal[1]?.locale).toBe('orb')
+  expect(modal[1]?.component).toBe(OrbWorkbench)
+  expect(modal[1]?.children).toEqual({ 'orb.workbench.conversation': { kind: 'single', scope: 'session' } })
+  const conversation = b.runtime.slots.entries('orb.workbench.conversation')
+  expect(conversation.map(entry => entry.component)).toEqual([OrbWorkbenchConversation])
 
   const command = b.commands.get('orb.toggle')
   expect(command).toBeDefined()
@@ -227,6 +235,16 @@ it('registers the overlay chrome, the chat dialog, and the system commands', asy
   await flush()
   expect(b.surface.presentModal).toHaveBeenCalledTimes(2)
   expect(b.surface.presentModal).toHaveBeenLastCalledWith(ORB_CHAT_MODAL_ID)
+
+  const workbench = b.commands.get('orb.workbench')
+  expect(workbench?.scope).toBe('system')
+  expect(workbench?.defaults).toEqual({})
+  expect(workbench?.label()).toBe(zh['orb.menu.workbench'])
+  const workbenchCommand = workbench?.resolve({ region: 'page', modal: null, target: null })
+  expect(workbenchCommand?.status).toBe('handled')
+  if (workbenchCommand?.status === 'handled') workbenchCommand.run()
+  await flush()
+  expect(b.surface.presentModal).toHaveBeenLastCalledWith(ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE)
 
   const voiceCommand = b.commands.get('voice.pushToTalk')
   expect(voiceCommand?.scope).toBe('system')
@@ -341,7 +359,6 @@ it('issues every registered action through the entry faces', async () => {
   const chatEntry = benchResult.runtime.slots.entries('shell.modal')[0]
   const chat = chatEntry?.inject?.() as { actions: {
     takeTranscript(): string | null
-    dismiss(): void
     startDictation(): Promise<void>
     finishDictation(): Promise<string>
     cancelDictation(): void
@@ -351,10 +368,8 @@ it('issues every registered action through the entry faces', async () => {
   expect(capture.service.begin).toHaveBeenCalledOnce()
   expect(await chat.actions.finishDictation()).toBe('held transcript')
   chat.actions.cancelDictation()
-  chat.actions.dismiss()
   await flush()
   expect(capture.service.cancel).toHaveBeenCalledOnce()
-  expect(surface.service.dismissModal).toHaveBeenCalledOnce()
 })
 
 it('treats absent voice services as no-ops', async () => {
@@ -435,6 +450,7 @@ it('creates the management Session with the manage preset and reuses it', async 
   await flush()
   expect(create).toHaveBeenCalledOnce()
   expect(prompt).toHaveBeenCalledWith([{ type: 'text', text: 'summarize the day' }], 'queue')
+  expect(surface.service.presentModal).toHaveBeenLastCalledWith(ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE)
 
   // A later prompt reuses the remembered Session instead of creating another conversation.
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
@@ -445,6 +461,44 @@ it('creates the management Session with the manage preset and reuses it', async 
   await flush()
   expect(create).toHaveBeenCalledOnce()
   expect(prompt).toHaveBeenNthCalledWith(2, [{ type: 'text', text: 'what changed?' }], 'queue')
+})
+
+it('creates the management Session in the Host default Workspace', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  b.runtime.workspaces.stub('initializeDefault', async () => ({ workspaceId: 'default-workspace' } as never))
+  const create = vi.fn(async (opts: Parameters<typeof b.runtime.sessions.create>[0]) => {
+    expect(opts).toEqual({ agentPreset: 'manage', workspaceId: 'default-workspace' })
+    return b.runtime.sessions.add({
+      id: 'managed-default',
+      session: { prompt: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })) },
+    })
+  })
+  b.runtime.sessions.stubCreate(create)
+  surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
+  await flush()
+  const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
+  fireEvent.change(input, { target: { value: 'status' } })
+  await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }) })
+  await flush()
+  expect(b.runtime.workspaces.calls.filter(call => call.method === 'initializeDefault')).toHaveLength(1)
+  expect(create).toHaveBeenCalledOnce()
+})
+
+it('retains the management conversation while the workbench is presented', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  b.runtime.sessions.stubCreate(async () => b.runtime.sessions.add({
+    id: 'managed',
+    session: { prompt: vi.fn() },
+  }))
+  surface.publish({ presentation: 'modal', modal: ORB_WORKBENCH_MODAL_ID })
+  await flush()
+  await flush()
+  expect(b.runtime.sessions.retainInfo('managed' as never).getSnapshot().retainedBy.orbChat).toBe(1)
+  surface.publish({ presentation: 'orb', modal: null })
+  await flush()
+  expect(b.runtime.sessions.retainInfo('managed' as never).getSnapshot().retainedBy.orbChat).toBeUndefined()
 })
 
 it('reports a rejected prompt inside the chat box', async () => {

@@ -7,7 +7,8 @@
  * frame; this package owns orb and chat chrome only.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -23,6 +24,8 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ORB_CHAT_MODAL_ID } from './modals.ts'
 import { OrbLayer } from './OrbLayer.tsx'
 import type { OrbOverlayInjected, OrbSurfaceActions } from './OrbLayer.tsx'
+import { ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE, OrbWorkbench, OrbWorkbenchConversation } from './OrbWorkbench.tsx'
+import type { OrbWorkbenchInjected } from './OrbWorkbench.tsx'
 import { QuickPrompt } from './QuickPrompt.tsx'
 import type { OrbChatActions, OrbChatInjected } from './QuickPrompt.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
@@ -34,6 +37,8 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap {
     /** A quick prompt waiting for the target Session's history and its prompt receipt. */
     orbPrompt: unknown
+    /** The management workbench holding its conversation open while the card shows. */
+    orbChat: unknown
   }
 }
 
@@ -45,8 +50,12 @@ const CAPTURE_OBSERVATION = 'capture'
 const PLAYBACK_OBSERVATION = 'playback'
 /** Id of the management Agent preset the chat conversation runs under. */
 const MANAGEMENT_PRESET = 'manage'
-/** Storage key remembering the management Session across orb window reloads. */
-const MANAGEMENT_SESSION_KEY = 'dsh.orb.management-session'
+/**
+ * Storage key remembering the management Session across orb window reloads.
+ * The v2 key seeds a fresh conversation in the Host default Workspace instead
+ * of reusing a Session created in the profile's working directory.
+ */
+const MANAGEMENT_SESSION_KEY = 'dsh.orb.management-session.v2'
 
 /** Destination of one continuous observation; the surface and voice stores satisfy it. */
 interface ObservationSink<T> {
@@ -169,21 +178,51 @@ export function apply(ctx: ClientContext): void {
     console.error('orb: voice capture command failed', error)
   }
   /**
+   * Resolve the Host default Workspace, creating it on first use when the
+   * profile allows that. The management Session lives there so its
+   * session-query tools see the same Workspace the user works in.
+   * @returns the default Workspace id, or undefined when no Workspace service
+   *   or default Workspace is available.
+   */
+  const defaultWorkspaceId = async (): Promise<WorkspaceId | undefined> => {
+    const workspaces = ctx.get('workspaces')
+    if (workspaces === undefined) return undefined
+    try {
+      return (await workspaces.initializeDefault())?.workspaceId
+    } catch (error) {
+      // A failed default Workspace must not block the chat: the Host still creates the Session.
+      console.warn('orb: default workspace unavailable', error)
+      return undefined
+    }
+  }
+
+  /** Session created or resumed by this window's chat; avoids a second create while the catalog catches up. */
+  let managementTarget: Awaited<ReturnType<typeof ctx.sessions.create>> | undefined
+
+  /**
    * Resolve the chat's management Session: the remembered Session while the
-   * Host still lists it, otherwise a new one under the management preset. The
-   * Host default workspace is the fixed workspace whose sessions that preset
-   * may read through the session-query tools.
+   * Host still lists it, otherwise a new one under the management preset in
+   * the Host default Workspace.
    * @returns the Session that receives the chat prompt.
    */
   const managementSession = async (): Promise<Awaited<ReturnType<typeof ctx.sessions.create>>> => {
+    if (managementTarget !== undefined) return managementTarget
     const sessions = ctx.sessions
     const remembered = rememberedManagementSession()
     const known = remembered === null
       ? undefined
       : sessions.list.getSnapshot().ids.find(id => String(id) === remembered)
-    if (known !== undefined) return known
-    const created = await sessions.create({ agentPreset: MANAGEMENT_PRESET })
+    if (known !== undefined) {
+      managementTarget = known
+      return known
+    }
+    const workspaceId = await defaultWorkspaceId()
+    const created = await sessions.create({
+      agentPreset: MANAGEMENT_PRESET,
+      ...(workspaceId === undefined ? {} : { workspaceId }),
+    })
     rememberManagementSession(String(created))
+    managementTarget = created
     return created
   }
 
@@ -199,10 +238,60 @@ export function apply(ctx: ClientContext): void {
       const result = await binding.session.prompt([{ type: 'text', text }], 'queue')
       if (!result.ok) throw result.error
     })
+    // The prompt is accepted; raise the dedicated workbench so the answer has a visible surface.
+    openWorkbench()
   }
 
   /** @returns the transcript a capture held for the chat box, consumed once. */
   const takeTranscript = (): string | null => ctx.get('voiceCapture')?.takeTranscript() ?? null
+
+  /** Retained conversation behind the management workbench; null while the card is closed. */
+  let workbenchReference: SessionReference | null = null
+  /** Reference store the workbench modal renders from. */
+  const workbenchStore = createSnapshotStore<SessionReference | null>(null)
+  /** In-flight preparation, so overlapping surface snapshots retain once. */
+  let preparingWorkbench: Promise<void> | undefined
+
+  /** Release the workbench's retained conversation. */
+  const closeWorkbench = (): void => {
+    if (workbenchReference !== null) {
+      workbenchReference.release()
+      workbenchReference = null
+    }
+    workbenchStore.set(null)
+  }
+
+  /** Retain the management conversation for an open workbench. */
+  const prepareWorkbench = (): void => {
+    if (workbenchReference !== null || preparingWorkbench !== undefined) return
+    preparingWorkbench = (async () => {
+      const target = await managementSession()
+      const reference = ctx.sessions.retain(target, { source: 'orbChat', facets: { conversation: true } })
+      if (surface.getSnapshot().modal !== ORB_WORKBENCH_MODAL_ID) {
+        reference.release()
+        return
+      }
+      workbenchReference = reference
+      workbenchStore.set(reference)
+    })().catch((error: unknown) => {
+      console.error('orb: management workbench unavailable', error)
+    }).finally(() => { preparingWorkbench = undefined })
+  }
+
+  /** Present the management workbench; the surface window prepares its conversation. */
+  const openWorkbench = (): void => {
+    issue(() => ctx.surface.presentModal(ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE))
+  }
+
+  ctx.effect(() => {
+    const sync = (): void => {
+      if (surface.getSnapshot().modal === ORB_WORKBENCH_MODAL_ID) prepareWorkbench()
+      else closeWorkbench()
+    }
+    const stop = surface.subscribe(sync)
+    sync()
+    return () => { stop(); closeWorkbench() }
+  }, 'orb: management workbench binding')
 
   /** Present the centered chat modal. */
   const openChat = (): void => { issue(() => ctx.surface.presentModal(ORB_CHAT_MODAL_ID)) }
@@ -224,6 +313,7 @@ export function apply(ctx: ClientContext): void {
 
   const actions: OrbSurfaceActions = {
     openChat,
+    openWorkbench,
     dragBy: (deltaX, deltaY) => { issue(() => ctx.surface.dragBy(deltaX, deltaY)) },
     pointerInside: (inside) => { ctx.surface.setPointerInside(inside) },
     toggleVoice,
@@ -259,12 +349,21 @@ export function apply(ctx: ClientContext): void {
   }
 
   const chatActions: OrbChatActions = {
-    takeTranscript, submit: submitPrompt, dismiss: dismissModal, startDictation, finishDictation, cancelDictation,
+    takeTranscript, submit: submitPrompt, startDictation, finishDictation, cancelDictation,
   }
   const chat: OrbChatInjected = { hooks: { capture }, actions: chatActions }
   ctx.slots.inject('shell.modal', () => ctx.slots.register({
     name: 'shell.modal', id: ORB_CHAT_MODAL_ID, locale: NS, inject: () => chat,
   }, QuickPrompt))
+
+  const workbenchFace: OrbWorkbenchInjected = { hooks: { reference: workbenchStore } }
+  ctx.slots.inject('shell.modal', () => ctx.slots.register({
+    name: 'shell.modal', id: ORB_WORKBENCH_MODAL_ID, locale: NS, inject: () => workbenchFace,
+    children: { 'orb.workbench.conversation': { kind: 'single', scope: 'session' } },
+  }, OrbWorkbench))
+  ctx.slots.inject('orb.workbench.conversation', () => ctx.slots.register({
+    name: 'orb.workbench.conversation',
+  }, OrbWorkbenchConversation))
 
   ctx.effect(() => ctx.shortcuts.register({
     id: 'orb.toggle' as ShortcutCommandId,
@@ -301,6 +400,17 @@ export function apply(ctx: ClientContext): void {
     scope: 'system',
     resolve: () => ({ status: 'handled', run: openChat }),
   }), 'orb: open command')
+  ctx.effect(() => ctx.shortcuts.register({
+    id: 'orb.workbench' as ShortcutCommandId,
+    label: () => t('orb.menu.workbench'),
+    // Searchable terms, not rendered copy: the localized label above is what the settings list shows.
+    aliases: ['orb', 'manage', 'workbench', 'conversation'],
+    defaults: {},
+    regions: ['page'],
+    modals: [ORB_WORKBENCH_MODAL_ID],
+    scope: 'system',
+    resolve: () => ({ status: 'handled', run: openWorkbench }),
+  }), 'orb: workbench command')
   ctx.effect(() => ctx.shortcuts.register({
     id: 'voice.pushToTalk' as ShortcutCommandId,
     label: () => t('command.voice'),

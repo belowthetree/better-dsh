@@ -7,7 +7,7 @@ import {
 
 /** Desktop presentation used by the committed form profiles. */
 const ORB: SurfaceSnapshot = Object.freeze({
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
   modalOpen: false,
 })
 
@@ -68,7 +68,7 @@ describe('inert carrier', () => {
   it('reports classic and resolves every command without a bridge', async () => {
     expect(desktopSurfaceApi(window)).toBeUndefined()
     const adapter = createSurfaceAdapter(window)
-    expect(adapter.initial()).toEqual({ form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbHovered: false, modalOpen: false })
+    expect(adapter.initial()).toEqual({ form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbDocked: false, orbHovered: false, modalOpen: false })
     const unsubscribe = adapter.subscribe(() => { throw new Error('the inert carrier never publishes') })
     unsubscribe()
     expect(await adapter.read()).toBe(adapter.initial())
@@ -89,7 +89,7 @@ describe('inert carrier', () => {
     expect(desktopSurfaceApi(window)).toBeUndefined()
     expect(createSurfaceAdapter(window).initial()).toEqual({
       form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-      orbHovered: false, modalOpen: false,
+      orbDocked: false, orbHovered: false, modalOpen: false,
     })
   })
 })
@@ -108,7 +108,7 @@ describe('desktop carrier', () => {
     installBridge(fakeBridge(ORB).api)
     expect(createSurfaceAdapter(window).initial()).toEqual({
       form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
-      orbHovered: false, modalOpen: false,
+      orbDocked: false, orbHovered: false, modalOpen: false,
     })
   })
 

@@ -31,7 +31,6 @@ function fixture(initial: { capture?: VoiceCaptureSnapshot | null; transcript?: 
   const actions = {
     takeTranscript: vi.fn((): string | null => initial.transcript ?? null),
     submit: vi.fn(async () => {}),
-    dismiss: vi.fn(),
     startDictation: vi.fn(async () => {}),
     finishDictation: vi.fn(async () => 'dictated text'),
     cancelDictation: vi.fn(),
@@ -73,7 +72,6 @@ it('starts from the held transcript, focuses the input, and submits on Enter', a
   await act(async () => { fireEvent.keyDown(input(), { key: 'Enter' }) })
   expect(b.actions.submit).toHaveBeenCalledExactlyOnceWith('dictated text')
   expect(input().value).toBe('')
-  expect(b.actions.dismiss).toHaveBeenCalledOnce()
 })
 
 it('keeps Shift+Enter and a composing Enter as editing gestures', () => {
@@ -96,12 +94,17 @@ it('disables the send button while the box is empty', () => {
 
 it('keeps the text and reports a rejected submission', async () => {
   const b = fixture()
-  b.actions.submit.mockRejectedValueOnce(new Error('offline'))
-  fireEvent.change(input(), { target: { value: 'retry me' } })
-  await click(send())
-  expect(screen.getByRole('alert').textContent).toBe(zh['prompt.failed'])
-  expect(input().value).toBe('retry me')
-  expect(b.actions.dismiss).not.toHaveBeenCalled()
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    b.actions.submit.mockRejectedValueOnce(new Error('offline'))
+    fireEvent.change(input(), { target: { value: 'retry me' } })
+    await click(send())
+    expect(screen.getByRole('alert').textContent).toBe(zh['prompt.failed'])
+    expect(input().value).toBe('retry me')
+    expect(errors).toHaveBeenCalledWith('orb: prompt failed', expect.any(Error))
+  } finally {
+    errors.mockRestore()
+  }
 })
 
 it('ignores a second submission while one is in flight', async () => {
@@ -116,7 +119,6 @@ it('ignores a second submission while one is in flight', async () => {
   expect(b.actions.submit).toHaveBeenCalledExactlyOnceWith('first')
   await act(async () => { release(); await gate })
   expect(input().value).toBe('')
-  expect(b.actions.dismiss).toHaveBeenCalledOnce()
 })
 
 it('hides the voice toggle while the capture service is unmounted', () => {

@@ -1,6 +1,7 @@
 /** The Desktop-owned orb profile composes the better bundle's rows through the real installation. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -61,6 +62,15 @@ describe('the better bundle form profile', () => {
       expect(byId.get('api-text-to-speech')).toMatchObject({ name: '@deepseek-ai/dsh-api-text-to-speech' })
       expect(byId.get('client-ui-voice-output')).toMatchObject({ name: '@deepseek-ai/dsh-client-ui-voice-output' })
       expect(byId.get('ui-voice-input')).toMatchObject({ name: '@deepseek-ai/dsh-experimental-client-ui-voice-input' })
+      expect(byId.get('preset-manage')).toMatchObject({
+        name: '@deepseek-ai/dsh-agent-preset',
+        config: { id: 'manage', name: '管理对话' },
+      })
+      // The orb's management Session names the preset, so the bundle must install it.
+      const bundleManifest = JSON.parse(readFileSync(
+        createRequire(installAnchor).resolve('@deepseek-ai/dsh-better-bundle/package.json'), 'utf8',
+      )) as { readonly dependencies?: Readonly<Record<string, string>> }
+      expect(bundleManifest.dependencies).toHaveProperty('@deepseek-ai/dsh-tool-session-query')
     } finally {
       rmSync(home, { recursive: true, force: true })
     }

@@ -76,8 +76,9 @@ None, as the package sends no model request, registers no tool, and adds no mode
 
 No direct effect; the bubbles and the workbench only read Session events the transcript already renders.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - The column reports the Session the catalog lists first, so a second Session that produces output while another is ahead in the catalog is not reported.
 - The column has its own window, so a panel or modal presentation never replaces it; a column requested while the workbench modal is up appears when the modal closes.

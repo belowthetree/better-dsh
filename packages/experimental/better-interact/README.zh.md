@@ -76,8 +76,9 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 
 无直接影响；气泡列与工作台只读取转录本已经渲染的会话事件。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与后续工作
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - 气泡列只报告会话目录中排在第一位的会话；若另一个会话在目录中排在其后产出输出，不会被报告。
 - 气泡列有自己的窗口，因此 panel 或模态呈现不会取代它；在工作台模态打开期间申请的气泡列会在模态关闭后出现。

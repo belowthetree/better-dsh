@@ -22,6 +22,7 @@
     "./src/*": "./src/*",
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./presets/*.patch.yml": "./presets/*.patch.yml",
     "./locale/*.json": "./locale/*.json"
   },
   "files": [
@@ -29,6 +30,7 @@
     "locale/*.json",
     "lib/index.js",
     "cordis.patch.yml",
+    "presets/manage.patch.yml",
     "lib/types/**/*.d.ts",
     "lib/types/**/*.d.ts.map",
     "lib/**/*.js.map",
@@ -36,15 +38,24 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@deepseek-ai/dsh-agent-instructions": "workspace:*",
+    "@deepseek-ai/dsh-agent-preset": "workspace:*",
     "@deepseek-ai/dsh-better-interact": "workspace:*",
     "@deepseek-ai/dsh-client-surface": "workspace:*",
     "@deepseek-ai/dsh-client-ui-orb": "workspace:*",
     "@deepseek-ai/dsh-client-voice-capture": "workspace:*",
     "@deepseek-ai/dsh-client-ui-voice-output": "workspace:*",
+    "@deepseek-ai/dsh-command-compact": "workspace:*",
+    "@deepseek-ai/dsh-compaction-basic": "workspace:*",
+    "@deepseek-ai/dsh-compaction-tool-result-pruner": "workspace:*",
     "@deepseek-ai/dsh-experimental-speech-to-text": "workspace:*",
     "@deepseek-ai/dsh-experimental-api-speech-to-text": "workspace:*",
     "@deepseek-ai/dsh-experimental-client-ui-voice-input": "workspace:*",
+    "@deepseek-ai/dsh-persona": "workspace:*",
     "@deepseek-ai/dsh-text-to-speech": "workspace:*",
+    "@deepseek-ai/dsh-time-context": "workspace:*",
+    "@deepseek-ai/dsh-tool-ask-user": "workspace:*",
+    "@deepseek-ai/dsh-tool-session-query": "workspace:*",
     "@deepseek-ai/dsh-api-text-to-speech": "workspace:*"
   },
   "peerDependencies": {
@@ -53,11 +64,15 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/dsh-app-boot": "workspace:*",
     "js-yaml": "^4.3.2"
   },
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/manage.patch.yml"
+      ]
     }
   }
 }

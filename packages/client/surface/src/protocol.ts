@@ -55,6 +55,12 @@ export interface SurfaceSnapshot {
    */
   readonly modal: string | null
   /**
+   * Whether the orb square rests within the carrier's snap distance of a
+   * work-area edge, which selects its docked artwork. Carriers without an orb
+   * report false.
+   */
+  readonly orbDocked: boolean
+  /**
    * Whether the pointer is over the resident orb window. A form profile's
    * surface window keeps the bubble column while the orb is hovered, even when
    * the pointer is not on the column itself.

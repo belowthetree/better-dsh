@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Doc-sync gate for package README Model Experience sections. It validates
  * audited package classifications, model/token/KV-cache fields, package-owned
  * text blocks, generated-catalog links, and final-section order. See the
@@ -69,7 +69,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/api-text-to-speech': { kind: 'none', reason: 'Transports already-logged assistant text and transient audio; ordinary replies own the model-visible text.' },
   'packages/experimental/client-ui-orb': { kind: 'none', reason: 'Renders process-local presentation state and registers the orb toggle command without contributing model input.' },
   'packages/experimental/client-ui-voice-output': { kind: 'none', reason: 'Reads already-logged assistant text for transient synthesis; playback and auto-speak policy add no requests or events.' },
-  'packages/experimental/better-bundle': { kind: 'none', reason: 'Composes the form plugins without adding model-facing contributions; ordinary submission owns any model-visible text.' },
+  'packages/experimental/better-bundle': { kind: 'indirect', reason: 'The bundle declares and mounts the manage preset, whose plugins own the model-visible persona, instructions, and tools.' },
   'packages/experimental/liveshare': { kind: 'indirect', reason: 'The host drives viewer prompts into the shared Session, so model requests follow the viewer input the host forwards.' },
   'packages/experimental/plugin-market-bundle': { kind: 'indirect', reason: 'Mounts the pluginMarket service, which lets the Creator preset register the plugin_market tool documented in packages/boot/plugin-market.' },
   'packages/experimental/client-ui-action-cards': { kind: 'indirect', reason: 'Card actions go to the Host card service, which owns the logged tool, decisions and status notice.' },

@@ -14,7 +14,7 @@ import {
 
 /** Orb presentation of the committed form profile. */
 const ORB: SurfaceSnapshot = {
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
   modalOpen: false,
 }
 

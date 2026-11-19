@@ -25,8 +25,6 @@ export interface OrbChatActions {
    * @returns after the Host accepted the prompt.
    */
   readonly submit: (text: string) => Promise<void>
-  /** Dismiss the modal presentation through the surface carrier. */
-  readonly dismiss: () => void
   /** Start recording on the selected microphone. */
   readonly startDictation: () => Promise<void>
   /** @returns the transcript the recognizer produced for the chat box's recording. */
@@ -60,7 +58,7 @@ type DictationNotice = 'voiceEmpty' | 'voiceFailed'
  */
 export function QuickPrompt(props: QuickPromptProps) {
   const { actions, t } = props
-  const { takeTranscript, submit, dismiss, startDictation, finishDictation, cancelDictation } = actions
+  const { takeTranscript, submit, startDictation, finishDictation, cancelDictation } = actions
   const capture = props.useCapture(snapshot => snapshot)
   const [text, setText] = useState(() => takeTranscript() ?? '')
   const [sending, setSending] = useState(false)
@@ -91,8 +89,10 @@ export function QuickPrompt(props: QuickPromptProps) {
     try {
       await submit(value)
       setText('')
-      dismiss()
-    } catch (_error) {
+      // The workbench replaces this dialog after acceptance, so the answer streams in the management conversation.
+    } catch (error) {
+      // The draft stays for a retry; the localized line is the user-facing report, and the client log keeps the cause.
+      console.error('orb: prompt failed', error)
       setSendFailed(true)
     } finally {
       setSending(false)

@@ -18,8 +18,8 @@ import { zh } from '../src/client/locales.ts'
 afterEach(cleanup)
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
-  modalOpen: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: true,
+  orbHovered: false, modalOpen: false,
 })
 
 /** One Session row; only the current main-view row is retained. */
@@ -167,37 +167,20 @@ it('labels the idle, capturing, transcribing, speaking, and running states', () 
   expect(orb().getAttribute('aria-label')).toBe(zh['orb.openRunning'])
 })
 
-it('keeps the side-peek artwork once the orb floats away from a work-area edge', () => {
-  const original = {
-    screenX: Object.getOwnPropertyDescriptor(window, 'screenX'),
-    screenY: Object.getOwnPropertyDescriptor(window, 'screenY'),
-    outerWidth: Object.getOwnPropertyDescriptor(window, 'outerWidth'),
-    outerHeight: Object.getOwnPropertyDescriptor(window, 'outerHeight'),
-    availLeft: Object.getOwnPropertyDescriptor(window.screen, 'availLeft'),
-    availTop: Object.getOwnPropertyDescriptor(window.screen, 'availTop'),
-    availWidth: Object.getOwnPropertyDescriptor(window.screen, 'availWidth'),
-    availHeight: Object.getOwnPropertyDescriptor(window.screen, 'availHeight'),
-  }
-  Object.defineProperty(window, 'screenX', { configurable: true, value: 400 })
-  Object.defineProperty(window, 'screenY', { configurable: true, value: 300 })
-  Object.defineProperty(window, 'outerWidth', { configurable: true, value: 160 })
-  Object.defineProperty(window, 'outerHeight', { configurable: true, value: 160 })
-  Object.defineProperty(window.screen, 'availLeft', { configurable: true, value: 0 })
-  Object.defineProperty(window.screen, 'availTop', { configurable: true, value: 0 })
-  Object.defineProperty(window.screen, 'availWidth', { configurable: true, value: 1000 })
-  Object.defineProperty(window.screen, 'availHeight', { configurable: true, value: 800 })
-  try {
-    fixture()
-    const art = document.querySelector('[data-orb-art]') as HTMLImageElement
-    expect(art.getAttribute('data-orb-edge')).toBeNull()
-    expect(art.getAttribute('src')).toContain('orb-side-peek')
-  } finally {
-    for (const [key, descriptor] of Object.entries(original)) {
-      const target: object = key.startsWith('avail') ? window.screen : window
-      if (descriptor === undefined) Reflect.deleteProperty(target, key)
-      else Object.defineProperty(target, key, descriptor)
-    }
-  }
+it('shows the docked peek at a work-area edge and the standing pose once the orb floats free', () => {
+  const b = fixture()
+  const art = (): HTMLImageElement => document.querySelector('[data-orb-art]') as HTMLImageElement
+  expect(art().getAttribute('src')).toContain('orb-side-peek')
+
+  act(() => { b.surface.set({ ...ORB_SURFACE, orbDocked: false }) })
+  expect(art().getAttribute('src')).toContain('orb-standing')
+
+  // The artwork set keeps its free-standing pose when the orb leaves the edge.
+  fireEvent.contextMenu(orb())
+  fireEvent.click(document.querySelector('[data-orb-menu-item="mature"]') as HTMLElement)
+  expect(art().getAttribute('src')).toContain('mature-standing')
+  act(() => { b.surface.set({ ...ORB_SURFACE, orbDocked: true }) })
+  expect(art().getAttribute('src')).toContain('mature-side-peek')
 })
 
 it('opens the settings menu on context menu and switches the artwork set', () => {

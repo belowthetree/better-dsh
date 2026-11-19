@@ -19,14 +19,14 @@ type Registration = { readonly name: string; readonly [key: string]: unknown }
 
 /** Orb presentation the carrier reports while the plugin runs. */
 const ORB: SurfaceSnapshot = {
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
   modalOpen: false,
 }
 
 /** Dialog presentation the carrier reports while the workbench is open. */
 const WORKBENCH: SurfaceSnapshot = {
   form: 'orb', role: 'surface', presentation: 'modal', pinned: false, available: true,
-  modal: WORKBENCH_MODAL_ID, orbHovered: false, modalOpen: true,
+  modal: WORKBENCH_MODAL_ID, orbDocked: false, orbHovered: false, modalOpen: true,
 }
 
 const sid = (value: string) => value as SessionId

@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-orb",
-  "description": "Orb form client plugins: floating orb overlay, centered chat dialog, quick voice setup card, and the orb.toggle system command",
+  "description": "Orb form client plugins: floating orb overlay, centered chat dialog, management workbench, quick voice setup card, and the orb.toggle system command",
   "version": "0.2.2-rc.2",
   "publishConfig": {
     "access": "public"
@@ -45,6 +45,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
+    "@deepseek-ai/dsh-api-workspace-controller": "workspace:*",
     "@deepseek-ai/dsh-client-locale": "workspace:*",
     "@deepseek-ai/dsh-client-shortcuts": "workspace:*",
     "@deepseek-ai/dsh-client-store": "workspace:*",
@@ -56,6 +57,7 @@
     "@deepseek-ai/dsh-client-ui-session": "workspace:*",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-client-ui-theme": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-conversation": "workspace:*",
     "@deepseek-ai/dsh-client-ui-voice-output": "workspace:*",
     "@deepseek-ai/dsh-client-voice-capture": "workspace:*",
     "@deepseek-ai/dsh-experimental-speech-to-text": "workspace:*",
@@ -68,6 +70,7 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-shortcuts",
         "@deepseek-ai/dsh-client-store",
@@ -78,6 +81,7 @@
         "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-voice-output",
         "@deepseek-ai/dsh-client-voice-capture"
       ],

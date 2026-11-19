@@ -154,16 +154,16 @@ describe('DesktopSurfaceController', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, pinned: true }, effects: window })
     expect(controller.snapshot('orb')).toEqual({
-      form: 'orb', role: 'orb', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
-      modalOpen: false,
+      form: 'orb', role: 'orb', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true,
+      orbHovered: false, modalOpen: false,
     })
     expect(controller.snapshot('surface')).toEqual({
-      form: 'orb', role: 'surface', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
-      modalOpen: false,
+      form: 'orb', role: 'surface', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true,
+      orbHovered: false, modalOpen: false,
     })
     expect(controller.snapshot('bubbles')).toEqual({
-      form: 'orb', role: 'bubbles', presentation: 'orb', pinned: true, available: true, modal: null, orbHovered: false,
-      modalOpen: false,
+      form: 'orb', role: 'bubbles', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true,
+      orbHovered: false, modalOpen: false,
     })
   })
 
@@ -206,7 +206,7 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'orb.chat' })
     expect(controller.ensurePanel()).toBe(false)
     expect(controller.snapshot('surface')).toEqual({ form: 'orb', role: 'surface', presentation: 'modal', pinned: false,
-      available: true, modal: 'orb.chat', orbHovered: false, modalOpen: true })
+      available: true, modal: 'orb.chat', orbDocked: true, orbHovered: false, modalOpen: true })
   })
 
   it('ignores expand while already expanded and collapse while collapsed', () => {
@@ -349,8 +349,8 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'settings-card' })
     controller.blurred()
     expect(controller.snapshot('surface')).toEqual({
-      form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null, orbHovered: false,
-      modalOpen: false,
+      form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: true,
+      orbHovered: false, modalOpen: false,
     })
   })
 
@@ -407,6 +407,19 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'snap' }, 'orb')
     expect(window.bounds).toEqual([])
     expect(window.persisted).toEqual([])
+  })
+
+  it('reports the docked orb while it rests at an edge and the free orb after it moves away', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, orb: { x: 600, y: 300 } }, effects: window })
+    expect(controller.snapshot('orb').orbDocked).toBe(false)
+    // Landing within the snap gap still counts as docked, before the release snaps it flush.
+    controller.dispatch({ kind: 'dragBy', deltaX: 656, deltaY: 0 }, 'orb')
+    expect(controller.snapshot('orb').orbDocked).toBe(true)
+    controller.dispatch({ kind: 'snap' }, 'orb')
+    expect(controller.snapshot('orb').orbDocked).toBe(true)
+    controller.dispatch({ kind: 'dragBy', deltaX: -640, deltaY: 0 }, 'orb')
+    expect(controller.snapshot('orb').orbDocked).toBe(false)
   })
 
   it('moves the bubble column with the snapped orb', () => {

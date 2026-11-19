@@ -70,6 +70,29 @@ function focusable(presentation: SurfacePresentation): boolean {
   return presentation === 'modal'
 }
 
+/** Gap between the orb square and each work-area edge, in logical pixels. */
+interface OrbEdgeGaps {
+  readonly left: number
+  readonly top: number
+  readonly right: number
+  readonly bottom: number
+}
+
+/**
+ * Measure the gap between the orb square and each work-area edge.
+ * @param orb - orb bounds in logical screen coordinates.
+ * @param area - display work area in the same coordinates.
+ * @returns the left, top, right, and bottom gaps.
+ */
+function orbEdgeGaps(orb: FormPresentationBounds, area: DesktopWorkArea): OrbEdgeGaps {
+  return {
+    left: orb.x - area.x,
+    top: orb.y - area.y,
+    right: area.x + area.width - (orb.x + orb.width),
+    bottom: area.y + area.height - (orb.y + orb.height),
+  }
+}
+
 /**
  * Validate the optional modal presentation size.
  * @param raw - untrusted IPC payload field.
@@ -184,6 +207,7 @@ export class DesktopSurfaceController {
       pinned: this.#layout.pinned,
       available: true,
       modal: role === 'surface' ? this.#modal : null,
+      orbDocked: this.#orbDocked(),
       orbHovered: this.#pointer.orb.inside,
       modalOpen: this.#presentation === 'modal',
     }
@@ -247,10 +271,7 @@ export class DesktopSurfaceController {
         if (origin !== 'orb') return
         const area = this.#effects.workArea()
         const current = orbBounds(this.#layout, area)
-        const left = current.x - area.x
-        const top = current.y - area.y
-        const right = area.x + area.width - (current.x + current.width)
-        const bottom = area.y + area.height - (current.y + current.height)
+        const { left, top, right, bottom } = orbEdgeGaps(current, area)
         const nearest = Math.min(left, top, right, bottom)
         if (nearest > ORB_SNAP_GAP) return
         let x = this.#layout.orb.x
@@ -313,6 +334,7 @@ export class DesktopSurfaceController {
     this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
     if (this.#presentation !== 'orb') this.#effects.setBounds('surface', this.#bounds())
     this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, this.#effects.workArea()))
+    this.#publish()
   }
 
   /** Re-apply bounds, resizing, visibility, and click-through after a window is created or shown. */
@@ -364,6 +386,13 @@ export class DesktopSurfaceController {
       case 'panel': return panelBounds(this.#layout, workArea)
       case 'modal': return modalBounds(workArea, this.#modalSize)
     }
+  }
+
+  /** Whether the orb square rests within the snap gap of a work-area edge. */
+  #orbDocked(): boolean {
+    const area = this.#effects.workArea()
+    const gaps = orbEdgeGaps(orbBounds(this.#layout, area), area)
+    return Math.min(gaps.left, gaps.top, gaps.right, gaps.bottom) <= ORB_SNAP_GAP
   }
 
   /**

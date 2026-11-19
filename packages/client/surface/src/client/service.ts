@@ -64,6 +64,7 @@ function samePresentation(left: SurfaceSnapshot, right: SurfaceSnapshot): boolea
     && left.pinned === right.pinned
     && left.available === right.available
     && left.modal === right.modal
+    && left.orbDocked === right.orbDocked
     && left.orbHovered === right.orbHovered
     && left.modalOpen === right.modalOpen
 }

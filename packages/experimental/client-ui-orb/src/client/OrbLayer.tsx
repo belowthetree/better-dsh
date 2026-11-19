@@ -5,7 +5,7 @@
  * window; the classic frame needs no form chrome, and the panel presentation
  * hosts only shell-owned overlays.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   IconCheckOutlineRegular, IconLoadingOutlineRegular, MenuSurface,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -18,10 +18,11 @@ import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/client'
 import { activeSession, orbLabelKey, orbVisualState } from './state.ts'
 import type { OrbVisualState } from './state.ts'
-import { isOrbAtScreenEdge } from './orb-edge.ts'
 import { usePointerDrag } from './use-pointer-drag.ts'
 import orbSidePeek from './assets/orb-side-peek.png'
+import orbStanding from './assets/orb-standing.png'
 import matureSidePeek from './assets/orb-mature-side-peek.png'
+import matureStanding from './assets/orb-mature-standing.png'
 import type { NS, OrbKey } from './locales.ts'
 import css from './OrbForm.module.css'
 
@@ -59,6 +60,8 @@ function rememberAppearance(appearance: OrbAppearance): void {
 export interface OrbSurfaceActions {
   /** Present the centered chat modal. */
   readonly openChat: () => void
+  /** Present the dedicated management workbench. */
+  readonly openWorkbench: () => void
   /**
    * Move the window by one pointer delta.
    * @param deltaX - horizontal movement in logical pixels.
@@ -107,26 +110,6 @@ export type OrbLayerProps =
   & PropsRuntime<'shell.overlay'>
   & PropsLocale<typeof NS>
   & InjectFace<OrbOverlayInjected>
-
-/**
- * Read the orb window's screen position and pick the artwork that matches it:
- * the docked peek while any side rests at a work-area edge, otherwise the
- * free-standing pose.
- * @returns true when the orb is docked against a screen edge.
- */
-function orbAtScreenEdge(): boolean {
-  // Chromium exposes the display origin of the work area as non-standard Screen fields.
-  const screen = window.screen as Screen & { readonly availLeft?: number; readonly availTop?: number }
-  return isOrbAtScreenEdge(
-    { x: window.screenX, y: window.screenY, width: window.outerWidth, height: window.outerHeight },
-    {
-      x: screen.availLeft ?? 0,
-      y: screen.availTop ?? 0,
-      width: screen.availWidth,
-      height: screen.availHeight,
-    },
-  )
-}
 
 /**
  * State indicator drawn over the orb artwork: capture bars, a working spinner,
@@ -178,7 +161,7 @@ function OrbMenuRow({ choice, t, onSelect }: {
     <span className={css.menuCheck} aria-hidden="true">
       {choice.active ? <IconCheckOutlineRegular size={12} /> : null}
     </span>
-    {t(choice.label)}
+    <span className={css.menuLabel}>{t(choice.label)}</span>
   </button>
 }
 
@@ -196,20 +179,17 @@ export function OrbLayer(props: OrbLayerProps) {
   const sessions = props.useSessions(state => state)
   const [hovered, setHovered] = useState(false)
   const [pressed, setPressed] = useState(false)
-  const [atEdge, setAtEdge] = useState<boolean>(() => orbAtScreenEdge())
   const [appearance, setAppearance] = useState<OrbAppearance>(initialAppearance)
   const [menuOpen, setMenuOpen] = useState(false)
   const { actions, t } = props
-  const sampleEdge = useCallback(() => { setAtEdge(orbAtScreenEdge()) }, [])
-  const drag = usePointerDrag((deltaX, deltaY) => { actions.dragBy(deltaX, deltaY); sampleEdge() })
+  const drag = usePointerDrag((deltaX, deltaY) => { actions.dragBy(deltaX, deltaY) })
   const session = useMemo(() => activeSession(sessions), [sessions])
   const state = useMemo(
     () => orbVisualState({ capture, voice }, session?.running === true),
     [capture, voice, session],
   )
-  /** Finish a gesture: re-sample the artwork and snap a released drag near a work-area edge. */
+  /** Finish a gesture: the carrier snaps a released drag near a work-area edge. */
   const finishDrag = (): void => {
-    sampleEdge()
     if (drag.moved()) actions.snap()
   }
 
@@ -240,7 +220,9 @@ export function OrbLayer(props: OrbLayerProps) {
     { id: 'dark', label: 'orb.menu.dark', active: themePreference === 'dark', select: () => { actions.setTheme('dark') } },
     { id: 'system', label: 'orb.menu.system', active: themePreference === 'system', select: () => { actions.setTheme('system') } },
   ]
-  const artwork = appearance === 'mature' ? matureSidePeek : orbSidePeek
+  const artwork = appearance === 'mature'
+    ? (surface.orbDocked ? matureSidePeek : matureStanding)
+    : (surface.orbDocked ? orbSidePeek : orbStanding)
 
   return <div
     className={css.orbRoot}
@@ -260,12 +242,12 @@ export function OrbLayer(props: OrbLayerProps) {
       onPointerMove={drag.handlers.onPointerMove}
       onPointerUp={(event) => { setPressed(false); drag.handlers.onPointerUp(event); finishDrag() }}
       onPointerCancel={(event) => { setPressed(false); drag.handlers.onPointerCancel(event); finishDrag() }}
-      onLostPointerCapture={(event) => { drag.handlers.onPointerCancel(event); sampleEdge() }}
-      onPointerEnter={() => { setHovered(true); actions.pointerInside(true); sampleEdge() }}
+      onLostPointerCapture={drag.handlers.onPointerCancel}
+      onPointerEnter={() => { setHovered(true); actions.pointerInside(true) }}
       onPointerLeave={() => { setHovered(false); actions.pointerInside(false) }}
       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setMenuOpen(true) }}
       onClick={() => { if (!drag.moved() && !menuOpen) actions.openChat() }}>
-      <img className={css.orbArt} src={artwork} alt="" data-orb-art data-orb-edge={atEdge || undefined} draggable={false} />
+      <img className={css.orbArt} src={artwork} alt="" data-orb-art draggable={false} />
       <OrbGlyph state={state} />
       <span className={css.grip} data-orb-drag aria-hidden="true"
         onPointerEnter={() => { actions.pointerInside(true) }}
@@ -275,6 +257,12 @@ export function OrbLayer(props: OrbLayerProps) {
       onPointerDown={() => { setMenuOpen(false) }}>
       <MenuSurface compact role="menu" aria-label={t('orb.menu.label')} className={css.menu}
         onPointerDown={(event) => { event.stopPropagation() }}>
+        <button type="button" role="menuitem" className={css.menuRow} data-orb-menu-item="workbench"
+          onClick={() => { setMenuOpen(false); actions.openWorkbench() }}>
+          <span className={css.menuCheck} aria-hidden="true" />
+          <span className={css.menuLabel}>{t('orb.menu.workbench')}</span>
+        </button>
+        <div className={css.menuSeparator} role="separator" />
         {appearanceChoices.map(choice => <OrbMenuRow key={choice.id} choice={choice} t={t}
           onSelect={() => { setMenuOpen(false) }} />)}
         <div className={css.menuSeparator} role="separator" />

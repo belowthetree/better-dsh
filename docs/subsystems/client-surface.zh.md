@@ -6,7 +6,7 @@
 
 ## 呈现状态
 
-`SurfaceSnapshot` 携带窗口角色（`classic`、常驻 `orb`、`surface` 窗口或 `bubbles` 气泡列窗口）、壳形态（`classic` 或 `orb`）、呈现（`classic`、`orb`、`panel`、`modal` 或 `bubbles`）、面板固定状态、载体可用性、当前 `shell.modal` 条目 id、`orbHovered`（指针是否位于常驻悬浮球窗口上），以及 `modalOpen`（surface 窗口当前是否呈现模态条目）。形态 profile 把悬浮球窗口、surface 窗口与气泡列窗口作为三个渲染进程运行：悬浮球窗口始终报告 `orb` 呈现，surface 窗口报告自己的呈现（`orb`、`panel` 或 `modal`）与当前模态 id，气泡列窗口只在列升起时报告 `bubbles`。`snapshot()` 在字段变化前保持同一引用，`follow(signal)` 先产出当前快照，再在信号中止前产出每次变化。classic 框架报告 `classic` 呈现，因此形态 profile 可以收起回到它；没有载体的页面报告 `available: false`，且永远无法改变呈现。
+`SurfaceSnapshot` 携带窗口角色（`classic`、常驻 `orb`、`surface` 窗口或 `bubbles` 气泡列窗口）、壳形态（`classic` 或 `orb`）、呈现（`classic`、`orb`、`panel`、`modal` 或 `bubbles`）、面板固定状态、载体可用性、当前 `shell.modal` 条目 id、`orbDocked`（悬浮球是否停在距工作区边缘不超过载体吸附距离的位置）、`orbHovered`（指针是否位于常驻悬浮球窗口上），以及 `modalOpen`（surface 窗口当前是否呈现模态条目）。形态 profile 把悬浮球窗口、surface 窗口与气泡列窗口作为三个渲染进程运行：悬浮球窗口始终报告 `orb` 呈现，surface 窗口报告自己的呈现（`orb`、`panel` 或 `modal`）与当前模态 id，气泡列窗口只在列升起时报告 `bubbles`。`snapshot()` 在字段变化前保持同一引用，`follow(signal)` 先产出当前快照，再在信号中止前产出每次变化。classic 框架报告 `classic` 呈现，因此形态 profile 可以收起回到它；没有载体的页面报告 `available: false`，且永远无法改变呈现。
 
 ## 载体归属
 
