@@ -140,7 +140,12 @@ jobs:
   # persistent pnpm store and tool caches make them redundant (and saving here
   # would poison the hosted cache namespace with self-hosted paths).
   serial-linux-selfhosted:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # Fork override: no runner carries these labels here, so the drill queued
+    # until GitHub cancelled it a day later. Set the repository variable
+    # DSH_CI_SELFHOSTED_STANDBY to `on` to restore both standbys.
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/master'
+      && vars.DSH_CI_SELFHOSTED_STANDBY == 'on'
     name: serial / linux (self-hosted standby)
     runs-on: [self-hosted, linux, x64, vm-backup]
     steps:
@@ -234,7 +239,9 @@ jobs:
   # (and saving here would poison the hosted cache namespace with self-hosted
   # paths).
   serial-windows:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/master'
+      && vars.DSH_CI_SELFHOSTED_STANDBY == 'on'
     name: serial / windows (self-hosted standby)
     runs-on: [self-hosted, dsh-win-ci, windows]
     timeout-minutes: 120

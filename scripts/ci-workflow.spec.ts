@@ -516,7 +516,8 @@ describe('CI workflow', () => {
     expect(report?.run).toContain('Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append')
 
     // serial-windows: master-only standby, self-hosted, non-blocking, lives in ci-master.
-    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    // DSH_CI_SELFHOSTED_STANDBY gates it: no fork carries the label set.
+    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.DSH_CI_SELFHOSTED_STANDBY == 'on'")
     expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
     expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
     // Its store must share the ReFS workspace volume for clone; the install
@@ -802,7 +803,13 @@ describe('CI workflow', () => {
       if (!isRecord(job)) throw new TypeError('CI master jobs must be objects')
       if (typeof job.if === 'boolean') return job.if
       if (typeof job.if !== 'string') throw new TypeError('CI master jobs must define trigger conditions')
-      return runInNewContext(job.if, { github: { event_name: 'workflow_dispatch', ref: 'refs/heads/topic' }, inputs: { suite: 'wine' } }, { timeout: 1000 }) === true
+      // Standby conditions also read the self-hosted switch, absent in a fork.
+      const context = {
+        github: { event_name: 'workflow_dispatch', ref: 'refs/heads/topic' },
+        inputs: { suite: 'wine' },
+        vars: {},
+      }
+      return runInNewContext(job.if, context, { timeout: 1000 }) === true
     }).map(([name]) => name)
     expect(enabled).toEqual(['windows'])
   })
@@ -850,8 +857,10 @@ describe('CI workflow', () => {
       const job = workflow.jobs[name]
       if (!isRecord(job)) throw new TypeError(`${name} must be defined`)
       expect(job.concurrency).toBeUndefined()
-      // Standby drills remain post-merge work, but share run cancellation.
-      expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+      // Standby drills remain post-merge work, but share run cancellation and
+      // wait for DSH_CI_SELFHOSTED_STANDBY: without the labeled runners they
+      // would queue for a day before GitHub cancels them.
+      expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.DSH_CI_SELFHOSTED_STANDBY == 'on'")
     }
 
     // Pin the post-merge runtime, Wine, and standby inventory.
