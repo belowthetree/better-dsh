@@ -397,8 +397,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Installed-wheel native command tests failed with exit code $LASTEXITCODE" }
 
       - name: Preflight installed-wheel real API test (POSIX)
+        # The real-API block needs DEEPSEEK_API_KEY_EXTERNAL. This repository
+        # does not configure it, so DSH_CI_REAL_API keeps the block off and the
+        # wheel lanes stay keyless; set that variable to `on` with the secret.
         if: >-
           inputs.ci
+          && vars.DSH_CI_REAL_API == 'on'
           && runner.os != 'Windows'
           && (github.event_name != 'pull_request'
               || !(github.event.pull_request.head.repo.fork
@@ -415,6 +419,7 @@ jobs:
       - name: Preflight installed-wheel real API test (Windows)
         if: >-
           inputs.ci
+          && vars.DSH_CI_REAL_API == 'on'
           && runner.os == 'Windows'
           && (github.event_name != 'pull_request'
               || !(github.event.pull_request.head.repo.fork
@@ -430,6 +435,7 @@ jobs:
       - name: Run installed-wheel real API black-box test (POSIX)
         if: >-
           inputs.ci
+          && vars.DSH_CI_REAL_API == 'on'
           && runner.os != 'Windows'
           && (github.event_name != 'pull_request'
               || !(github.event.pull_request.head.repo.fork
@@ -450,6 +456,7 @@ jobs:
       - name: Run installed-wheel real API black-box test (Windows)
         if: >-
           inputs.ci
+          && vars.DSH_CI_REAL_API == 'on'
           && runner.os == 'Windows'
           && (github.event_name != 'pull_request'
               || !(github.event.pull_request.head.repo.fork

@@ -416,7 +416,7 @@ describe('CI workflow', () => {
       const cores = jobName === 'windows-native-tests' ? 2 : 16
       expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_WINDOWS: 'blacksmith' } }))
         .toBe(`blacksmith-${cores}vcpu-windows-2025`)
-      expect(job.if).toBe("github.event_name == 'pull_request'")
+      expect(job.if).toBe("github.event_name == 'pull_request' || github.ref == 'refs/heads/better-dsh'")
     }
 
     // windows-build runs the blocking build/site pair.
@@ -555,10 +555,10 @@ describe('CI workflow', () => {
     expect(windowsAggregate.needs).toEqual(['windows-publisher', 'windows-build', 'windows-native-tests'])
     expect(windowsAggregate.name).toBe('windows checks passed')
     expect(windowsAggregate['runs-on']).toBe(aggregate['runs-on'])
-    // The fork adds a product-branch push to the Linux verdict only; both keep
-    // the cancellable status guard that keeps a cancelled run from starting it.
-    expect(windowsAggregate.if).toBe("${{ !cancelled() && github.event_name == 'pull_request' }}")
-    expect(aggregate.if).toBe("${{ !cancelled() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/better-dsh') }}")
+    // Both verdicts keep the cancellable status guard, and the fork's
+    // product-branch push starts them alongside pull requests.
+    expect(windowsAggregate.if).toBe("${{ !cancelled() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/better-dsh') }}")
+    expect(aggregate.if).toBe(windowsAggregate.if)
     // The benchmark lane is a required verdict input and runs alone so its
     // wall-clock budgets never share a runner with a concurrent aggregate.
     expect(aggregate.needs).toContain('node-24-bench')
@@ -839,14 +839,16 @@ describe('CI workflow', () => {
     expect(prWorkflow.on.push).toEqual({ branches: ['better-dsh'] })
     const windowsWorkflow = loadWorkflow('.github/workflows/ci-windows.yml')
     if (!isRecord(windowsWorkflow.on)) throw new TypeError('CI Windows workflow must define on')
-    expect(Object.keys(windowsWorkflow.on)).toEqual(['pull_request'])
+    expect(Object.keys(windowsWorkflow.on)).toEqual(['pull_request', 'push'])
+    expect(windowsWorkflow.on.push).toEqual({ branches: ['better-dsh'] })
     expect(windowsWorkflow.concurrency).toEqual(workflow.concurrency)
     // Duplicated env must not drift: a Node bump on one lane only would run
     // Linux and Windows against different versions.
     expect(windowsWorkflow.env).toEqual(prWorkflow.env)
     const pythonWorkflow = loadWorkflow('.github/workflows/ci-python.yml')
     if (!isRecord(pythonWorkflow.on)) throw new TypeError('CI Python workflow must define on')
-    expect(Object.keys(pythonWorkflow.on)).toEqual(['pull_request'])
+    expect(Object.keys(pythonWorkflow.on)).toEqual(['pull_request', 'push'])
+    expect(pythonWorkflow.on.push).toEqual({ branches: ['better-dsh'] })
     expect(pythonWorkflow.concurrency).toEqual(workflow.concurrency)
     expect(pythonWorkflow.env).toEqual(prWorkflow.env)
 
@@ -935,7 +937,7 @@ describe('CI workflow', () => {
     }
 
     expect(pythonRuntime).toMatchObject({
-      if: "github.event_name == 'pull_request'",
+      if: "github.event_name == 'pull_request' || github.ref == 'refs/heads/better-dsh'",
       name: 'python runtime / release-shaped matrix',
       uses: './.github/workflows/build-exe-for-python-sdk.yml',
       with: { targets: 'node24-linux-x64,node24-win-x64', ci: true },
