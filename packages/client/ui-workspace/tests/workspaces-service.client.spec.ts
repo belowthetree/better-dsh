@@ -13,6 +13,7 @@ import type {
 import type { ClientRemote, DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
 import { RemoteError, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -345,8 +346,23 @@ describe('UiWorkspaceService', () => {
     expect(b.notify).not.toHaveBeenCalled()
   })
 
-  it('leaves an ineligible empty installation without a Session or failure notice', async () => {
+  it('skips startup restoration in an orb-form window', async () => {
+    vi.stubGlobal('__DSH_SURFACE__', {
+      form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true,
+      modal: null, orbDocked: false, orbHovered: false, modalOpen: false,
+    } satisfies SurfaceSnapshot)
     const b = bench({ workspaces: workspaceState(), sessions: sessionState() })
+    await setImmediate()
+    b.workspaces.list.set(workspaceState())
+    b.sessions.list.set(sessionState())
+    await setImmediate()
+    expect(b.workspaces.initializeDefault).not.toHaveBeenCalled()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    expect(b.sessions.retain).not.toHaveBeenCalled()
+    expect(b.notify).not.toHaveBeenCalled()
+  })
+
+  it('leaves an ineligible empty installation without a Session or failure notice', async () => {    const b = bench({ workspaces: workspaceState(), sessions: sessionState() })
     await setImmediate()
     b.workspaces.list.set(workspaceState())
     b.sessions.list.set(sessionState())

@@ -15,6 +15,7 @@ import type {
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types'
 import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-ui-session-status/client'
+import type { SurfaceBootGlobal } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
@@ -30,6 +31,18 @@ import type { WorkspaceViewStoreActions } from './stores.ts'
 interface MainSelection {
   readonly sessionId?: SessionId
   readonly subagentAddress?: SubagentAddress
+}
+
+/**
+ * Whether this renderer owns the classic three-column main view. Orb-form
+ * windows render the resident orb, the surface/modal host, or the bubble column
+ * instead; none of them shows the startup Session, so restoring one there would
+ * only create hidden blank Sessions.
+ * @returns true for the classic Web/Desktop frame, false for an orb-form window.
+ */
+function classicMainViewWindow(): boolean {
+  const descriptor = (globalThis as SurfaceBootGlobal).__DSH_SURFACE__
+  return descriptor === undefined || descriptor.form !== 'orb'
 }
 
 /** Content preparation and Agent preset for the Session a Workspace flow opens. */
@@ -177,6 +190,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   )
   private mainReference: SessionReference | undefined
   private readonly recentViews: RecentSessionViews
+  private readonly restoresStartupSession = classicMainViewWindow()
   private restorationNavigation: AbortSignal | undefined
 
   /**
@@ -452,6 +466,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       const sessions = this.sessions.list.getSnapshot()
       if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
       if (this.mainReference !== undefined) {
+        initial = 'done'
+        return
+      }
+      if (!this.restoresStartupSession) {
         initial = 'done'
         return
       }
