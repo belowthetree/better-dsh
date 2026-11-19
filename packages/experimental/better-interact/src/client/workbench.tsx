@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { NS } from './locales.ts'
 import { workbenchAddress } from './resource.ts'
+import { workbenchGroups } from './workbench-groups.ts'
 import type { WorkbenchPagesState } from './workbench-pages.ts'
 import css from './Workbench.module.css'
 
@@ -90,15 +91,16 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const hints = props.useHints(value => value)
   const sessions = props.useSessions(state => state.byId)
   const { getTriggerProps } = props.useContextMenu()
+  const groups = workbenchGroups(workspaces, sessions, t('tabs.manage'))
   const sessionsRef = useRef<HTMLElement | null>(null)
   const lastFocus = useRef(focusRequest)
   // The keyboard cursor is local presentation state: it marks the bookmark
   // Enter would activate and stays distinct from the current Session.
   const [cursor, setCursor] = useState<SessionId | null>(null)
-  const active = pages.active !== undefined && workspaces.some(item => item.workspaceId === pages.active)
+  const active = pages.active !== undefined && groups.some(item => item.workspaceId === pages.active)
     ? pages.active
-    : workspaces[0]?.workspaceId
-  const workspace = workspaces.find(item => item.workspaceId === active)
+    : groups[0]?.workspaceId
+  const workspace = groups.find(item => item.workspaceId === active)
   const available = workspace === undefined
     ? []
     : workspace.sessionIds.filter((sessionId): sessionId is SessionId =>
@@ -125,12 +127,12 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   /** Move the selection and focus with the arrow keys inside the Workspace strip. */
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-    if (workspaces.length < 2) return
+    if (groups.length < 2) return
     event.preventDefault()
-    const current = active === undefined ? 0 : workspaces.findIndex(item => item.workspaceId === active)
+    const current = active === undefined ? 0 : groups.findIndex(item => item.workspaceId === active)
     const step = event.key === 'ArrowRight' ? 1 : -1
-    const nextIndex = (current + step + workspaces.length) % workspaces.length
-    const next = workspaces[nextIndex]
+    const nextIndex = (current + step + groups.length) % groups.length
+    const next = groups[nextIndex]
     if (next === undefined) return
     select(next.workspaceId)
     event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-workbench-tab]')[nextIndex]?.focus()
@@ -157,11 +159,11 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
     data-shell-modal-surface="bare" data-shell-modal-wide="">
     {notice !== null && <p className={css.notice} role="alert" data-better-interact-notice="">{t(notice)}</p>}
     <div className={css.body}>
-      {workspaces.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}
+      {groups.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}
         data-workbench-tabs="" onKeyDown={onTabKey}>
-        {workspaces.map((item) => {
+        {groups.map((item) => {
           const selected = item.workspaceId === active
-          return <Tooltip key={item.workspaceId} label={item.path} shortcutKeys={hints.pageNext}
+          return <Tooltip key={item.workspaceId} label={item.path ?? item.title} shortcutKeys={hints.pageNext}
             side="top" portal delayMs={300} maxWidth={360}>
             <button type="button" role="tab"
               id={`better-interact-workbench-tab-${item.workspaceId}`}

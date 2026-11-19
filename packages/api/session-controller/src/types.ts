@@ -155,6 +155,8 @@ export interface SessionSummary {
   readonly parentSessionId?: SessionId
   readonly origin?: 'subagent'
   readonly cwd?: string
+  /** Recorded Agent preset identity; absent when the Session header names none. */
+  readonly agentPreset?: string
   readonly projections?: SessionProjectionHints
 }
 

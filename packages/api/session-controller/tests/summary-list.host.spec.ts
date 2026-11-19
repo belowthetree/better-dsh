@@ -105,6 +105,7 @@ describe('session.list summary payload', () => {
     const response = await (await remote(ctx)).list({})
     if (!response.ok) throw new Error('unreachable')
     const row = response.value.items.find(item => item.sessionId === id)
+    expect(row).toMatchObject({ agentPreset: 'standard' })
     const served = Object.keys(row?.projections?.values ?? {})
     expect(served.sort()).toEqual(everyWireKey.filter(key => !SUMMARY_EXCLUDED_KEYS.includes(
       key as (typeof SUMMARY_EXCLUDED_KEYS)[number],

@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { workbenchAddress } from '../src/client/resource.ts'
+import { MANAGE_PAGE_ID } from '../src/client/workbench-groups.ts'
 import type { WorkbenchPagesState } from '../src/client/workbench-pages.ts'
 import { WorkbenchConversation, WorkbenchDialog } from '../src/client/workbench.tsx'
 import type { WorkbenchNotice } from '../src/client/workbench.tsx'
@@ -15,6 +16,7 @@ type SessionRow = {
   readonly blank?: boolean
   readonly title?: string
   readonly displayTitle?: string
+  readonly agentPreset?: string
 }
 type WorkspaceRow = {
   readonly workspaceId: WorkspaceId
@@ -96,6 +98,24 @@ it('renders one card per Workspace and selects the clicked one', () => {
   expect(cards[0]?.getAttribute('aria-selected')).toBe('false')
   expect(cards[1]?.getAttribute('aria-selected')).toBe('true')
   fireEvent.click(cards[0]!)
+  expect(select).toHaveBeenCalledExactlyOnceWith(ws('ws-1'))
+})
+
+it('lists the managed conversation as the first page and removes it from its Workspace page', () => {
+  const { props, select } = dialogProps({
+    workspaces: [workspace('ws-1', 'Alpha', ['ordinary']), workspace('ws-2', 'Beta', ['managed'])],
+    sessions: {
+      ordinary: { updatedAt: 1 },
+      managed: { updatedAt: 2, agentPreset: 'manage' },
+    },
+    pages: { active: MANAGE_PAGE_ID, sessions: {} },
+  })
+  render(createElement(WorkbenchDialog, props as never))
+  const cards = screen.getAllByRole('tab')
+  expect(cards.map(card => card.textContent)).toEqual(['tabs.manage', 'Alpha', 'Beta'])
+  expect(cards[0]?.getAttribute('aria-selected')).toBe('true')
+  expect(screen.getAllByTestId('conversation')).toHaveLength(1)
+  fireEvent.click(cards[1]!)
   expect(select).toHaveBeenCalledExactlyOnceWith(ws('ws-1'))
 })
 

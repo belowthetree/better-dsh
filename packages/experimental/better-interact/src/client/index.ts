@@ -18,6 +18,7 @@ import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
+import { workbenchGroups, type WorkbenchPageGroup } from './workbench-groups.ts'
 import type { WorkbenchHints, WorkbenchInjected, WorkbenchNotice } from './workbench.tsx'
 import { WorkbenchConversation, WorkbenchDialog, WORKBENCH_MODAL_SIZE } from './workbench.tsx'
 import { createWorkbenchPagesStore } from './workbench-pages.ts'
@@ -69,11 +70,13 @@ export function apply(ctx: Context): void {
   const notice = createSnapshotStore<WorkbenchNotice | null>(null)
   const focus = createSnapshotStore(0)
   const workspaces = (): readonly WorkspaceView[] => ctx.workspaces.list.getSnapshot().items
-  const workspaceOf = (sessionId: SessionId): WorkspaceView | undefined =>
-    workspaces().find(item => item.sessionIds.includes(sessionId))
+  const groups = (): readonly WorkbenchPageGroup[] =>
+    workbenchGroups(workspaces(), ctx.sessions.list.getSnapshot().byId, t('tabs.manage'))
+  const pageOf = (sessionId: SessionId): WorkbenchPageGroup | undefined =>
+    groups().find(item => item.sessionIds.includes(sessionId))
 
-  /** Session a Workspace page shows: its recorded Session, else its newest. */
-  const sessionOf = (workspace: WorkspaceView): SessionId | undefined => {
+  /** Session a page shows: its recorded Session, else its newest. */
+  const sessionOf = (workspace: WorkbenchPageGroup): SessionId | undefined => {
     const byId = ctx.sessions.list.getSnapshot().byId
     const mapped = pages.store.getSnapshot().sessions[workspace.workspaceId]
     if (mapped !== undefined && workspace.sessionIds.includes(mapped) && byId[mapped] !== undefined) return mapped
@@ -86,34 +89,35 @@ export function apply(ctx: Context): void {
     return newest
   }
 
-  /** Show one Workspace page, opening its Session or connecting its blank. */
+  /** Show one page, opening its Session or connecting an empty real Workspace. */
   const showPage = (workspaceId: WorkspaceId): void => {
-    const workspace = workspaces().find(item => item.workspaceId === workspaceId)
+    const workspace = groups().find(item => item.workspaceId === workspaceId)
     if (workspace === undefined) return
     notice.set(null)
     pages.select(workspaceId)
     const sessionId = sessionOf(workspace)
     if (sessionId === undefined) {
-      void navigation.openWorkspace(workspaceId).catch(fail('opening the workspace page'))
+      if (!workspace.manages) void navigation.openWorkspace(workspaceId).catch(fail('opening the workspace page'))
       return
     }
     pages.setSession(workspaceId, sessionId)
     navigation.openSession(sessionId)
   }
 
-  /** Workspace the launcher falls back to: the main view's, else the most recently updated. */
-  const recentWorkspace = (): WorkspaceId | undefined => {
-    const current = mainViewSession(ctx.sessions.list.getSnapshot().byId)
+  /** Page the launcher falls back to: the main view's, else the most recently updated. */
+  const recentPage = (): WorkspaceId | undefined => {
+    const byId = ctx.sessions.list.getSnapshot().byId
+    const current = mainViewSession(byId)
     if (current !== undefined) {
-      const workspace = workspaceOf(current)
-      if (workspace !== undefined) return workspace.workspaceId
+      const page = pageOf(current)
+      if (page !== undefined) return page.workspaceId
     }
-    let newest: WorkspaceView | undefined
-    for (const workspace of workspaces()) {
-      if (workspace.sessionIds.length === 0) continue
-      if (newest === undefined || workspace.updatedAt > newest.updatedAt) newest = workspace
+    let newest: { readonly id: WorkspaceId; readonly at: number } | undefined
+    for (const page of groups()) {
+      const at = page.sessionIds.reduce((latest, sessionId) => Math.max(latest, byId[sessionId]?.updatedAt ?? 0), 0)
+      if (at > 0 && (newest === undefined || at > newest.at)) newest = { id: page.workspaceId, at }
     }
-    return (newest ?? workspaces()[0])?.workspaceId
+    return newest?.id ?? groups()[0]?.workspaceId
   }
 
   /** Present the workbench dialog through the carrier. */
@@ -123,19 +127,19 @@ export function apply(ctx: Context): void {
     })
   }
 
-  /** Open the dialog on the most recently used Workspace page. */
+  /** Open the dialog on the most recently used page. */
   const openWorkbench = (): void => {
     notice.set(null)
-    const ordered = workspaces().map(item => item.workspaceId)
-    const chosen = pages.ensure(ordered, recentWorkspace())
+    const ordered = groups().map(item => item.workspaceId)
+    const chosen = pages.ensure(ordered, recentPage())
     if (chosen !== undefined) showPage(chosen)
     presentWorkbench()
   }
 
-  /** Open the dialog on the Workspace page holding one Session. */
+  /** Open the dialog on the page holding one Session. */
   const showSession = (sessionId: SessionId): void => {
     notice.set(null)
-    const workspace = workspaceOf(sessionId)
+    const workspace = pageOf(sessionId)
     if (workspace !== undefined) {
       pages.select(workspace.workspaceId)
       pages.setSession(workspace.workspaceId, sessionId)
@@ -176,9 +180,9 @@ export function apply(ctx: Context): void {
     presentWorkbench()
   }
 
-  /** Cycle the Workspace pages while the dialog is open. */
+  /** Cycle the pages while the dialog is open. */
   const cyclePages = (delta: 1 | -1): void => {
-    const next = pages.cycle(workspaces().map(item => item.workspaceId), delta)
+    const next = pages.cycle(groups().map(item => item.workspaceId), delta)
     if (next !== undefined) showPage(next)
   }
 
@@ -297,7 +301,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => {
     const reconcile = (): void => {
       pages.retain(
-        new Set(workspaces().map(item => item.workspaceId)),
+        new Set(groups().map(item => item.workspaceId)),
         new Set(ctx.sessions.list.getSnapshot().ids),
       )
     }
@@ -316,7 +320,7 @@ export function apply(ctx: Context): void {
     const reconcile = (): void => {
       const current = mainViewSession(ctx.sessions.list.getSnapshot().byId)
       if (current === undefined) return
-      const workspace = workspaceOf(current)
+      const workspace = pageOf(current)
       if (workspace === undefined) return
       pages.setSession(workspace.workspaceId, current)
       if (surface.getSnapshot().modal !== WORKBENCH_MODAL_ID) return

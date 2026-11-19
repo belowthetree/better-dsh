@@ -508,6 +508,7 @@ export class SessionManager {
       this.recordMutation({ kind: 'placeholder', summary: { agentAvailable: true,
         sessionId: result.value.sessionId, updatedAt: Date.now(), running: false, blank: true,
         ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+        ...(opts.agentPreset !== undefined ? { agentPreset: opts.agentPreset } : {}),
       } })
     } else {
       const publishedSessionId = workspaceAttachSessionId(result.error)
@@ -552,6 +553,7 @@ export class SessionManager {
       this.recordMutation({ kind: 'placeholder', summary: { agentAvailable: true,
         sessionId: childId, updatedAt: Date.now(), running: false, blank: true,
         ...(source?.cwd !== undefined ? { cwd: source.cwd } : {}),
+        ...(source?.agentPreset !== undefined ? { agentPreset: source.agentPreset } : {}),
       } })
     }
     return result
@@ -832,9 +834,12 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
           ? { parentSessionId: mutation.summary.parentSessionId } : {}),
         ...(existing.origin === undefined && mutation.summary.origin !== undefined
           ? { origin: mutation.summary.origin } : {}),
+        ...(existing.agentPreset === undefined && mutation.summary.agentPreset !== undefined
+          ? { agentPreset: mutation.summary.agentPreset } : {}),
       }
       if (filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
-        && filled.origin === existing.origin && filled.blank === existing.blank
+        && filled.origin === existing.origin && filled.agentPreset === existing.agentPreset
+        && filled.blank === existing.blank
         && filled.agentAvailable === existing.agentAvailable && filled.running === existing.running
         && filled.formatStatus === existing.formatStatus
       ) return [...summaries]

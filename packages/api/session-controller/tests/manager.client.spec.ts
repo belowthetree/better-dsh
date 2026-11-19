@@ -35,6 +35,7 @@ type SummaryOver = Partial<{
   cwd: string
   parentSessionId: SessionId
   origin: 'subagent'
+  agentPreset: string
 }>
 
 function summary(sessionId: SessionId, over: SummaryOver = {}) {
@@ -51,6 +52,13 @@ function makeManager(
 }
 
 describe('SessionManager instances', () => {
+  it('carries the recorded Agent preset into list rows', async ({ mock, remote }) => {
+    const manager = makeManager(mock, remote)
+    onTestFinished(() => manager.dispose())
+    manager.handleSessionAdded(summary(S1, { blank: true, agentPreset: 'manage' }))
+    expect(manager.getListSnapshot().items[0]).toMatchObject({ agentPreset: 'manage' })
+  })
+
   it.for(['event', 'list'] as const)(
     'forgets running when an unretained identity disappears through a %s',
     async (source, { mock, remote }) => {

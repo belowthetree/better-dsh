@@ -35,6 +35,8 @@ export interface SessionSummary {
   parentId?: SessionId
   /** Coarse durable origin for navigation filtering; not a continuation capability. */
   origin?: 'subagent'
+  /** Recorded Agent preset identity; absent when the Session header names none. */
+  agentPreset?: string
   /** Format classification supplied by the Host list, when available. */
   formatStatus?: SessionListEntry['formatStatus']
   /** Host running state for `ids` members; a display fallback for other rows. */
@@ -696,6 +698,7 @@ export class ClientSessions implements ISessions {
         ...(entry.cwd !== undefined ? { cwd: entry.cwd } : {}),
         ...(entry.parentSessionId !== undefined ? { parentId: entry.parentSessionId } : {}),
         ...(entry.origin !== undefined ? { origin: entry.origin } : {}),
+        ...(entry.agentPreset !== undefined ? { agentPreset: entry.agentPreset } : {}),
       }
     }
     for (const [parentId, projection] of Object.entries(projectionsBySession)) {

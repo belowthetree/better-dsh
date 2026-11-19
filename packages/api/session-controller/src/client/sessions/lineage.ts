@@ -32,6 +32,8 @@ export interface SessionListEntry {
   parentSessionId?: SessionId
   /** Coarse durable origin for navigation filtering; not a continuation capability. */
   origin?: 'subagent'
+  /** Recorded Agent preset identity; absent when the Session header names none. */
+  agentPreset?: string
   /** Format classification supplied by the Host list. */
   formatStatus?: SessionSummary['formatStatus']
   cwd?: string
