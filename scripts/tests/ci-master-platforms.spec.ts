@@ -37,7 +37,7 @@ function commands(job: Job): string[] {
 
 // These boolean/string cases share Actions and JavaScript semantics. GitHub
 // supplies status functions; this probe is not a general Actions interpreter.
-function evaluateCondition(expression: string, cancelled: boolean, results: string[], event = 'pull_request'): boolean {
+function evaluateCondition(expression: string, cancelled: boolean, results: string[], event = 'pull_request', ref = ''): boolean {
   const source = expression.trim().replace(/^[$][{][{]|[}][}]$/g, '')
     .replaceAll('needs.*.result', 'results')
   return runInNewContext(source, {
@@ -45,7 +45,7 @@ function evaluateCondition(expression: string, cancelled: boolean, results: stri
     always: () => true,
     contains: (values: string[], value: string) => values.includes(value),
     results,
-    github: { event_name: event },
+    github: { event_name: event, ref },
   }, { timeout: 1000 }) as boolean
 }
 
@@ -72,6 +72,12 @@ describe('master-only platform scheduling', () => {
   it('distinguishes the obsolete always verdict from the cancellable status guard', () => {
     expect(evaluateCondition("always() && github.event_name == 'pull_request'", true, ['success'])).toBe(true)
     expect(evaluateCondition(workflow('ci.yml').jobs['all-checks-passed']!.if as string, true, ['success'])).toBe(false)
+  })
+
+  it('starts the CI verdict for the fork product-branch push as well as for pull requests', () => {
+    const condition = workflow('ci.yml').jobs['all-checks-passed']!.if as string
+    expect(evaluateCondition(condition, false, ['success'], 'push', 'refs/heads/better-dsh')).toBe(true)
+    expect(evaluateCondition(condition, false, ['success'], 'push', 'refs/heads/master')).toBe(false)
   })
 
   it('keeps the required Python PR verdict and its two x64 targets in CI Python', () => {
