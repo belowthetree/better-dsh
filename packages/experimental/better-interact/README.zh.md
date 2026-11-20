@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-Better DSH 把 agent 从需要造访的地方变成桌面上的常驻存在。悬浮球让 agent 始终在场；回答以气泡形式在它旁边升起，Ctrl+Alt+W 打开一个悬浮工作台，管理对话排在最前，每个工作区一页，每个会话一个书签。键盘优先：Ctrl+Tab 切换页面，Ctrl+Q 进入会话导航，Ctrl+Alt+N 从文件夹添加工作区；右键点击会话书签可打开共享菜单，其中包含归档与永久删除。它复用 shell 的会话内容，因此转录、工具与输入框保持不变。它是 Desktop orb 形态的体验，不替代 classic shell。
+Better DSH 让 agent 成为桌面上的常驻存在。回答以气泡形式在悬浮球旁升起，漫画式对话气泡会报告等待权限、回答或计划确认的会话。Ctrl+Alt+W 打开一个悬浮工作台，管理对话排在最前，每个工作区一页，每个会话一个书签。键盘优先：Ctrl+Tab 切换页面，Ctrl+Q 进入会话导航，Ctrl+Alt+N 添加工作区；书签菜单可归档或删除会话。它复用 shell 的会话内容，因此转录、工具与输入框保持不变。它是 Desktop orb 形态的体验，不替代 classic shell。
 
 ## 目录
 
@@ -27,9 +27,9 @@ Better DSH 把 agent 从需要造访的地方变成桌面上的常驻存在。�
 
 Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agent 不应藏在窗口后面，因此悬浮球常驻，工作台在它之上打开。**环境化输出**：正在书写的回答以流式气泡在悬浮球旁升起，已完成的回答加入那里的历史，因此查看进度不需要切换窗口。**工作区即工作单元**：工作台在全部真实工作区之前为管理对话提供一页，每页的会话成为会话面板旁的书签。
 
-悬浮球常驻桌面。指针进入会升起历史气泡列；流式回答会自行升起它，并保持到 agent 停止。点击气泡打开工作台；工作台盖在 surface 窗口之上，关闭时恢复之前的呈现。
+悬浮球常驻桌面。指针进入会升起历史气泡列；流式回答会自行升起它，并保持到 agent 停止。有待处理的请求时，同一列会以对话气泡形式升起它，并保持到请求被处理；点击气泡会打开该会话所在的工作台页面。历史气泡同样打开这个工作台，它盖在 surface 窗口之上，关闭时恢复之前的呈现。
 
-工作台是宽大的无边框表面：管理对话与工作区页面的 Fluent 卡片位于居中的会话面板上方，该页的会话以书签卡片排列在面板左侧外部。当前会话带强调色条；键盘光标带独立的选中环。Ctrl+Tab 与 Shift+Ctrl+Tab 循环切换页面。Ctrl+Q 把焦点移到书签；方向键移动选中环但不切换会话，回车打开焦点所在的会话。Ctrl+Alt+N 选择文件夹并添加或复用工作区页面，Ctrl+N 在活动页面的工作区里创建会话。悬停卡片或书签会显示完整名称与绑定快捷键。重新打开对话框时会恢复上次的页面与会话。
+工作台是宽大的无边框表面：管理对话与工作区页面的 Fluent 卡片位于居中的会话面板上方，该页的会话以书签卡片排列在面板左侧外部。管理页始终排在卡片条最前；工作区增多时，卡片条可用滚轮、触控板或方向键横向滚动。当前会话带强调色条；键盘光标带独立的选中环。Ctrl+Tab 与 Shift+Ctrl+Tab 循环切换页面。Ctrl+Q 把焦点移到书签；方向键移动选中环但不切换会话，回车打开焦点所在的会话。Ctrl+Alt+N 选择文件夹并添加或复用工作区页面，Ctrl+N 在活动页面的工作区里创建会话。悬停卡片或书签会显示完整名称与绑定快捷键。重新打开对话框时会恢复上次的页面与会话。
 
 ### 何时选择
 
@@ -37,7 +37,7 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 
 ### 最小配置
 
-在形态声明了 orb 呈现的 profile 中加入 `better-interact` 行，并同时挂载 [client-surface](../../client/surface/README.zh.md)、感知呈现的 [ui-layout](../../client/ui-layout/README.zh.md) 与 [client-ui-workspace](../../client/ui-workspace/README.zh.md)。本包注入 `surface`、`slots`、`locale`、`shortcuts`、`resources`、`sessions`、`workspaces` 与 `uiWorkspace`，不接受配置字段。
+在形态声明了 orb 呈现的 profile 中加入 `better-interact` 行，并同时挂载 [client-surface](../../client/surface/README.zh.md)、感知呈现的 [ui-layout](../../client/ui-layout/README.zh.md) 与 [client-ui-workspace](../../client/ui-workspace/README.zh.md)。本包注入 `surface`、`slots`、`locale`、`shortcuts`、`resources`、`sessions`、`workspaces`、`uiWorkspace` 与 `uiSession`，不接受配置字段。
 
 <a id="understand-the-implementation"></a>
 ## 了解实现
@@ -45,14 +45,15 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 <details>
 <summary>实现内部细节——点击展开</summary>
 
-插件在框架中放置两个条目：orb 与气泡列窗口中的 `shell.overlay` 气泡条目，以及 surface 窗口中的 `shell.modal` 工作台条目。气泡列读取会话目录中排在第一位的会话的 Chat 目标；已提交的 assistant 消息成为历史气泡，实时部分则是流式气泡。气泡栈在一个组件内安排顺序与半秒离开规则，并通过 `surface.presentBubbles()` 与 `surface.dismissBubbles()` 向载体申请 `bubbles` 呈现。
+插件在框架中放置两个条目：orb 与气泡列窗口中的 `shell.overlay` 气泡条目，以及 surface 窗口中的 `shell.modal` 工作台条目。气泡列读取会话目录中排在第一位的会话的 Chat 目标；已提交的 assistant 消息成为历史气泡，实时部分则是流式气泡。气泡栈在一个组件内安排顺序与半秒离开规则，并通过 `surface.presentBubbles()` 与 `surface.dismissBubbles()` 向载体申请 `bubbles` 呈现。该条目还发布 `ctx.uiSession.pendingInteractions`；气泡栈把优先级最高的请求投影为一条提醒，以带指向悬浮球尾巴的最后一个气泡呈现，等待期间保持气泡列可见，点击即打开相应会话。
 
-工作台经 `renderFactorySlot` 复用 `conversation.content`，只把视图环替换为 Chat 视图；这正是去掉 shell 外观而不分叉会话的原因。页面是 `dsh.better-interact.workbench-pages.v1` 下的持久化快照存储：保存活动页面与每页记录的 Session。合成的管理页不是工作区：它由记录预设为 `manage` 的 Session 摘要推导，在存在时排在卡片条最前，并把这些 Session 从其真实工作区页面移除。激活页面时经注入的 `uiWorkspace` 导航服务打开其记录（或最新）的 Session；没有 Session 的工作区以同样方式连接空白会话。插件把主视图保留的 Session 记录到其页面，在对话框打开时选中该页面，并用页面与会话目录清理失效的页面与 Session 记录。聚焦命令只递增对话框注入面里的计数器；组件移动焦点、以本地状态绘制光标环，并在回车时打开焦点会话。快捷键提示来自快捷键目录中的有效条目。
+工作台经 `renderFactorySlot` 复用 `conversation.content`，只把视图环替换为 Chat 视图；这正是去掉 shell 外观而不分叉会话的原因。页面是 `dsh.better-interact.workbench-pages.v1` 下的持久化快照存储：保存活动页面与每页记录的 Session。合成的管理页不是工作区：它由记录预设为 `manage` 的 Session 摘要推导，始终排在卡片条最前，并把这些 Session 从其真实工作区页面移除。激活页面时经注入的 `uiWorkspace` 导航服务打开其记录（或最新）的 Session；没有 Session 的工作区以同样方式连接空白会话。插件把主视图保留的 Session 记录到其页面，在对话框打开时选中该页面，并用页面与会话目录清理失效的页面与 Session 记录。聚焦命令只递增对话框注入面里的计数器；组件移动焦点、以本地状态绘制光标环，并在回车时打开焦点会话。快捷键提示来自快捷键目录中的有效条目。
 
 | 区域 | 源码 |
 |---|---|
 | 条目、命令与页面 | [src/client/index.ts](src/client/index.ts) |
 | 气泡列 | [src/client/bubbles.tsx](src/client/bubbles.tsx) |
+| 提醒投影 | [src/client/reminders.ts](src/client/reminders.ts) |
 | 工作台对话框 | [src/client/workbench.tsx](src/client/workbench.tsx) |
 | 页面存储 | [src/client/workbench-pages.ts](src/client/workbench-pages.ts) |
 | Desktop 窗口与呈现 | [apps/desktop](../../../apps/desktop/README.zh.md) |
@@ -84,8 +85,11 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 - 气泡列有自己的窗口，因此 panel 或模态呈现不会取代它；在工作台模态打开期间申请的气泡列会在模态关闭后出现。
 - 在首个回答文本出现之前的纯工具阶段不显示流式消息气泡；回答文本出现时气泡列才升起。
 - 历史只覆盖已加载窗口中的轮次预览，因此在转录本中继续向前滚动不会扩充它。
-- 卡片条在存在管理 Session 时首先展示管理对话页，然后展示目录中的所有工作区；激活没有 Session 的工作区会连接其空白会话，可能因此创建 Session。
-- 管理页是工作台的分组，不是工作区：它的 Session 保留真实默认工作区的 cwd 与成员关系，且当没有管理 Session 时该页面消失。
+- 卡片条始终以管理对话页开头，然后是目录中的所有工作区；没有可见滚动条，长卡片条用滚轮、触控板或方向键横向滚动。
+- 管理页是工作台的分组，不是工作区：它的 Session 保留真实默认工作区的 cwd 与成员关系，且在没有管理 Session 时保持空白。
+- 激活没有 Session 的工作区会连接其空白会话，可能因此创建 Session。
+- 对话气泡一次只报告一条请求：优先级最高的待处理交互（权限、计划确认、提问），其余以数量提示。尾巴指向卡片条右缘，也就是悬浮球通常所在的位置。
+- 气泡只报告待处理交互；未读的完成回答仍留在输出气泡中。
 - 每页按工作区记录一个 Session；主视图保留的 Session 会替换该记录，因此在其他入口打开的 Session 会成为该页的 Session，而不是独立页面。
 - 页面存储是形态各渲染进程共享的浏览器存储；只有 surface 窗口会修改它，因此悬浮球与气泡列渲染进程在重新加载前持有旧副本。
 - Ctrl+Tab、Ctrl+Q 与 Ctrl+Alt+N 仅在 Windows 与 macOS 的 Desktop 上绑定；orb profile 运行期间即使对话框已关闭，Desktop 主进程也会消费这些组合键。
@@ -93,4 +97,4 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 <a id="dev-note"></a>
 ### 开发备注
 
-气泡列的时序常量由组件测试用假定时器驱动；`bubbles` 窗口角色、气泡列呈现与工作台保持规则由 Desktop 的 surface-controller 测试覆盖。
+气泡列的时序常量由组件测试用假定时器驱动；提醒投影有独立测试；`bubbles` 窗口角色、气泡列呈现与工作台保持规则由 Desktop 的 surface-controller 测试覆盖。

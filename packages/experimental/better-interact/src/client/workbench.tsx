@@ -43,6 +43,24 @@ export interface WorkbenchHints {
   readonly pagePrevious: readonly string[]
 }
 
+/**
+ * Translate a vertical wheel over the horizontally scrollable Workspace strip
+ * into horizontal scrolling. A strip that fits its content keeps the page
+ * scroll it belongs to.
+ * @param strip - scroll metrics of the strip.
+ * @param event - wheel movement over the strip.
+ * @returns whether the strip consumed the wheel.
+ */
+export function scrollTabsByWheel(
+  strip: { readonly scrollWidth: number; readonly clientWidth: number; scrollLeft: number },
+  event: { readonly deltaY: number; preventDefault(): void },
+): boolean {
+  if (event.deltaY === 0 || strip.scrollWidth <= strip.clientWidth) return false
+  event.preventDefault()
+  strip.scrollLeft += event.deltaY
+  return true
+}
+
 /** Workspace pages, Session bookmarks, and selection actions the workbench dialog consumes. */
 export interface WorkbenchInjected {
   hooks: {
@@ -92,6 +110,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const sessions = props.useSessions(state => state.byId)
   const { getTriggerProps } = props.useContextMenu()
   const groups = workbenchGroups(workspaces, sessions, t('tabs.manage'))
+  const tabsRef = useRef<HTMLDivElement | null>(null)
   const sessionsRef = useRef<HTMLElement | null>(null)
   const lastFocus = useRef(focusRequest)
   // The keyboard cursor is local presentation state: it marks the bookmark
@@ -112,6 +131,18 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   const address = workbenchAddress(sessionId)
   const resource = props.useResource<'betterinteract'>(address)
   const reference = resource.value?.reference
+
+  // A vertical wheel over the strip scrolls the Workspace pages: the bar stays
+  // hidden, and a mouse wheel does not translate to a horizontal scroller on its own.
+  useEffect(() => {
+    const strip = tabsRef.current
+    if (strip === null) return
+    const onWheel = (event: WheelEvent): void => {
+      scrollTabsByWheel(strip, event)
+    }
+    strip.addEventListener('wheel', onWheel, { passive: false })
+    return () => { strip.removeEventListener('wheel', onWheel) }
+  }, [])
 
   // A shortcut asks for the bookmark list through the counter; focus stays a
   // component concern, and the first render never steals the dialog's focus.
@@ -160,7 +191,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
     {notice !== null && <p className={css.notice} role="alert" data-better-interact-notice="">{t(notice)}</p>}
     <div className={css.body}>
       {groups.length > 0 && <div className={css.tabs} role="tablist" aria-label={t('tabs.label')}
-        data-workbench-tabs="" onKeyDown={onTabKey}>
+        ref={tabsRef} data-workbench-tabs="" onKeyDown={onTabKey}>
         {groups.map((item) => {
           const selected = item.workspaceId === active
           return <Tooltip key={item.workspaceId} label={item.path ?? item.title} shortcutKeys={hints.pageNext}

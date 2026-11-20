@@ -11,6 +11,8 @@ import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NS } from './locales.ts'
+import type { ReminderInteraction } from './reminders.ts'
+import { orbReminder, reminderMessage } from './reminders.ts'
 import { workbenchAddress } from './resource.ts'
 import css from './Bubbles.module.css'
 
@@ -41,6 +43,8 @@ export interface BubblesInjected {
   hooks: {
     /** Carrier presentation snapshot. */
     surface: HostObservable<SurfaceSnapshot>
+    /** Pending Session interactions the orb speaks about. */
+    pending: HostObservable<ReadonlyMap<SessionId, ReminderInteraction>>
   }
   /** Ask the carrier to show the bubble column window. */
   show(): void
@@ -214,6 +218,15 @@ export function BubbleStack(props: BubbleStackProps) {
   // column the pointer is away from shows only its newest bubble.
   const expanded = orbHovered || inside || holdHistory
   const shown = expanded ? entries : entries.slice(-1)
+  const pending = props.usePending(value => value)
+  const byId = props.useSessions(state => state.byId)
+  const reminder = orbReminder(pending)
+  /** A waiting request keeps the column up even when the pointer is elsewhere. */
+  const reminding = reminder !== undefined
+  const summary = reminder === undefined ? undefined : byId[reminder.sessionId]
+  const reminderTitle = reminder === undefined
+    ? ''
+    : (summary?.title?.trim() || summary?.displayTitle || String(reminder.sessionId))
 
   /** Stop a running exit, if any, and keep every bubble on screen. */
   const cancelExit = useCallback((): void => {
@@ -252,10 +265,11 @@ export function BubbleStack(props: BubbleStackProps) {
 
   // A streaming answer raises the column on its own; the streaming bubble must
   // stay visible until the agent stops, whether or not the pointer is nearby.
+  // A pending request raises it too, so the character's reminder is not missed.
   useEffect(() => {
-    if (visible || !streaming) return
+    if (visible || (!streaming && !reminding)) return
     show()
-  }, [visible, streaming, show])
+  }, [visible, streaming, reminding, show])
 
   // Asking for the history keeps it expanded while the pointer leaves and the
   // bubbles finish their exit; a fresh streaming-only column starts collapsed.
@@ -274,16 +288,17 @@ export function BubbleStack(props: BubbleStackProps) {
       cancelExit()
       return
     }
-    // The orb, the column, an active output, or the workbench keeps the bubbles.
-    // Otherwise the column leaves half a second after the pointer left both.
-    if (orbHovered || inside || busy || modalOpen) {
+    // The orb, the column, an active output, the workbench, or a pending request
+    // keeps the bubbles. Otherwise the column leaves half a second after the
+    // pointer left both.
+    if (orbHovered || inside || busy || modalOpen || reminding) {
       cancelExit()
       return
     }
     if (exiting) return
     const timer = setTimeout(startExit, BUBBLE_HOVER_LEAVE_MS)
     return () => { clearTimeout(timer) }
-  }, [visible, orbHovered, inside, busy, modalOpen, exiting, startExit, cancelExit])
+  }, [visible, orbHovered, inside, busy, modalOpen, reminding, exiting, startExit, cancelExit])
 
   /** Expand the history and keep the column while the pointer rests on it. */
   const enter = (): void => {
@@ -298,7 +313,7 @@ export function BubbleStack(props: BubbleStackProps) {
     pointerInside(false)
   }
 
-  if (!visible || entries.length === 0) return null
+  if (!visible || (entries.length === 0 && reminder === undefined)) return null
   return <div className={css.layer} data-better-interact-bubbles="" data-exiting={exiting ? 'true' : 'false'}>
     <div
       className={css.stack}
@@ -318,6 +333,16 @@ export function BubbleStack(props: BubbleStackProps) {
       >
         {bubblePreview(entry.text)}
       </button>)}
+      {reminder !== undefined && <button
+        type="button"
+        className={css.reminder}
+        data-better-interact-reminder=""
+        title={t('reminder.open')}
+        onClick={() => { open(reminder.sessionId) }}
+      >
+        <span className={css.reminderText}>{reminderMessage(reminder, reminderTitle, t)}</span>
+        {reminder.others > 0 && <span className={css.reminderMore}>{t('reminder.more', { count: reminder.others })}</span>}
+      </button>}
     </div>
   </div>
 }

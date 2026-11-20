@@ -18,6 +18,12 @@ export const zh = {
   'workbench.empty': '还没有会话',
   'workbench.createFailed': '无法创建此工作区',
   'bubbles.label': '助手输出',
+  'reminder.open': '打开会话',
+  'reminder.approval': '「{title}」想使用 {tool}，等你允许',
+  'reminder.question': '「{title}」问你：{question}',
+  'reminder.planReview': '「{title}」有一份计划等你确认',
+  'reminder.pending': '「{title}」在等你处理',
+  'reminder.more': '另有 {count} 条提醒',
 }
 
 /** English dictionary. */
@@ -34,6 +40,12 @@ export const en: typeof zh = {
   'workbench.empty': 'No session yet',
   'workbench.createFailed': 'Could not create this workspace',
   'bubbles.label': 'Agent output',
+  'reminder.open': 'Open the session',
+  'reminder.approval': '“{title}” wants to use {tool}. Allow it?',
+  'reminder.question': '“{title}” asks: {question}',
+  'reminder.planReview': '“{title}” has a plan for you to review',
+  'reminder.pending': '“{title}” is waiting for you',
+  'reminder.more': '{count} more waiting',
 }
 
 /** Japanese dictionary. */
@@ -50,6 +62,12 @@ export const ja: typeof zh = {
   'workbench.empty': 'セッションはまだありません',
   'workbench.createFailed': 'このワークスペースを作成できませんでした',
   'bubbles.label': 'エージェントの出力',
+  'reminder.open': 'セッションを開く',
+  'reminder.approval': '「{title}」が {tool} の使用許可を求めています',
+  'reminder.question': '「{title}」からの質問：{question}',
+  'reminder.planReview': '「{title}」の計画の確認待ちです',
+  'reminder.pending': '「{title}」があなたの対応を待っています',
+  'reminder.more': 'ほかに {count} 件',
 }
 
 /** Spanish dictionary. */
@@ -66,6 +84,12 @@ export const es: typeof zh = {
   'workbench.empty': 'Todavía no hay sesión',
   'workbench.createFailed': 'No se pudo crear este espacio de trabajo',
   'bubbles.label': 'Salida del agente',
+  'reminder.open': 'Abrir la sesión',
+  'reminder.approval': '«{title}» quiere usar {tool}. ¿Lo permites?',
+  'reminder.question': '«{title}» pregunta: {question}',
+  'reminder.planReview': '«{title}» tiene un plan pendiente de revisión',
+  'reminder.pending': '«{title}» te está esperando',
+  'reminder.more': '{count} más pendientes',
 }
 
 /** French dictionary. */
@@ -82,6 +106,12 @@ export const fr: typeof zh = {
   'workbench.empty': 'Aucune session pour l’instant',
   'workbench.createFailed': 'Impossible de créer cet espace de travail',
   'bubbles.label': 'Sortie de l’agent',
+  'reminder.open': 'Ouvrir la séance',
+  'reminder.approval': '« {title} » veut utiliser {tool}. Autoriser ?',
+  'reminder.question': '« {title} » demande : {question}',
+  'reminder.planReview': '« {title} » a un plan à valider',
+  'reminder.pending': '« {title} » vous attend',
+  'reminder.more': '{count} autres en attente',
 }
 
 /** German dictionary. */
@@ -98,6 +128,12 @@ export const de: typeof zh = {
   'workbench.empty': 'Noch keine Sitzung',
   'workbench.createFailed': 'Dieser Arbeitsbereich konnte nicht erstellt werden',
   'bubbles.label': 'Agentenausgabe',
+  'reminder.open': 'Sitzung öffnen',
+  'reminder.approval': '„{title}“ möchte {tool} verwenden. Erlauben?',
+  'reminder.question': '„{title}“ fragt: {question}',
+  'reminder.planReview': '„{title}“ hat einen Plan zur Prüfung',
+  'reminder.pending': '„{title}“ wartet auf dich',
+  'reminder.more': '{count} weitere warten',
 }
 
 /** Russian dictionary. */
@@ -114,6 +150,12 @@ export const ru: typeof zh = {
   'workbench.empty': 'Сеансов пока нет',
   'workbench.createFailed': 'Не удалось создать этот рабочий стол',
   'bubbles.label': 'Вывод агента',
+  'reminder.open': 'Открыть сеанс',
+  'reminder.approval': '«{title}» запрашивает доступ к {tool}',
+  'reminder.question': '«{title}» спрашивает: {question}',
+  'reminder.planReview': '«{title}» ждёт проверки плана',
+  'reminder.pending': '«{title}» ждёт вашего ответа',
+  'reminder.more': 'Ещё {count} в ожидании',
 }
 
 /** Portuguese dictionary. */
@@ -130,6 +172,12 @@ export const pt: typeof zh = {
   'workbench.empty': 'Ainda não há sessão',
   'workbench.createFailed': 'Não foi possível criar esta área de trabalho',
   'bubbles.label': 'Saída do agente',
+  'reminder.open': 'Abrir a sessão',
+  'reminder.approval': '“{title}” quer usar {tool}. Permitir?',
+  'reminder.question': '“{title}” pergunta: {question}',
+  'reminder.planReview': '“{title}” tem um plano para você revisar',
+  'reminder.pending': '“{title}” está à sua espera',
+  'reminder.more': '{count} mais à espera',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** The workbench renders one card per Workspace above the selected page's conversation. */
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -8,7 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { workbenchAddress } from '../src/client/resource.ts'
 import { MANAGE_PAGE_ID } from '../src/client/workbench-groups.ts'
 import type { WorkbenchPagesState } from '../src/client/workbench-pages.ts'
-import { WorkbenchConversation, WorkbenchDialog } from '../src/client/workbench.tsx'
+import { WorkbenchConversation, WorkbenchDialog, scrollTabsByWheel } from '../src/client/workbench.tsx'
 import type { WorkbenchNotice } from '../src/client/workbench.tsx'
 
 type SessionRow = {
@@ -77,16 +77,16 @@ function dialogProps(options: {
   return { props, renderSlot, select, selectSession, useResource, pages, getTriggerProps }
 }
 
-it('renders the empty state while no Workspace page exists', () => {
+it('renders the managed page and the empty state while no Workspace page exists', () => {
   const { props } = dialogProps({ pages: { active: undefined, sessions: {} }, workspaces: [], reference: false })
   render(createElement(WorkbenchDialog, props as never))
+  expect(screen.getByRole('tab').textContent).toBe('tabs.manage')
   expect(screen.getByText('workbench.empty')).toBeTruthy()
-  expect(screen.queryByRole('tablist')).toBeNull()
   expect(document.querySelector('[data-shell-modal-fill]')).not.toBeNull()
   expect(document.querySelector('[data-shell-modal-surface="bare"]')).not.toBeNull()
 })
 
-it('renders one card per Workspace and selects the clicked one', () => {
+it('renders one card per Workspace after the managed page and selects the clicked one', () => {
   const { props, select } = dialogProps({
     workspaces: [workspace('ws-1', 'Alpha', ['s1']), workspace('ws-2', 'Beta', ['s2'])],
     pages: { active: ws('ws-2'), sessions: {} },
@@ -94,10 +94,10 @@ it('renders one card per Workspace and selects the clicked one', () => {
   })
   render(createElement(WorkbenchDialog, props as never))
   const cards = screen.getAllByRole('tab')
-  expect(cards.map(card => card.textContent)).toEqual(['Alpha', 'Beta'])
-  expect(cards[0]?.getAttribute('aria-selected')).toBe('false')
-  expect(cards[1]?.getAttribute('aria-selected')).toBe('true')
-  fireEvent.click(cards[0]!)
+  expect(cards.map(card => card.textContent)).toEqual(['tabs.manage', 'Alpha', 'Beta'])
+  expect(cards[1]?.getAttribute('aria-selected')).toBe('false')
+  expect(cards[2]?.getAttribute('aria-selected')).toBe('true')
+  fireEvent.click(cards[1]!)
   expect(select).toHaveBeenCalledExactlyOnceWith(ws('ws-1'))
 })
 
@@ -234,7 +234,7 @@ it('moves the page selection with the arrow keys', () => {
   fireEvent.keyDown(tablist, { key: 'ArrowRight' })
   expect(select).toHaveBeenCalledExactlyOnceWith(ws('ws-2'))
   fireEvent.keyDown(tablist, { key: 'ArrowLeft' })
-  expect(select).toHaveBeenLastCalledWith(ws('ws-2'))
+  expect(select).toHaveBeenLastCalledWith(MANAGE_PAGE_ID)
   expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby'))
     .toBe('better-interact-workbench-tab-ws-1')
 })
@@ -245,11 +245,36 @@ it('shows a failed Workspace creation notice', () => {
   expect(screen.getByRole('alert').textContent).toBe('workbench.createFailed')
 })
 
-it('leaves a single Workspace alone on the arrow keys', () => {
-  const { props, select } = dialogProps()
+it('leaves a single page alone on the arrow keys', () => {
+  const { props, select } = dialogProps({ workspaces: [], pages: { active: MANAGE_PAGE_ID, sessions: {} } })
   render(createElement(WorkbenchDialog, props as never))
   fireEvent.keyDown(screen.getByRole('tablist'), { key: 'ArrowRight' })
   expect(select).not.toHaveBeenCalled()
+})
+
+it('scrolls an overflowing strip from a vertical wheel and leaves a fitting one alone', () => {
+  const strip = { scrollWidth: 600, clientWidth: 300, scrollLeft: 0 }
+  const prevent = vi.fn()
+  expect(scrollTabsByWheel(strip, { deltaY: 40, preventDefault: prevent })).toBe(true)
+  expect(strip.scrollLeft).toBe(40)
+  expect(prevent).toHaveBeenCalledOnce()
+  expect(scrollTabsByWheel({ scrollWidth: 300, clientWidth: 300, scrollLeft: 0 }, { deltaY: 40, preventDefault: prevent }))
+    .toBe(false)
+  expect(scrollTabsByWheel(strip, { deltaY: 0, preventDefault: prevent })).toBe(false)
+  expect(prevent).toHaveBeenCalledOnce()
+})
+
+it('translates the wheel over the rendered strip into horizontal scrolling', () => {
+  const { props } = dialogProps()
+  const view = render(createElement(WorkbenchDialog, props as never))
+  const strip = document.querySelector<HTMLElement>('[data-workbench-tabs]')!
+  Object.defineProperty(strip, 'scrollWidth', { configurable: true, value: 600 })
+  Object.defineProperty(strip, 'clientWidth', { configurable: true, value: 300 })
+  const event = new WheelEvent('wheel', { deltaY: 50, bubbles: true, cancelable: true })
+  act(() => { strip.dispatchEvent(event) })
+  expect(strip.scrollLeft).toBe(50)
+  expect(event.defaultPrevented).toBe(true)
+  view.unmount()
 })
 
 function conversationProps(

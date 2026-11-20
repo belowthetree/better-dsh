@@ -11,6 +11,7 @@ import {
   BUBBLE_HOVER_LEAVE_MS, BUBBLE_MOTION_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
   assistantText, bubbleKind, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack,
 } from '../src/client/bubbles.tsx'
+import type { ReminderInteraction } from '../src/client/reminders.ts'
 
 /** Orb presentation of the committed form profile. */
 const ORB: SurfaceSnapshot = {
@@ -48,11 +49,15 @@ function stack(options: {
   readonly modalOpen?: boolean
   readonly running?: boolean
   readonly chat?: ChatSnapshot
+  readonly pending?: ReadonlyMap<SessionId, ReminderInteraction>
+  readonly summaries?: Readonly<Record<string, { readonly title?: string; readonly displayTitle?: string }>>
 } = {}) {
   const show = vi.fn()
   const hide = vi.fn()
   const open = vi.fn()
   const pointerInside = vi.fn()
+  const state = { pending: options.pending ?? new Map<SessionId, ReminderInteraction>() }
+  const byId = Object.fromEntries(Object.entries(options.summaries ?? {}).map(([id, summary]) => [id, { id, ...summary }]))
   const props = {
     sessionId: 'session-1' as SessionId,
     useSurface: (select: (value: SurfaceSnapshot) => unknown) => select({
@@ -65,10 +70,15 @@ function stack(options: {
     useSession: (select: (value: { readonly running: boolean }) => unknown) => select({ running: options.running === true }),
     useConversation: (select: (value: { readonly views: { get: () => ChatSnapshot | undefined } }) => unknown) =>
       select({ views: { get: () => options.chat } }),
+    usePending: (select: (value: ReadonlyMap<SessionId, ReminderInteraction>) => unknown) => select(state.pending),
+    useSessions: (select: (value: { readonly byId: object }) => unknown) => select({ byId }),
     show, hide, open, pointerInside,
-    t: (key: string) => key,
+    t: (key: string, params?: Record<string, unknown>) =>
+      params === undefined ? key : `${key}|${Object.values(params).join('|')}`,
   }
-  return { props, show, hide, open, pointerInside }
+  /** Replace the pending map before the caller rerenders. */
+  const setPending = (next: ReadonlyMap<SessionId, ReminderInteraction>): void => { state.pending = next }
+  return { props, show, hide, open, pointerInside, setPending }
 }
 
 function column(): HTMLElement | null {
@@ -519,5 +529,79 @@ describe('BubbleStack', () => {
     render(createElement(BubbleStack, props as never))
     expect(screen.getByRole('log').getAttribute('aria-label')).toBe('bubbles.label')
     expect(screen.getByRole('button').getAttribute('title')).toBe('command.open')
+  })
+
+  it('speaks a pending approval as a speech balloon and opens its Session', () => {
+    const approval: ReminderInteraction = {
+      key: 'approval:1', kind: 'approval', sessionId: 'session-2' as SessionId, toolName: 'bash',
+    }
+    const { props, open } = stack({
+      pending: new Map([[approval.sessionId, approval]]),
+      summaries: { 'session-2': { title: 'Alpha' } },
+    })
+    render(createElement(BubbleStack, props as never))
+    const balloon = document.querySelector<HTMLElement>('[data-better-interact-reminder]')
+    expect(balloon).not.toBeNull()
+    expect(balloon?.textContent).toBe('reminder.approval|Alpha|bash')
+    expect(balloon?.getAttribute('title')).toBe('reminder.open')
+    fireEvent.click(balloon!)
+    expect(open).toHaveBeenCalledExactlyOnceWith('session-2')
+  })
+
+  it('falls back to the display title, then the Session id', () => {
+    const approval: ReminderInteraction = {
+      key: 'approval:1', kind: 'approval', sessionId: 'session-2' as SessionId, toolName: 'bash',
+    }
+    const pending = new Map([[approval.sessionId, approval]])
+    const titled = stack({ pending, summaries: { 'session-2': { title: '  ', displayTitle: 'Beta' } } })
+    const view = render(createElement(BubbleStack, titled.props as never))
+    expect(document.querySelector('[data-better-interact-reminder]')?.textContent)
+      .toBe('reminder.approval|Beta|bash')
+    view.unmount()
+    const anonymous = stack({ pending })
+    render(createElement(BubbleStack, anonymous.props as never))
+    expect(document.querySelector('[data-better-interact-reminder]')?.textContent)
+      .toBe('reminder.approval|session-2|bash')
+  })
+
+  it('speaks a pending question with its text and counts the other requests', () => {
+    const question: ReminderInteraction = {
+      key: 'question:1', kind: 'question', sessionId: 'session-2' as SessionId, questions: [{ question: 'Continue?' }],
+    }
+    const other: ReminderInteraction = { key: 'question:2', kind: 'question', sessionId: 'session-3' as SessionId }
+    const { props } = stack({
+      pending: new Map([[question.sessionId, question], [other.sessionId, other]]),
+      summaries: { 'session-2': { title: 'Alpha' } },
+    })
+    render(createElement(BubbleStack, props as never))
+    expect(document.querySelector('[data-better-interact-reminder]')?.textContent)
+      .toBe('reminder.question|Alpha|Continue?reminder.more|1')
+  })
+
+  it('raises the column on its own while a request waits', () => {
+    const approval: ReminderInteraction = {
+      key: 'approval:1', kind: 'approval', sessionId: 'session-2' as SessionId, toolName: 'bash',
+    }
+    const { props, show } = stack({
+      pending: new Map([[approval.sessionId, approval]]), presentation: 'orb', orbHovered: false,
+    })
+    render(createElement(BubbleStack, props as never))
+    expect(show).toHaveBeenCalledOnce()
+  })
+
+  it('holds the column while the request waits and releases it after it settles', () => {
+    const approval: ReminderInteraction = {
+      key: 'approval:1', kind: 'approval', sessionId: 'session-2' as SessionId, toolName: 'bash',
+    }
+    const { props, hide, setPending } = stack({
+      pending: new Map([[approval.sessionId, approval]]), orbHovered: false,
+    })
+    const view = render(createElement(BubbleStack, props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS + BUBBLE_STAGGER_MS + BUBBLE_MOTION_MS) })
+    expect(hide).not.toHaveBeenCalled()
+    act(() => { setPending(new Map()) })
+    view.rerender(createElement(BubbleStack, props as never))
+    act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS + BUBBLE_MOTION_MS) })
+    expect(hide).toHaveBeenCalledOnce()
   })
 })

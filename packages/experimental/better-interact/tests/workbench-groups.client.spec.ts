@@ -43,13 +43,17 @@ it('puts the managed conversation first and removes it from its real Workspace p
   expect(groups[1]?.manages).toBe(false)
 })
 
-it('omits the managed page when no managed Session exists', () => {
+it('keeps the managed page first and empty when no managed Session exists', () => {
   const groups = workbenchGroups(
     [workspace('default', 'default-workspace', [sid('ordinary')])],
     { [sid('ordinary')]: session('ordinary', 10) },
     '大肥鱼',
   )
-  expect(groups.map(group => group.workspaceId)).toEqual([ws('default')])
+  expect(groups.map(group => [group.workspaceId, group.sessionIds])).toEqual([
+    [MANAGE_PAGE_ID, []],
+    [ws('default'), [sid('ordinary')]],
+  ])
+  expect(groups[0]?.manages).toBe(true)
 })
 
 it('sorts managed Sessions newest first and ignores other presets and subagents', () => {

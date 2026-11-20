@@ -11,6 +11,7 @@ import {
   WORKBENCH_PREVIOUS_COMMAND_ID, WORKBENCH_SESSIONS_COMMAND_ID,
 } from '../src/client/index.ts'
 import type { BubblesInjected } from '../src/client/bubbles.tsx'
+import { MANAGE_PAGE_ID } from '../src/client/workbench-groups.ts'
 import { WORKBENCH_MODAL_ID } from '../src/client/resource.ts'
 import type { WorkbenchInjected } from '../src/client/workbench.tsx'
 import { WORKBENCH_MODAL_SIZE } from '../src/client/workbench.tsx'
@@ -87,6 +88,7 @@ function context(options: {
   const sessions = sessionList(options.sessions ?? [{ id: 's1' }])
   const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])])
   const catalog = createSnapshotStore(options.catalog ?? [])
+  const pendingInteractions = createSnapshotStore(new Map())
   const ctx = {
     effect: (factory: () => unknown) => {
       const value = factory()
@@ -100,6 +102,7 @@ function context(options: {
     uiWorkspace: {
       openSession, openWorkspace, pickDirectory, startSession: vi.fn(), connectWorkspace: vi.fn(),
     },
+    uiSession: { pendingInteractions },
     surface: {
       snapshot: () => snapshot,
       async *follow(signal: AbortSignal) {
@@ -119,7 +122,7 @@ function context(options: {
   }
   return {
     ctx, registrations, commands, dictionaries, sessions, workspaces, catalog, presentModal, presentBubbles, dismissBubbles,
-    openSession, openWorkspace, pickDirectory, createWorkspace, disposers,
+    openSession, openWorkspace, pickDirectory, createWorkspace, disposers, pendingInteractions,
   }
 }
 
@@ -132,7 +135,7 @@ function workbenchInjected(registrations: readonly Registration[]): WorkbenchInj
 
 it('declares the services it reads', () => {
   expect(inject).toEqual([
-    'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace',
+    'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace', 'uiSession',
   ])
 })
 
@@ -184,6 +187,14 @@ it('mounts the bubble column and its bound stack', () => {
   })
   const stack = registrations.find(entry => entry.name === 'better-interact.bubbles.stack')
   expect((stack?.inject as () => BubblesInjected)().hooks.surface.getSnapshot()).toEqual(ORB)
+})
+
+it('publishes pending Session interactions to the bubble column', () => {
+  const { ctx, registrations, pendingInteractions } = context()
+  apply(ctx as never)
+  const overlay = registrations.find(entry => entry.name === 'shell.overlay')
+  const bubbles = (overlay?.inject as () => BubblesInjected)()
+  expect(bubbles.hooks.pending).toBe(pendingInteractions)
 })
 
 it('drives the carrier and opens the bubble Session in its Workspace page', () => {
@@ -459,12 +470,12 @@ it('reports a Workspace page that cannot connect', async () => {
   error.mockRestore()
 })
 
-it('opens an empty catalog dialog without a page', () => {
+it('opens an empty catalog dialog on the managed page', () => {
   const { ctx, commands, registrations, presentModal } = context({ workspaces: [], sessions: [] })
   apply(ctx as never)
   const workbench = workbenchInjected(registrations)
   const resolution = commands.find(entry => entry.id === WORKBENCH_COMMAND_ID)!.resolve(contextAt(null))
   if (resolution.status === 'handled') resolution.run()
   expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
-  expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: undefined, sessions: {} })
+  expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: MANAGE_PAGE_ID, sessions: {} })
 })

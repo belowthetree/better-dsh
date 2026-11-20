@@ -21,12 +21,13 @@ export interface WorkbenchPageGroup {
 }
 
 /**
- * Build workbench pages with the managed-conversation page first.
+ * Build workbench pages with the managed-conversation page always first.
  *
- * Managed Sessions lead the synthetic page and are removed from their Workspace
- * page so one Session never appears twice. Managed Sessions keep their real
- * Workspace membership; this derivation only changes where the workbench shows
- * them.
+ * The page exists even while no managed Session remains, so the character's own
+ * page never moves behind a Workspace or disappears from the strip. Managed
+ * Sessions lead that page and are removed from their Workspace page so one
+ * Session never appears twice. Managed Sessions keep their real Workspace
+ * membership; this derivation only changes where the workbench shows them.
  * @param workspaces - Host Workspaces in registry order.
  * @param sessions - current Session rows keyed by Session id.
  * @param manageTitle - localized title of the synthetic page.
@@ -42,10 +43,9 @@ export function workbenchGroups(
     .sort((left, right) => right.updatedAt - left.updatedAt || (left.id < right.id ? -1 : 1))
     .map(session => session.id)
   const managedIds = new Set(managed)
-  const groups: WorkbenchPageGroup[] = []
-  if (managed.length > 0) {
-    groups.push({ workspaceId: MANAGE_PAGE_ID, title: manageTitle, sessionIds: managed, manages: true })
-  }
+  const groups: WorkbenchPageGroup[] = [
+    { workspaceId: MANAGE_PAGE_ID, title: manageTitle, sessionIds: managed, manages: true },
+  ]
   for (const workspace of workspaces) {
     groups.push({
       workspaceId: workspace.workspaceId,

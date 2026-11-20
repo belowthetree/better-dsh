@@ -13,6 +13,8 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: the ctx.uiSession merge and its pending-interaction source.
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -25,9 +27,9 @@ import { createWorkbenchPagesStore } from './workbench-pages.ts'
 import type { BubblesInjected } from './bubbles.tsx'
 import { BubblesLayer, BubbleStack } from './bubbles.tsx'
 
-/** Required services: the frame seat, the carrier, the catalogs, and Workspace navigation. */
+/** Required services: the frame seat, the carrier, the catalogs, Workspace navigation, and pending requests. */
 export const inject = [
-  'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace',
+  'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace', 'uiSession',
 ]
 
 /** Command id opening the workbench; it has a default binding and stays rebindable. */
@@ -335,7 +337,7 @@ export function apply(ctx: Context): void {
   }, 'better-interact: Workspace page follows the main view')
 
   const bubbles: BubblesInjected = {
-    hooks: { surface },
+    hooks: { surface, pending: ctx.uiSession.pendingInteractions },
     show: () => { ctx.surface.presentBubbles().catch(fail('presenting the bubble column')) },
     hide: () => { ctx.surface.dismissBubbles().catch(fail('dismissing the bubble column')) },
     open: (sessionId) => { showSession(sessionId) },

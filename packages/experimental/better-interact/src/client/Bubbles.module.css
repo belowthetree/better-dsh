@@ -110,3 +110,83 @@
     transition: none;
   }
 }
+
+/* The character's speech balloon: one pending request spoken above the orb. It
+   is not an output card, so it draws its own down-pointing tail toward the
+   artwork and carries the reminder's accent edge. The margin under the balloon
+   keeps the tail inside the stack's clipped box, and its tail sits above the
+   orb, which the carrier places at the column's right edge. */
+.reminder {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 12px 14px 15px;
+  border: 0;
+  border-inline-start: 3px solid var(--dsw-alias-state-business-primary);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-prominent), inset 0 1px 0 var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  line-height: 1.45;
+  text-align: start;
+  cursor: pointer;
+  animation: bubble-in 200ms cubic-bezier(0.1, 0.9, 0.2, 1) backwards;
+  transition:
+    background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+/* The tail hangs under the balloon toward the orb; its upper half hides behind
+   the balloon's own fill. */
+.reminder::after {
+  position: absolute;
+  right: 64px;
+  bottom: -7px;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background: inherit;
+  content: '';
+  transform: rotate(45deg);
+}
+
+.reminderText {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.reminderMore {
+  display: block;
+  margin-top: 2px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.layer[data-exiting='true'] .reminder {
+  animation-name: bubble-out;
+  animation-duration: 150ms;
+  animation-timing-function: cubic-bezier(0.7, 0, 1, 0.5);
+  animation-fill-mode: forwards;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .reminder:hover {
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+    box-shadow: var(--dsw-elevation-prominent), inset 0 1px 0 var(--dsw-alias-border-l1);
+  }
+}
+
+.reminder:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reminder {
+    animation: none;
+    transition: none;
+  }
+}
