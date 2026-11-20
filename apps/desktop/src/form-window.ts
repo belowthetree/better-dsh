@@ -5,8 +5,11 @@ import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/protocol'
 import { FORM_WINDOW_ARGUMENT, FORM_WINDOW_ROLE_ARGUMENT } from './ipc.ts'
 import { clampFormLayout, type DesktopFormLayout, type DesktopWorkArea } from './form-layout.ts'
 
-/** Role of one form window: the resident orb, the surface window, or the bubble column. */
-export type DesktopFormRole = 'orb' | 'surface' | 'bubbles'
+/**
+ * Role of one form window: the resident orb, the surface window that hosts the
+ * panel and the modal, the bubble column, or the standalone first-run window.
+ */
+export type DesktopFormRole = 'orb' | 'surface' | 'bubbles' | 'onboarding'
 
 /** Orb width and height in logical pixels; the square carrier shows the mascot artwork unbounded. */
 export const ORB_SIZE = 160
@@ -51,6 +54,12 @@ export const BUBBLES_GAP = 12
 
 /** Gap between a presentation and the work area edge, in logical pixels. */
 export const SCREEN_MARGIN = 24
+
+/** Default first-run window size in logical pixels. */
+export const ONBOARDING_WINDOW_SIZE = { width: 1200, height: 860 } as const
+
+/** Smallest first-run window size: the flow's two purpose cards still sit side by side here. */
+export const ONBOARDING_WINDOW_MIN_SIZE = { width: 960, height: 600 } as const
 
 /** Grab distance in logical pixels within which a released orb snaps flush to the nearest work-area edge. */
 export const ORB_SNAP_GAP = 24
@@ -158,6 +167,56 @@ export function bubblesBounds(layout: DesktopFormLayout, workArea: DesktopWorkAr
     y: y - BUBBLES_WINDOW_MARGIN,
     width: width + 2 * BUBBLES_WINDOW_MARGIN,
     height: height + 2 * BUBBLES_WINDOW_MARGIN,
+  }
+}
+
+/**
+ * Center the standalone first-run window in its work area and keep it inside it.
+ * @param workArea - target display work area.
+ * @returns the window bounds.
+ */
+export function onboardingWindowBounds(workArea: DesktopWorkArea): FormPresentationBounds {
+  const width = Math.min(ONBOARDING_WINDOW_SIZE.width, workArea.width)
+  const height = Math.min(ONBOARDING_WINDOW_SIZE.height, workArea.height)
+  return {
+    x: workArea.x + Math.floor((workArea.width - width) / 2),
+    y: workArea.y + Math.floor((workArea.height - height) / 2),
+    width,
+    height,
+  }
+}
+
+/**
+ * Build the Electron options for the standalone first-run window. Unlike the
+ * form surfaces it is an ordinary framed window: the introduction owns a whole
+ * page, so it needs no transparency, click-through, or always-on-top material.
+ * @param input - preload bundle path, target work area, and the localized window title.
+ * @returns Electron options for the first-run window.
+ */
+export function onboardingWindowOptions(input: {
+  preload: string
+  workArea: DesktopWorkArea
+  title: string
+}): BrowserWindowConstructorOptions {
+  const bounds = onboardingWindowBounds(input.workArea)
+  return {
+    ...bounds,
+    useContentSize: true,
+    show: false,
+    title: input.title,
+    autoHideMenuBar: true,
+    minWidth: Math.min(ONBOARDING_WINDOW_MIN_SIZE.width, bounds.width),
+    minHeight: Math.min(ONBOARDING_WINDOW_MIN_SIZE.height, bounds.height),
+    webPreferences: {
+      preload: input.preload,
+      // The window is a form renderer without a form surface: it paints only the introduction.
+      additionalArguments: [FORM_WINDOW_ARGUMENT, `${FORM_WINDOW_ROLE_ARGUMENT}onboarding`],
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      devTools: true,
+    },
   }
 }
 

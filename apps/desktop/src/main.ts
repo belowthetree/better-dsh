@@ -76,12 +76,13 @@ import { DesktopBackgroundNotice } from './background-notice.ts'
 import { DesktopProductWindow } from './product-window.ts'
 import { DesktopSurfaceController, parseSurfaceCommand, type SurfaceWindowEffects } from './surface-controller.ts'
 import { deepLinkProfileName, desktopLaunchSelection, DEFAULT_DESKTOP_PROFILE, type DesktopLaunchSelection } from './profile-selection.ts'
+import { materializeBundledProfile, readBundledProfileDefaults } from './bundled-profile.ts'
 import { readDesktopFormProfile } from './desktop-profile.ts'
 import {
   clampFormLayout, defaultFormLayout, DesktopFormLayoutStore, formLayoutPath,
   type DesktopFormLayout, type DesktopWorkArea,
 } from './form-layout.ts'
-import { BUBBLES_WINDOW_MARGIN, containsPoint, formWindowOptions, type DesktopFormRole } from './form-window.ts'
+import { BUBBLES_WINDOW_MARGIN, containsPoint, formWindowOptions, onboardingWindowOptions, type DesktopFormRole } from './form-window.ts'
 import type { DesktopBootPayload } from './ipc.ts'
 import type { DshProfileForm } from '@deepseek-ai/dsh-package-manifest'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
@@ -109,6 +110,8 @@ const productWindows = new DesktopProductWindow()
 const orbWindows = new DesktopProductWindow()
 /** Bubble column window of a form profile; it shows outputs and stays out of the surface presentation. */
 const bubblesWindows = new DesktopProductWindow()
+/** Standalone first-run window of a form profile; the form windows stay hidden while it is up. */
+const onboardingWindows = new DesktopProductWindow()
 /** Launch-selected profile, resolved by main() before recovery can need it. */
 let launch: DesktopLaunchSelection | undefined
 /** Deep link the operating system delivered before main() chose a profile. */
@@ -454,9 +457,16 @@ function createWindow(preload: string, show = false, primary = false, form?: Des
 
 async function main(): Promise<void> {
   const launchArguments = pendingDeepLink === undefined ? process.argv.slice(1) : [...process.argv.slice(1), pendingDeepLink]
-  const launchSelection = desktopLaunchSelection(launchArguments)
+  const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
+  const bundledProfile = readBundledProfileDefaults(manifest, app.isPackaged)
+  const launchSelection = desktopLaunchSelection(launchArguments, undefined, bundledProfile.defaultProfile)
   launch = launchSelection
   const paths = resolveDesktopPaths(undefined, launchSelection.name)
+  if (launchSelection.name === bundledProfile.defaultProfile && bundledProfile.template !== undefined) {
+    // A form build ships its profile; materializing it before the form read keeps the
+    // first launch in the declared presentation instead of the classic fallback.
+    materializeBundledProfile(join(process.resourcesPath, bundledProfile.template), paths.profile)
+  }
   const requestedForm = readLaunchFormProfile(paths.profile, launchSelection.name).form
   const desktopSettings = await readDesktopSettings(app.getPath('userData'))
   void pruneCrashReports(app.getPath('logs'))
@@ -476,6 +486,8 @@ async function main(): Promise<void> {
     : clampFormLayout(await formLayoutStore.read() ?? defaultFormLayout(screen.getPrimaryDisplay().workArea),
       screen.getPrimaryDisplay().workArea)
   let surfaceController: DesktopSurfaceController | undefined
+  /** Whether the standalone introduction owns the display; every form surface stays hidden until it finishes. */
+  let onboardingActive = false
   let formLayoutWrite: ReturnType<typeof setTimeout> | undefined
   /** Persist the orb position and pinning after the user stops moving the form. */
   const saveFormLayout = (next: DesktopFormLayout): void => {
@@ -504,6 +516,7 @@ async function main(): Promise<void> {
       case 'orb': return orbWindows.current()
       case 'surface': return productWindows.current()
       case 'bubbles': return bubblesWindows.current()
+      case 'onboarding': return onboardingWindows.current()
     }
   }
   /** Snapshot one product renderer boots or reads with, falling back to the classic descriptor. */
@@ -518,15 +531,18 @@ async function main(): Promise<void> {
     setIgnoreMouseEvents: (role, ignore) => {
       formWindow(role)?.setIgnoreMouseEvents(ignore, { forward: true })
     },
-    revealSurface: () => { productWindows.current()?.showInactive() },
+    // The introduction owns the display until it finishes: orb commands, the workbench
+    // shortcut, and the bubble column cannot raise a form surface behind it.
+    revealSurface: () => { if (!onboardingActive) productWindows.current()?.showInactive() },
     focusSurface: () => {
+      if (onboardingActive) return
       const window = productWindows.current()
       // The modal must cover a bubble column that is already up, even when the
       // surface window was visible and focused for the panel.
       if (window !== undefined) { window.show(); window.focus(); window.moveTop() }
     },
     hideSurface: () => { productWindows.current()?.hide() },
-    revealBubbles: () => { bubblesWindows.current()?.showInactive() },
+    revealBubbles: () => { if (!onboardingActive) bubblesWindows.current()?.showInactive() },
     hideBubbles: () => { bubblesWindows.current()?.hide() },
     publishOrb: (snapshot) => { orbWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
     publishSurface: (snapshot) => { productWindows.send(DESKTOP_IPC.surfaceChanged, snapshot) },
@@ -672,6 +688,8 @@ async function main(): Promise<void> {
   }
   /** Resolve the product window that owns one main-process event. */
   const productWindowOwner = (event: Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>): ProductWindowOwner | undefined => {
+    const onboarding = onboardingWindows.current()
+    if (onboarding !== undefined && onboardingWindows.owns(event)) return { window: onboarding, formRole: 'onboarding' }
     const orb = orbWindows.current()
     if (orb !== undefined && orbWindows.owns(event)) return { window: orb, formRole: 'orb' }
     const surface = productWindows.current()
@@ -690,8 +708,10 @@ async function main(): Promise<void> {
   }
   const assertProductSender = (event: IpcMainInvokeEvent): BrowserWindow => assertProductOwner(event).window
   /** Every live product window, orb first so owner-independent broadcasts reach all of them. */
-  const productWindowList = (): BrowserWindow[] => [orbWindows.current(), productWindows.current(), bubblesWindows.current()]
-    .filter((window): window is BrowserWindow => window !== undefined)
+  const productWindowList = (): BrowserWindow[] => [
+    orbWindows.current(), productWindows.current(), bubblesWindows.current(),
+    onboardingWindows.current(),
+  ].filter((window): window is BrowserWindow => window !== undefined)
   const navigations = new Map<BrowserWindow, { url: string; promise: Promise<void> }>()
   /** Navigate one product window, joining a navigation already in flight for the same document. */
   const navigateWindow = (window: BrowserWindow, url: string): Promise<void> => {
@@ -882,7 +902,6 @@ async function main(): Promise<void> {
     return startup
   }
 
-  const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
   const packagedChannel = desktopUpdateChannel(manifest)
   const channelSettings = new DesktopUpdateSettings(app.getPath('userData'), packagedChannel)
   const initialChannel = await channelSettings.load()
@@ -1159,8 +1178,20 @@ async function main(): Promise<void> {
   })
   ipcMain.on(DESKTOP_IPC.onboardingActive, (event, active: unknown) => {
     const owner = productWindowOwner(event)
-    if (owner === undefined || (owner.formRole !== undefined && owner.formRole !== 'surface') || event.senderFrame === null
+    if (owner === undefined || event.senderFrame === null
       || !event.senderFrame.url.startsWith(`${SCHEME}://app/`) || typeof active !== 'boolean') return
+    // A form profile stages the workspace from the introduction: every one of its
+    // windows reports the flow, and the carrier owns the standalone first-run window.
+    // The classic workspace hosts the flow itself, so it resizes instead.
+    if (requestedForm.kind === 'orb') {
+      if (!active) { finishOnboarding(); return }
+      ensureOnboardingWindow()
+      // Only the introduction's own renderer reports from the painted flow, so it
+      // alone may raise the window; the other form windows appear as soon as it is up.
+      if (owner.formRole === 'onboarding') revealOnboarding()
+      return
+    }
+    if (owner.formRole !== undefined) return
     const window = owner.window
     window.setMinimumSize(active ? 960 : 520, 600)
     if (active) {
@@ -1605,6 +1636,69 @@ async function main(): Promise<void> {
     trackRenderer(window)
     return window
   }
+  /**
+   * The standalone first-run window. The form surfaces stay hidden while it is
+   * up, so the introduction is the only thing a fresh installation shows.
+   */
+  const createOnboardingWindow = (): BrowserWindow => {
+    const window = new BrowserWindow(onboardingWindowOptions({
+      preload: appPreload, workArea: surfaceWorkArea(), title: locale.messages.welcomeTitle,
+    }))
+    onboardingWindows.attach(window)
+    // The introduction owns the app until it finishes: closing it returns to the flow.
+    window.on('close', (event) => {
+      if (quitting || shellInstallerOwnsQuit || sessionEnding) return
+      event.preventDefault()
+      window.show()
+      window.focus()
+    })
+    window.on('closed', () => { navigations.delete(window); onboardingWindows.detach(window) })
+    trackRenderer(window)
+    return window
+  }
+  /**
+   * Create the standalone first-run window on the first report that the
+   * installation needs the flow. It reveals itself when its own renderer reports
+   * the painted introduction, so no empty window is ever shown.
+   * @returns the window, or undefined while the app is quitting.
+   */
+  const ensureOnboardingWindow = (): BrowserWindow | undefined => {
+    if (quitting) return undefined
+    const existing = onboardingWindows.current()
+    if (existing !== undefined && !existing.isDestroyed()) return existing
+    const window = createOnboardingWindow()
+    void navigateWindow(window, applicationUrl).catch((error: unknown) => { reportFatal(error, 'main') })
+    return window
+  }
+  /**
+   * Raise the standalone introduction and clear every form surface behind it.
+   * The orb, the workbench surface, and the bubble column stay hidden until the
+   * introduction reports that it no longer covers the workspace.
+   */
+  const revealOnboarding = (): void => {
+    const window = onboardingWindows.current()
+    if (window === undefined || window.isDestroyed() || window.isVisible()) return
+    onboardingActive = true
+    orbWindows.current()?.hide()
+    productWindows.current()?.hide()
+    bubblesWindows.current()?.hide()
+    window.show()
+    window.focus()
+  }
+  /** Return to the form once the introduction finishes; the controller decides what the form shows. */
+  const finishOnboarding = (): void => {
+    const window = onboardingWindows.current()
+    if (window === undefined || window.isDestroyed() || !window.isVisible()) return
+    onboardingActive = false
+    if (enteredWorkspace && !quitting && requestedForm.kind === 'orb') {
+      orbWindows.current()?.showInactive()
+      surfaceController?.restore()
+    }
+    // The renderer fades the page out before it reports inactivity. Release the
+    // window after that transition so a finished installation keeps the form profile's
+    // three windows and a later sign-out can build the introduction again.
+    setTimeout(() => { if (!window.isDestroyed()) window.destroy() }, 200)
+  }
   const createMainWindow = (): BrowserWindow => {
     const window = createWindow(appPreload, false, true,
       requestedForm.kind === 'orb'
@@ -1643,7 +1737,7 @@ async function main(): Promise<void> {
     trackRenderer(window)
     return window
   }
-  /** Create whichever product windows this launch needs, and the controller that drives a form profile's three windows. */
+  /** Create whichever product windows this launch needs, and the controller that drives a form profile's windows. */
   const ensureProductWindows = (): void => {
     if (requestedForm.kind !== 'orb') {
       if (productWindows.current() === undefined) createMainWindow()
@@ -1664,8 +1758,9 @@ async function main(): Promise<void> {
     if (isQuitting() || recovery.active || window === undefined || window.isDestroyed()) return
     if (requestedForm.kind === 'orb') {
       // The orb is the resident form; the surface window appears only for panel and modal,
-      // and the controller decides whether the bubble column window is up.
-      orbWindows.current()?.showInactive()
+      // and the controller decides whether the bubble column window is up. A first-run flow
+      // that reported while this navigation ran keeps the form hidden.
+      if (!onboardingActive) orbWindows.current()?.showInactive()
       surfaceController?.restore()
     } else {
       if (process.platform === 'win32') window.setBackgroundColor(chromeFallbackFill())
@@ -1750,6 +1845,7 @@ async function main(): Promise<void> {
           productWindows.current()?.destroy()
           orbWindows.current()?.destroy()
           bubblesWindows.current()?.destroy()
+          onboardingWindows.current()?.destroy()
         } else app.quit()
       })
       if (isQuitting() || recovery.active || enteredWorkspace) window.close()
@@ -1757,6 +1853,7 @@ async function main(): Promise<void> {
         productWindows.current()?.hide()
         orbWindows.current()?.hide()
         bubblesWindows.current()?.hide()
+        onboardingWindows.current()?.hide()
       }
     })().finally(() => { openingWelcome = undefined })
     return openingWelcome
@@ -1782,8 +1879,11 @@ async function main(): Promise<void> {
     if (quitting) return
     if (isMandatory()) { mandatoryUI?.focus(); return }
     const surface = productWindows.current()
-    // Reveal what the workspace is already showing: a visible surface presentation, otherwise the resident orb.
-    const window = welcomeWindow ?? (surface !== undefined && surface.isVisible() ? surface : orbWindows.current() ?? surface)
+    const onboarding = onboardingWindows.current()
+    // Reveal what the workspace is already showing: the introduction while it owns
+    // the app, otherwise a visible surface presentation, otherwise the resident orb.
+    const window = welcomeWindow ?? (onboarding !== undefined && onboarding.isVisible() ? onboarding
+      : surface !== undefined && surface.isVisible() ? surface : orbWindows.current() ?? surface)
     if (window === undefined || window.isDestroyed()) {
       try { ensureProductWindows() } catch (error) { reportFatal(error, 'main'); return }
       void (backend.state.phase === 'ready' ? openInitialWindow() : navigateMain(applicationUrl)).catch((error: unknown) => { reportFatal(error, 'main') })
@@ -1816,6 +1916,7 @@ async function main(): Promise<void> {
     productWindows.current()?.hide()
     orbWindows.current()?.hide()
     bubblesWindows.current()?.hide()
+    onboardingWindows.current()?.hide()
     flushFormLayout()
     updateSchedule.dispose()
     updateDialog.dispose()

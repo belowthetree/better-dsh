@@ -181,6 +181,7 @@ export class DesktopSurfaceController {
     orb: { reported: false, inside: false },
     surface: { reported: false, inside: false },
     bubbles: { reported: false, inside: false },
+    onboarding: { reported: false, inside: false },
   }
 
   /**

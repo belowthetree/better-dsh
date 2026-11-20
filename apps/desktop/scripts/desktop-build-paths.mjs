@@ -116,13 +116,25 @@ export function developmentRuntimeDirectory(
 }
 
 /**
+ * Resolve the product name electron-builder writes into the assembled application.
+ * A form build declares its own, which gives it a separate installation identity.
+ * @param {NodeJS.ProcessEnv} env - Packaging environment.
+ * @returns {string} product name used for the application bundle and executable.
+ */
+export function desktopProductName(env = process.env) {
+  return (env.DSH_DESKTOP_PRODUCT_NAME ?? '').trim() || 'DeepSeek Harness'
+}
+
+/**
  * Select the output directory and filename suffix for one packaging mode.
  * @param {{ artifacts: string, unsignedArtifacts: string, unnotarizedArtifacts: string }} paths Target artifact directories.
  * @param {{ unsigned: boolean, skipNotarization: boolean }} mode Validated packaging mode.
+ * @param {string | undefined} variant - Optional build variant that keeps its artifacts beside the default ones.
  * @returns {{ directory: string, suffix: string }} Matching artifact destination and filename marker.
  */
-export function desktopArtifactOutput(paths, mode) {
-  if (mode.unsigned) return { directory: paths.unsignedArtifacts, suffix: '-unsigned' }
-  if (mode.skipNotarization) return { directory: paths.unnotarizedArtifacts, suffix: '-unnotarized' }
-  return { directory: paths.artifacts, suffix: '' }
+export function desktopArtifactOutput(paths, mode, variant) {
+  const marker = variant === undefined || variant === '' ? '' : `-${variant}`
+  if (mode.unsigned) return { directory: `${paths.unsignedArtifacts}${marker}`, suffix: '-unsigned' }
+  if (mode.skipNotarization) return { directory: `${paths.unnotarizedArtifacts}${marker}`, suffix: '-unnotarized' }
+  return { directory: `${paths.artifacts}${marker}`, suffix: '' }
 }

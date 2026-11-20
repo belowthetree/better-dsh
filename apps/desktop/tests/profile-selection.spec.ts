@@ -68,6 +68,15 @@ describe('desktop launch selection', () => {
     expect(desktopLaunchSelection(['dsh://open?profile=better', '--no-sandbox'], home).name).toBe('better')
   })
 
+  it('boots the profile a build declares when no argument selects one', () => {
+    const home = fixtureHome()
+    expect(desktopLaunchSelection(['app', '--no-sandbox'], home, 'better')).toMatchObject({
+      name: 'better',
+      dir: join(home, 'profiles', 'better'),
+    })
+    expect(desktopLaunchSelection(['app', '--profile', 'desktop'], home, 'better').name).toBe('desktop')
+  })
+
   it('boots the desktop profile when the deep link names no profile', () => {
     const home = fixtureHome()
     expect(desktopLaunchSelection(['app', 'dsh://open'], home).name).toBe(DEFAULT_DESKTOP_PROFILE)

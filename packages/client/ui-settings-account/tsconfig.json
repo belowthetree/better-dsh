@@ -21,6 +21,9 @@
       "path": "../store"
     },
     {
+      "path": "../surface/tsconfig.client.json"
+    },
+    {
       "path": "../ui-settings/tsconfig.client.json"
     },
     {

@@ -77,12 +77,21 @@ export function developmentRuntimeDirectory(
 ): string
 
 /**
+ * Resolve the product name electron-builder writes into the assembled application.
+ * @param env Packaging environment.
+ * @returns Product name used for the application bundle and executable.
+ */
+export function desktopProductName(env?: NodeJS.ProcessEnv): string
+
+/**
  * Select the output directory and filename suffix for one packaging mode.
  * @param paths Target artifact directories.
  * @param mode Validated packaging mode.
+ * @param variant Optional build variant that keeps its artifacts beside the default ones.
  * @returns Matching artifact destination and filename marker.
  */
 export function desktopArtifactOutput(
   paths: Pick<DesktopTargetBuildPaths, 'artifacts' | 'unsignedArtifacts' | 'unnotarizedArtifacts'>,
   mode: { unsigned: boolean, skipNotarization: boolean },
+  variant?: string,
 ): { directory: string, suffix: string }

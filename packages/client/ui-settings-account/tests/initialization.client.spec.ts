@@ -30,6 +30,7 @@ it.each(['accepted', 'refused', 'disconnected', 'pending'] as const)('initialize
   let operations: AccountSectionInjected | undefined
   const ctx = {
     on: () => () => {}, provide: () => {}, emit: () => {}, parallel: async () => [],
+    inject: () => undefined,
     effect: (install: () => (() => void) | undefined) => { const dispose = install(); if (dispose) disposers.push(dispose) },
     locale: { register: () => () => {}, bind: () => (key: string) => key, getSnapshot: () => ({ active: 'en' }) },
     configForms: {

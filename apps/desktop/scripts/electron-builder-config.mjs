@@ -24,7 +24,7 @@ import { resolveDesktopAutoUpdateConfig } from '@deepseek-ai/dsh-desktop-publish
 import { resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
 import { resolveDesktopBuildVersion } from './desktop-build-version.mjs'
 import { resolveDesktopPolicyEnvironment } from './desktop-policy-environment.mjs'
-import { desktopArtifactOutput, desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { desktopArtifactOutput, desktopProductName, desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
 import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
@@ -52,6 +52,15 @@ export function createElectronBuilderConfig(
   preparedRuntimeVersion = undefined,
 ) {
   const appId = resolveDesktopAppId(env)
+  // A form build is its own installation: a distinct product name gives it its own
+  // install directory, userData, shortcuts, uninstall entry, and single-instance lock,
+  // so installing it beside the classic Desktop build replaces nothing.
+  const productName = desktopProductName(env)
+  const artifactPrefix = (env.DSH_DESKTOP_ARTIFACT_PREFIX ?? '').trim() || 'deepseek-harness'
+  const variant = (env.DSH_DESKTOP_VARIANT ?? '').trim() || undefined
+  const declaredProfile = (env.DSH_DESKTOP_DEFAULT_PROFILE ?? '').trim() || undefined
+  const profileTemplate = (env.DSH_DESKTOP_PROFILE_TEMPLATE_DIR ?? '').trim() || undefined
+  const registerProtocol = env.DSH_DESKTOP_DISABLE_PROTOCOL !== '1'
   const targetPlatform = env.DSH_DESKTOP_TARGET_PLATFORM
   const resolvedPlatform = targetPlatform ?? hostPlatform
   const resolvedArch = env.DSH_DESKTOP_TARGET_ARCH ?? hostArch
@@ -71,7 +80,7 @@ export function createElectronBuilderConfig(
   const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch), env)
-  const output = desktopArtifactOutput(buildPaths, { unsigned, skipNotarization })
+  const output = desktopArtifactOutput(buildPaths, { unsigned, skipNotarization }, variant)
   let primaryRuntimeDestination
   let dshDestination
   let windowsCode = []
@@ -108,19 +117,26 @@ export function createElectronBuilderConfig(
   const packaged = resolveDesktopBuildCommit(env)
   return {
     appId,
-    protocols: [{ name: 'DeepSeek Harness', schemes: ['dsh'] }],
+    // A form build leaves the dsh:// scheme to the classic installation it installs beside.
+    ...(registerProtocol ? { protocols: [{ name: productName, schemes: ['dsh'] }] } : {}),
     extraMetadata: {
+      // Electron derives `app.getName()`, and therefore userData, logs, and the single-instance
+      // lock, from the packaged manifest. A form build declares its own name there; the classic
+      // build keeps its existing manifest, so no installed client changes its data directory.
+      ...(env.DSH_DESKTOP_PRODUCT_NAME === undefined ? {} : { productName }),
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
+      ...(declaredProfile === undefined ? {} : { dshDesktopDefaultProfile: declaredProfile }),
+      ...(profileTemplate === undefined ? {} : { dshDesktopProfileTemplate: 'form-profile' }),
       ...buildVersion === productVersion ? {} : { version: buildVersion },
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
-    productName: 'DeepSeek Harness',
+    productName,
     // The default copyright uses author.name; this line names the product instead.
     copyright: `Copyright © ${new Date().getFullYear()} \${productName}`,
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
-    artifactName: `deepseek-harness-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
+    artifactName: `${artifactPrefix}-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
     directories: { output: output.directory },
     asar: true,
     electronDist: buildPaths.electron,
@@ -160,6 +176,8 @@ export function createElectronBuilderConfig(
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
+      // The launch profile of a form build ships as a template the app copies on first launch.
+      ...(profileTemplate === undefined ? [] : [{ from: profileTemplate, to: 'form-profile' }]),
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
       ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
     ],

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { AccountSnapshot } from '../src/client/AccountSection.tsx'
@@ -8,20 +9,6 @@ import type { DesktopOnboardingState } from '../src/client/onboarding-contract.t
 import { zh, type AccountKey } from '../src/client/locales.ts'
 
 let appRoot: HTMLDivElement
-
-it.each([false, true])('resizes only after eligibility resolves (completed=%s)', (done) => {
-  const setActive = vi.fn()
-  vi.stubGlobal('dshOnboarding', { setActive })
-  const view = mount(done, true)
-  expect(setActive).not.toHaveBeenCalled()
-  view.resolve()
-  if (done) expect(setActive).not.toHaveBeenCalled()
-  else {
-    expect(setActive).toHaveBeenCalledExactlyOnceWith(true)
-    view.finish()
-    expect(setActive).toHaveBeenLastCalledWith(false)
-  }
-})
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -39,7 +26,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function mount(initiallyDone = false, initiallyLoading = false) {
+function mount(initiallyDone = false, initiallyLoading = false, surfaceRole: SurfaceSnapshot['role'] = 'classic') {
   let state: DesktopOnboardingState = {
     creditFunded: false,
     visible: !initiallyDone && !initiallyLoading, status: initiallyLoading ? 'loading' : 'ready', error: null,
@@ -55,6 +42,7 @@ function mount(initiallyDone = false, initiallyLoading = false) {
   const setVisible = vi.fn()
   const element = () => <DesktopOnboardingEntry {...globals}
     setVisible={setVisible} useOnboarding={select => select(state)} useAccount={select => select(account)}
+    useSurfaceRole={select => select(surfaceRole)}
     update={async () => true} complete={async () => true} retry={async () => true}
     t={key => key in zh ? zh[key as AccountKey] : key} />
   const view = render(element())
@@ -187,4 +175,25 @@ it('does not release notices when onboarding is closed before completion', () =>
   const view = mount()
   view.unmount()
   expect(view.setVisible).not.toHaveBeenCalledWith(false)
+})
+
+it.each(['orb', 'bubbles', 'surface'] as const)('leaves the resident %s window to its own presentation', (role) => {
+  const view = mount(false, false, role)
+  expect(screen.queryByRole('heading')).toBeNull()
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(document.querySelector('[data-desktop-onboarding]')).toBeNull()
+  expect(appRoot.style.opacity).toBe('')
+  expect(appRoot.inert).toBe(false)
+  expect(view.setVisible).toHaveBeenLastCalledWith(false)
+  view.resolve()
+  expect(screen.queryByRole('heading')).toBeNull()
+  expect(view.setVisible).toHaveBeenLastCalledWith(false)
+})
+
+it('hosts the flow in the standalone first-run window', () => {
+  const view = mount(false, false, 'onboarding')
+  expect(screen.getByRole('button', { name: zh.onboardingStart })).toBeTruthy()
+  expect(appRoot.style.opacity).toBe('0')
+  expect(view.setVisible).toHaveBeenLastCalledWith(true)
 })

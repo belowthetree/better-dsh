@@ -639,7 +639,7 @@ it('applies API-key defaults through the desktop slot and shared configuration o
     writable: true, hasDocument: true, namespaces: Object.keys(schemas).map(ns => namespace(ns as keyof typeof schemas)),
   }))
   const hasApiKey = vi.fn(async () => true)
-  vi.stubGlobal('dshOnboarding', { hasApiKey })
+  vi.stubGlobal('dshOnboarding', { hasApiKey, setActive: () => {} })
   mock.remote.settings.mutate.mockImplementation(async (ns, ops) => {
     const key = ns as keyof typeof schemas
     const value: Record<string, unknown> = { ...values[key] }

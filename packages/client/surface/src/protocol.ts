@@ -9,11 +9,11 @@ export type SurfaceForm = 'classic' | 'orb'
 
 /**
  * Window role that owns one renderer. A form profile runs the resident orb, the
- * surface window that hosts the panel and the modal, and the bubble column
- * window as separate renderers; the classic workspace has no orb and reports
- * itself.
+ * surface window that hosts the panel and the modal, the bubble column window,
+ * and the standalone first-run window as separate renderers; the classic
+ * workspace has no orb and reports itself.
  */
-export type SurfaceWindowRole = 'classic' | 'orb' | 'surface' | 'bubbles'
+export type SurfaceWindowRole = 'classic' | 'orb' | 'surface' | 'bubbles' | 'onboarding'
 
 /** Optional size of one modal presentation. */
 export interface ModalSizeHint {

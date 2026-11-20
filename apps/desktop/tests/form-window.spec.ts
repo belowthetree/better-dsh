@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   MODAL_SIZE,
   MODAL_WINDOW_MARGIN,
+  ONBOARDING_WINDOW_MIN_SIZE,
+  ONBOARDING_WINDOW_SIZE,
   ORB_SIZE,
   PANEL_MIN_SIZE,
   PANEL_SIZE,
@@ -13,6 +15,8 @@ import {
   bubblesBounds,
   containsPoint,
   modalBounds,
+  onboardingWindowBounds,
+  onboardingWindowOptions,
   orbBounds,
   panelBounds,
   presentationResizable,
@@ -244,5 +248,60 @@ describe('containsPoint', () => {
     expect(containsPoint(RECT, { x: 99, y: 210 })).toBe(false)
     expect(containsPoint(RECT, { x: 110, y: 199 })).toBe(false)
     expect(containsPoint({ x: 0, y: 0, width: 0, height: 0 }, { x: 0, y: 0 })).toBe(false)
+  })
+})
+
+describe('onboarding window', () => {
+  it('centers the default size in the display work area', () => {
+    expect(ONBOARDING_WINDOW_SIZE).toEqual({ width: 1200, height: 860 })
+    expect(onboardingWindowBounds(WORK_AREA)).toEqual({ x: 360, y: 110, width: 1200, height: 860 })
+  })
+
+  it('follows a work area with a negative screen origin', () => {
+    expect(onboardingWindowBounds({ x: -1920, y: 0, width: 1920, height: 1080 }))
+      .toEqual({ x: -1560, y: 110, width: 1200, height: 860 })
+  })
+
+  it('never exceeds a work area smaller than the default size', () => {
+    expect(onboardingWindowBounds({ x: 0, y: 0, width: 1024, height: 700 }))
+      .toEqual({ x: 0, y: 0, width: 1024, height: 700 })
+    expect(onboardingWindowBounds({ x: 0, y: 0, width: 800, height: 500 }))
+      .toEqual({ x: 0, y: 0, width: 800, height: 500 })
+  })
+
+  it('builds an ordinary framed window that only marks its form role', () => {
+    const options = onboardingWindowOptions({ preload: '/app/preload-app.js', workArea: WORK_AREA, title: 'DeepSeek Harness' })
+    expect(options).toMatchObject({
+      show: false,
+      useContentSize: true,
+      title: 'DeepSeek Harness',
+      autoHideMenuBar: true,
+      x: 360,
+      y: 110,
+      width: 1200,
+      height: 860,
+      minWidth: ONBOARDING_WINDOW_MIN_SIZE.width,
+      minHeight: ONBOARDING_WINDOW_MIN_SIZE.height,
+    })
+    // Unlike the orb surfaces, the first-run window keeps a native frame and no
+    // transparency, click-through, or always-on-top material.
+    expect(options.frame).toBeUndefined()
+    expect(options.transparent).toBeUndefined()
+    expect(options.alwaysOnTop).toBeUndefined()
+    expect(options.skipTaskbar).toBeUndefined()
+    expect(options.webPreferences).toEqual({
+      preload: '/app/preload-app.js',
+      additionalArguments: ['--dsh-desktop-form-window', '--dsh-desktop-form-role=onboarding'],
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      devTools: true,
+    })
+  })
+
+  it('keeps the minimum size inside a smaller work area', () => {
+    const options = onboardingWindowOptions({ preload: '/app/preload-app.js', workArea: { x: 0, y: 0, width: 800, height: 500 }, title: 'x' })
+    expect(options).toMatchObject({ width: 800, height: 500, minWidth: 800, minHeight: 500 })
   })
 })

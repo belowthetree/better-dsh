@@ -58,10 +58,15 @@ export function deepLinkProfileName(url: string): string | undefined {
  * Any position may carry `--profile <name>`, `--profile=<name>`, or a `dsh://open?profile=<name>` deep link; none boots the default.
  * @param argv - launcher argv, including the executable path.
  * @param home - Harness home holding profiles; defaults to the current Harness home.
+ * @param defaultName - profile a launch without a selection boots; a build declares its own through the application manifest.
  * @returns the selected profile name and its resolved directory.
  * @throws when a profile is selected more than once, a name is empty, or a name is not a valid profile name.
  */
-export function desktopLaunchSelection(argv: readonly string[], home?: string): DesktopLaunchSelection {
+export function desktopLaunchSelection(
+  argv: readonly string[],
+  home?: string,
+  defaultName: string = DEFAULT_DESKTOP_PROFILE,
+): DesktopLaunchSelection {
   let selected: string | undefined
   const select = (name: string): void => {
     if (selected !== undefined) throw duplicateProfileError()
@@ -80,7 +85,7 @@ export function desktopLaunchSelection(argv: readonly string[], home?: string): 
       if (name !== undefined) select(name)
     }
   }
-  const name = selected ?? DEFAULT_DESKTOP_PROFILE
+  const name = selected ?? defaultName
   let dir: string
   try {
     dir = resolveProfileDir(name, home)

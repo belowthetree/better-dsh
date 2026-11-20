@@ -2,12 +2,14 @@
 import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type { TranscriptViewMode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { Context } from '@deepseek-ai/cordis'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type {} from '@deepseek-ai/dsh-api-remote-access/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { AccountUpdate, AccountDetails } from '@deepseek-ai/dsh-deepseek-account/types'
@@ -28,6 +30,7 @@ import { en, ja, es, fr, de, ru, pt, zh, type AccountKey } from './locales.ts'
 import { AccountQuotaNotice, type AccountQuotaNoticeInjected } from './AccountQuotaNotice.tsx'
 import { DESKTOP_ONBOARDING_NAMESPACE, type OnboardingSettings } from '../onboarding-settings.ts'
 import { DesktopOnboardingController } from './onboarding-state.ts'
+import { reportOnboardingActivity, type OnboardingActivityBridge } from './onboarding-activity.ts'
 import { DesktopOnboardingEntry, type DesktopOnboardingInjected } from './DesktopOnboardingEntry.tsx'
 import { readOnboardingApiKeyPresence } from './onboarding-credentials.ts'
 import { refreshAfterReturn } from './account-refresh.ts'
@@ -267,6 +270,12 @@ export function apply(ctx: Context): void {
       ctx.configForms.describe(),
     )
     ctx.effect(() => () => { controller.dispose() }, 'account: desktop onboarding lifetime')
+    // Every product window reports the flow, so the carrier can open its own first-run
+    // window for a form profile and keep the orb, surface, and bubble column hidden.
+    const onboardingBridge = (globalThis as typeof globalThis & {
+      dshOnboarding?: OnboardingActivityBridge
+    }).dshOnboarding
+    ctx.effect(() => reportOnboardingActivity(controller.state, onboardingBridge), 'account: onboarding activity')
     ctx.effect(() => {
       const refreshCredentials = () => { controller.invalidateCredentials() }
       const disposers = [
@@ -276,10 +285,15 @@ export function apply(ctx: Context): void {
       ]
       return () => { for (const dispose of disposers) dispose() }
     }, 'account: desktop credential readiness')
+    // A form profile runs the resident orb, the workbench surface, and the bubble column
+    // as separate renderers of the same page; its first-run window hosts the flow, while the
+    // classic workspace renders it in place.
+    const surfaceRole = createSnapshotStore<SurfaceSnapshot['role']>('classic')
+    ctx.inject(['surface'], (scope) => { surfaceRole.set(scope.surface.snapshot().role) })
     ctx.slots.inject('shell.overlay', () => ctx.slots.register({
       name: 'shell.overlay', id: 'desktop-onboarding', locale: 'settings.account',
       inject: (): DesktopOnboardingInjected => ({
-        hooks: { account: operations.hooks.account, onboarding: controller.state },
+        hooks: { account: operations.hooks.account, onboarding: controller.state, surfaceRole },
         setVisible: (visible: boolean) => {
           if (snapshot.desktopOnboardingVisible !== visible) publish({ ...snapshot, desktopOnboardingVisible: visible })
         },

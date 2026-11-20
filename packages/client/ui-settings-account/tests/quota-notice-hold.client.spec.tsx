@@ -166,7 +166,7 @@ async function bench() {
   runtime.ctx.slots.inject('shell.overlay', () => runtime.ctx.slots.register({
     name: 'shell.overlay', id: 'desktop-onboarding', locale: 'settings.account',
     inject: (): DesktopOnboardingInjected => ({
-      hooks: { onboarding, account },
+      hooks: { onboarding, account, surfaceRole: { getSnapshot: () => 'classic' as const, subscribe: () => () => {} } },
       setVisible: () => {},
       openPlatformPage: pages.open,
       update: async () => true, complete: async () => true, retry: async () => true,
