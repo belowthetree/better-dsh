@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-better-bundle",
   "description": "Experimental orb form for Desktop: one product window with orb, panel, and modal presentations",
-  "version": "0.2.2-rc.2",
+  "version": "0.2.2-rc.4",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"

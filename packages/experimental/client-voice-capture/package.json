@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-voice-capture",
   "description": "Shared microphone capture service: device preference, WAV encoding, and speech Remote transcription",
-  "version": "0.2.2-rc.2",
+  "version": "0.2.2-rc.4",
   "publishConfig": {
     "access": "public"
   },

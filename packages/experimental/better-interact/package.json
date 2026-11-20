@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-better-interact",
   "description": "Agent interactivity for the orb form: an output bubble column and a workbench dialog with one conversation page per Workspace",
-  "version": "0.2.2-rc.2",
+  "version": "0.2.2-rc.4",
   "publishConfig": {
     "access": "public"
   },

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-text-to-speech",
   "description": "Experimental speech synthesis with independently selectable providers",
-  "version": "0.2.2-rc.2",
+  "version": "0.2.2-rc.4",
   "publishConfig": {
     "access": "public"
   },
