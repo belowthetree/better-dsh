@@ -15,6 +15,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+// Type-only: the `settingsUi` presentation capability the orb menu asks for.
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
@@ -295,6 +297,8 @@ export function apply(ctx: ClientContext): void {
 
   /** Present the centered chat modal. */
   const openChat = (): void => { issue(() => ctx.surface.presentModal(ORB_CHAT_MODAL_ID)) }
+  /** Open the settings panel in the form's modal presentation. */
+  const openSettings = (): void => { ctx.get('settingsUi')?.open() }
   /** Dismiss the active modal presentation and return to the orb. */
   const dismissModal = (): void => { issue(() => ctx.surface.dismissModal()) }
 
@@ -314,6 +318,7 @@ export function apply(ctx: ClientContext): void {
   const actions: OrbSurfaceActions = {
     openChat,
     openWorkbench,
+    openSettings,
     dragBy: (deltaX, deltaY) => { issue(() => ctx.surface.dragBy(deltaX, deltaY)) },
     pointerInside: (inside) => { ctx.surface.setPointerInside(inside) },
     toggleVoice,

@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 // Type-only: pulls the ctx.modules merge.
 import type {} from '@deepseek-ai/dsh-client-modules/client'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { closeTopModal } from '@deepseek-ai/dsh-client-ui-primitives'
 // Type-only: the settings slot declarations plus the ctx.configForms Context
@@ -33,6 +34,9 @@ import type {
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { createSettingsShellStore } from './shell-store.ts'
 import { SettingsRoot } from './SettingsRoot.tsx'
+import { SettingsModalSurface } from './SettingsModalSurface.tsx'
+import type { SettingsModalInjected } from './SettingsModalSurface.tsx'
+import { SETTINGS_MODAL_ID, SETTINGS_MODAL_SIZE } from './settings-modal.ts'
 import { DesktopUpdateBadge } from './DesktopUpdateIndicator.tsx'
 import type { DesktopUpdateBridge } from '../types.ts'
 import { DesktopChannelSource } from './desktop-channel-source.ts'
@@ -69,6 +73,45 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Dictionary namespace owned by this plugin (shell chrome + General copy). */
 const NS = 'settings'
+
+/**
+ * Project the `settings.section` ledger into ordered navigation rows.
+ * Labels are registrant-localized thunks, so the cache follows the ledger version and the locale revision.
+ * @param ctx - client context whose slot ledger and locale drive the projection.
+ * @returns an observable source every settings surface reads its navigation from.
+ */
+function createSectionRows(ctx: ClientContext): HostObservable<readonly SettingsSectionRow[]> {
+  let version = -1
+  let revision = -1
+  let rows: readonly SettingsSectionRow[] = []
+  return {
+    getSnapshot: () => {
+      const next = ctx.slots.getVersion('settings.section')
+      const localeRevision = ctx.locale.getSnapshot().revision
+      if (next !== version || localeRevision !== revision) {
+        version = next
+        revision = localeRevision
+        rows = ctx.slots.entries('settings.section')
+          .map(e => ({
+            /* v8 ignore next -- list-slot registration requires id (SlotCore rejects an entry without one) */
+            id: e.options.id ?? '',
+            order: e.options.order ?? 0,
+            label: resolveSlotLabel(e.options.label) ?? '',
+          }))
+          .sort((a, b) => a.order - b.order)
+      }
+      return rows
+    },
+    subscribe: (listener) => {
+      const offLedger = ctx.slots.subscribe('settings.section', listener)
+      const offLocale = ctx.locale.subscribe(listener)
+      return () => {
+        offLedger()
+        offLocale()
+      }
+    },
+  }
+}
 
 /**
  * Required services (cordis fiber inject). The target slots are declared by
@@ -147,9 +190,7 @@ export function apply(ctx: ClientContext): void {
   // source (uSES contract: getSnapshot returns the cached rows until the
   // ledger version moves). Labels may be locale-following thunks, so the cache
   // key includes the locale revision and subscribers ride both sources.
-  let rowsVersion = -1
-  let rowsRevision = -1
-  let rows: readonly SettingsSectionRow[] = []
+  const sections = createSectionRows(ctx)
   let onboardingVersion = -1
   let onboardingSteps: readonly SettingsOnboardingStep[] = []
   const shellInjected = (): SettingsRootInjected => ({
@@ -159,33 +200,7 @@ export function apply(ctx: ClientContext): void {
       shortcuts: ctx.shortcuts.catalog,
       desktopUpdate: desktopUpdate.store,
       connectionState: connection.state,
-      sections: {
-        getSnapshot: () => {
-          const version = ctx.slots.getVersion('settings.section')
-          const revision = ctx.locale.getSnapshot().revision
-          if (version !== rowsVersion || revision !== rowsRevision) {
-            rowsVersion = version
-            rowsRevision = revision
-            rows = ctx.slots.entries('settings.section')
-              .map(e => ({
-                /* v8 ignore next -- list-slot registration requires id (SlotCore rejects an entry without one) */
-                id: e.options.id ?? '',
-                order: e.options.order ?? 0,
-                label: resolveSlotLabel(e.options.label) ?? '',
-              }))
-              .sort((a, b) => a.order - b.order)
-          }
-          return rows
-        },
-        subscribe: (listener) => {
-          const offLedger = ctx.slots.subscribe('settings.section', listener)
-          const offLocale = ctx.locale.subscribe(listener)
-          return () => {
-            offLedger()
-            offLocale()
-          }
-        },
-      },
+      sections,
       onboardingSteps: {
         getSnapshot: () => {
           const version = ctx.slots.getVersion('settings.onboarding')
@@ -206,48 +221,82 @@ export function apply(ctx: ClientContext): void {
     },
   })
   // The settings shell reads this host's configuration, so it follows access to its description.
-  ctx.remoteAccess.whenAccess('settings/describe', () =>
-    ctx.slots.inject('sidebar.settings', () => {
-      const shellHandle = createSettingsShellStore()
-      const shellInstance = shellHandle.create()
-      const shellStore: typeof shellHandle = { ...shellHandle, create: () => shellInstance }
-      const disposeCommand = ctx.shortcuts.register({
-        id: 'settings.open' as ShortcutCommandId, label: () => t('shortcut.open'), aliases: ['settings', 'preferences'],
-        defaults: {
-          'desktop:macos': { code: 'Comma', modifiers: ['primary'] },
-          'desktop:windows': { code: 'Comma', modifiers: ['primary'] },
-          'desktop:linux': { code: 'Comma', modifiers: ['primary'] },
-          'web:macos': { code: 'Comma', modifiers: ['primary', 'alt'] },
-          'web:windows': { code: 'Comma', modifiers: ['primary', 'alt'] },
-        },
-        regions: ['page', 'editable', 'terminal'], modals: ['settings'],
-        resolve: ({ modal }) => {
-          if (modal !== null && modal !== 'settings') return { status: 'blocked', reason: 'modal' }
-          return { status: 'handled', run: () => {
-            if (modal === 'settings') closeTopModal(document)
-            else shellInstance.actions.open()
-          } }
-        },
-      })
-
-      const disposeSlot = ctx.slots.register({
-        name: 'sidebar.settings',
-        locale: NS,
-        store: shellStore,
-        children: {
-          'settings.launcher': { kind: 'single', scope: 'root' },
-          'settings.notice': { kind: 'single', scope: 'root' },
-          'settings.trigger': { kind: 'single', scope: 'root' },
-          'settings.header': { kind: 'single', scope: 'root' },
-          'settings.action': { kind: 'list', scope: 'root' },
-          'settings.close': { kind: 'single', scope: 'root' },
-          'settings.section.icon': { kind: 'list', scope: 'root', inline: true },
-          'settings.onboarding': { kind: 'list', scope: 'root' },
-        },
-        inject: shellInjected,
-      }, SettingsRoot)
-      return () => { disposeCommand(); disposeSlot() }
-    }))
+  ctx.remoteAccess.whenAccess('settings/describe', () => {
+    const shellHandle = createSettingsShellStore()
+    const shellInstance = shellHandle.create()
+    const shellStore: typeof shellHandle = { ...shellHandle, create: () => shellInstance }
+    /**
+     * Present the settings panel in the shell this renderer hosts: the classic
+     * sidebar dialog, or the form profile's modal presentation.
+     */
+    const openSettings = (): void => {
+      const surface = ctx.get('surface')
+      if (surface !== undefined && surface.snapshot().presentation !== 'classic') {
+        surface.presentModal(SETTINGS_MODAL_ID, SETTINGS_MODAL_SIZE).catch((error: unknown) => {
+          console.error('settings: presenting the settings panel failed', error)
+        })
+        return
+      }
+      shellInstance.actions.open()
+    }
+    /** Close whichever settings surface this renderer shows. */
+    const closeSettings = (): void => {
+      const surface = ctx.get('surface')
+      if (surface !== undefined && surface.snapshot().modal === SETTINGS_MODAL_ID) {
+        surface.dismissModal().catch((error: unknown) => {
+          console.error('settings: dismissing the settings panel failed', error)
+        })
+        return
+      }
+      closeTopModal(document)
+    }
+    const disposeCommand = ctx.shortcuts.register({
+      id: 'settings.open' as ShortcutCommandId, label: () => t('shortcut.open'), aliases: ['settings', 'preferences'],
+      defaults: {
+        'desktop:macos': { code: 'Comma', modifiers: ['primary'] },
+        'desktop:windows': { code: 'Comma', modifiers: ['primary'] },
+        'desktop:linux': { code: 'Comma', modifiers: ['primary'] },
+        'web:macos': { code: 'Comma', modifiers: ['primary', 'alt'] },
+        'web:windows': { code: 'Comma', modifiers: ['primary', 'alt'] },
+      },
+      regions: ['page', 'editable', 'terminal'], modals: [SETTINGS_MODAL_ID],
+      resolve: ({ modal }) => {
+        if (modal !== null && modal !== SETTINGS_MODAL_ID) return { status: 'blocked', reason: 'modal' }
+        return { status: 'handled', run: () => {
+          if (modal === SETTINGS_MODAL_ID) closeSettings()
+          else openSettings()
+        } }
+      },
+    })
+    const disposeService = ctx.reflect.provide('settingsUi', { open: openSettings })
+    const disposeModal = ctx.slots.inject('shell.modal', () => ctx.slots.register({
+      name: 'shell.modal', id: SETTINGS_MODAL_ID, locale: NS,
+      inject: (): SettingsModalInjected => ({ hooks: { sections }, close: closeSettings }),
+    }, SettingsModalSurface))
+    const disposeSlot = ctx.slots.inject('sidebar.settings', () => ctx.slots.register({
+      name: 'sidebar.settings',
+      locale: NS,
+      store: shellStore,
+      children: {
+        'settings.launcher': { kind: 'single', scope: 'root' },
+        'settings.notice': { kind: 'single', scope: 'root' },
+        'settings.trigger': { kind: 'single', scope: 'root' },
+        'settings.header': { kind: 'single', scope: 'root' },
+        'settings.action': { kind: 'list', scope: 'root' },
+        'settings.close': { kind: 'single', scope: 'root' },
+        'settings.section.icon': { kind: 'list', scope: 'root', inline: true },
+        'settings.onboarding': { kind: 'list', scope: 'root' },
+      },
+      inject: shellInjected,
+    }, SettingsRoot))
+    return () => {
+      disposeCommand()
+      disposeModal()
+      disposeSlot()
+      // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.
+      void disposeService()
+    }
+  })
 
   ctx.slots.inject('settings.trigger', () =>
     ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent))

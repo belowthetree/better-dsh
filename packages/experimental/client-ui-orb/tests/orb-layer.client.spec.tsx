@@ -99,7 +99,8 @@ function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: Sessi
   const sessions = createSnapshotStore<SessionListState>(initial.sessions ?? EMPTY_LIST)
   const theme = createSnapshotStore<ThemePreference>('system')
   const actions = {
-    openChat: vi.fn(), dragBy: vi.fn(), pointerInside: vi.fn(), toggleVoice: vi.fn(), setTheme: vi.fn(), snap: vi.fn(),
+    openChat: vi.fn(), openWorkbench: vi.fn(), openSettings: vi.fn(),
+    dragBy: vi.fn(), pointerInside: vi.fn(), toggleVoice: vi.fn(), setTheme: vi.fn(), snap: vi.fn(),
   }
   const props = {
     useSurface: bindSnapshotSelector(surface),
@@ -197,6 +198,18 @@ it('opens the settings menu on context menu and switches the artwork set', () =>
   expect((document.querySelector('[data-orb-art]') as HTMLImageElement).getAttribute('src')).toContain('mature')
   expect(b.actions.openChat).not.toHaveBeenCalled()
   expect(window.localStorage.getItem('dsh.orb.appearance')).toBe('mature')
+})
+
+it('opens the settings panel from the orb menu', () => {
+  const b = fixture()
+  fireEvent.contextMenu(orb())
+  const row = document.querySelector('[data-orb-menu-item="settings"]') as HTMLElement
+  expect(row).not.toBeNull()
+  expect(row.textContent).toBe(zh['orb.menu.settings'])
+  fireEvent.click(row)
+  expect(b.actions.openSettings).toHaveBeenCalledOnce()
+  expect(document.querySelector('[data-orb-menu-item="settings"]')).toBeNull()
+  expect(b.actions.openChat).not.toHaveBeenCalled()
 })
 
 it('persists the theme choice and closes the settings menu on Escape', () => {

@@ -354,3 +354,12 @@
    ui-web base.css's `body > :not(#root)` subtraction covers it wherever it
    overlaps a chrome row's drag — including above every column, which an in-root
    overlay could not promise once a chrome row declares drag itself. */
+
+/* Modal presentation: the shared panel fills the frame's dialog card instead of
+   sizing itself from the viewport, so the dialog's card is the only painted
+   surface. */
+.panelFill {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+}

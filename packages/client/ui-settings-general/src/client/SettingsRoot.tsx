@@ -18,11 +18,10 @@ import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import {
   ConnectionIndicator, Tooltip, useModalLayer,
-  IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconCloseOutlineRegular, IconDataOutlineMedium,
-  IconPersonalizationOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConnectionIndicatorState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsRootComponentProps, SettingsSectionRow } from './shell-contract.ts'
+import { navIcon, SettingsPanelFrame } from './SettingsPanelFrame.tsx'
 import css from './SettingsRoot.module.css'
 import { DesktopUpdateIndicator } from './DesktopUpdateIndicator.tsx'
 
@@ -30,16 +29,6 @@ const RECOVERY_CONFIRMATION_MS = 2_000
 
 /** Minimum visible time for the connecting pill; shorter attempts read as flicker. */
 const CONNECTING_MIN_VISIBLE_MS = 800
-
-/** Nav glyph by section id; unknown ids fall back to the settings gear. */
-function navIcon(id: string) {
-  if (id === 'account') return <IconUserOutlineMedium size={16} />
-  if (id === 'models') return <IconDataOutlineMedium size={16} />
-  if (id === 'agent-presets') return <IconAgentPresetOutlineMedium size={16} />
-  if (id === 'plugins') return <IconPersonalizationOutlineMedium size={16} />
-  if (id === 'archived-sessions') return <IconArchiveOutlineMedium size={16} />
-  return <IconSettingsOutlineMedium size={16} />
-}
 
 type PanelProps = {
   rows: readonly SettingsSectionRow[]
@@ -71,45 +60,23 @@ function SettingsPanel({ rows, renderSlot, renderFactorySlot, activeId, onSelect
   return createPortal((
     <div className={css.overlay} role="presentation">
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div ref={panel} tabIndex={-1} data-shortcut-modal="settings" className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        {/* The four seats stay direct children of the panel and take their
-            places from its grid: title and header share the first row, the
-            navigation and the active section the second. */}
-        <div className={css.navTitle} id={titleId} tabIndex={-1}
-          data-modal-autofocus={active === undefined ? '' : undefined}>{renderSlot('settings.header', {})}</div>
-        <nav className={css.nav}>
-          <div className={css.navList}>
-            {rows.map(row => (
-              <button
-                key={row.id}
-                type="button"
-                className={clsx(css.navCell, row.id === active && css.active)}
-                aria-current={row.id === active ? 'true' : undefined}
-                data-modal-autofocus={row.id === active ? '' : undefined}
-                onFocus={(event) => { event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }}
-                onClick={() => { onSelect(row.id) }}
-              >
-                <span className={css.navIcon} aria-hidden="true">
-                  {renderSlot('settings.section.icon', { size: 16, active: row.id === active }, {
-                    only: row.id, fallback: navIcon(row.id),
-                  })}
-                </span>
-                <span className={css.navLabel}>{row.label}</span>
-              </button>
-            ))}
-          </div>
-        </nav>
-        <div className={css.header}>
-          <div className={css.actions}>{renderSlot('settings.action', {})}</div>
-          <button type="button" className={css.close} onClick={onClose}>
-            <IconCloseOutlineRegular size={14} />
-            <span className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
-          </button>
-        </div>
-        <div className={css.options}>
-          {active !== undefined && renderFactorySlot('settings.section.view', { id: active, close: onClose })}
-        </div>
-      </div>
+      <SettingsPanelFrame
+        panelRef={panel}
+        dialog
+        titleId={titleId}
+        title={renderSlot('settings.header', {})}
+        actions={renderSlot('settings.action', {})}
+        closeLabel={renderSlot('settings.close', {})}
+        rows={rows}
+        active={active}
+        onSelect={onSelect}
+        onClose={onClose}
+        renderIcon={(id, sectionActive) => renderSlot('settings.section.icon', { size: 16, active: sectionActive }, {
+          only: id, fallback: navIcon(id),
+        })}
+      >
+        {active !== undefined && renderFactorySlot('settings.section.view', { id: active, close: onClose })}
+      </SettingsPanelFrame>
     </div>
   ), document.body)
 }

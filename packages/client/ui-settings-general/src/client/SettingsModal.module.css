@@ -1,0 +1,5 @@
+/* The modal presentation owns the dialog card; this entry fills it with the
+   shared settings panel, whose card material is then the only painted surface. */
+.root {
+  height: 100%;
+}

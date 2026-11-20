@@ -46,6 +46,10 @@ kind: "package-reference"
 
 要自定义页面的导航图标，使用 `ctx.slots.inject('settings.section.icon', ...)`，并以与其 `settings.section` 贡献相同的 `id` 注册图标组件。不匹配的 id 不会渲染，图标的 `label` 选项不会显示。组件接收以像素为单位的 `size` 和 `active`；外壳负责按钮、标签和装饰性图标容器。没有匹配的图标注册时，外壳渲染默认图标。释放图标贡献后恢复该默认图标。
 
+### 打开设置界面
+
+`ctx.settingsUi.open()` 请求外壳呈现其设置面板。只要当前 Peer 可以读取设置描述，[设置外壳](../ui-settings-general/README.zh.md) 就提供该服务并决定呈现方式：承载 classic 框架的渲染进程打开侧栏对话框，形态渲染进程则升起设置模态窗。使用方以可选方式读取该服务（`ctx.get('settingsUi')`），因此未组合外壳的组合没有设置界面；该调用不带分区参数，分区导航仍由外壳自己的入口维护。
+
 ### 可观察的成功与失败
 
 已提交的写入将应答合入共享镜像。被拒绝的写入刷新最新 Host 值。浏览器使用序列化的 Config schema 校验；Host 校验完整配置，包括无法序列化的检查。

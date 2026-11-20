@@ -62,6 +62,8 @@ export interface OrbSurfaceActions {
   readonly openChat: () => void
   /** Present the dedicated management workbench. */
   readonly openWorkbench: () => void
+  /** Open the settings panel in the form's modal presentation. */
+  readonly openSettings: () => void
   /**
    * Move the window by one pointer delta.
    * @param deltaX - horizontal movement in logical pixels.
@@ -261,6 +263,11 @@ export function OrbLayer(props: OrbLayerProps) {
           onClick={() => { setMenuOpen(false); actions.openWorkbench() }}>
           <span className={css.menuCheck} aria-hidden="true" />
           <span className={css.menuLabel}>{t('orb.menu.workbench')}</span>
+        </button>
+        <button type="button" role="menuitem" className={css.menuRow} data-orb-menu-item="settings"
+          onClick={() => { setMenuOpen(false); actions.openSettings() }}>
+          <span className={css.menuCheck} aria-hidden="true" />
+          <span className={css.menuLabel}>{t('orb.menu.settings')}</span>
         </button>
         <div className={css.menuSeparator} role="separator" />
         {appearanceChoices.map(choice => <OrbMenuRow key={choice.id} choice={choice} t={t}

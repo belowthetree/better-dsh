@@ -323,6 +323,29 @@ describe('ui-layout client apply', () => {
     expect(document.documentElement.dataset.surface).toBeUndefined()
   })
 
+  it('reports a carrier stream failure and keeps the last presentation', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { ctx, slots } = await bench()
+      const carrier = {
+        snapshot: () => ORB_SURFACE,
+        follow: async function* (): AsyncGenerator<SurfaceSnapshot> { throw new Error('carrier lost') },
+      }
+      const provider = ctx.plugin((child: Context) => { child.reflect.provide('surface', carrier) })
+      await provider.await()
+      const fiber = ctx.plugin({ inject: [...inject], apply })
+      await fiber.await()
+      await vi.waitFor(() => {
+        expect(report).toHaveBeenCalledWith('ui-layout: surface observation failed', expect.any(Error))
+      })
+      const entry = slots.entries('root')[0]
+      if (entry?.inject === undefined) throw new Error('the root entry must inject its presentation source')
+      const injected = entry.inject() as InjectedFace
+      expect(injected.hooks.surface.getSnapshot()).toBe(ORB_SURFACE)
+      expect(document.documentElement.dataset.surface).toBe('orb')
+    } finally { report.mockRestore() }
+  })
+
   it('routes a frame modal dismissal to the carrier and reports carrier failures', async () => {
     const state: { failure: Error | undefined } = { failure: undefined }
     const dismissModal = vi.fn(async () => { if (state.failure !== undefined) throw state.failure })

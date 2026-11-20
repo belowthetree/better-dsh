@@ -35,6 +35,8 @@ In a browser below 768px, the body-portaled panel fills the CSS layout viewport 
 
 Windows and macOS desktop windows at every width, and wider browser windows, use the [frame’s shared overlay inset](../ui-layout/README.md#window-chrome-seat) and keep at least 24px of viewport margin. The mask leaves the Windows caption unpainted; the full-viewport layer still blocks background clicks. Linux windows follow the browser layout.
 
+In a form profile the same panel is a modal presentation: the orb menu calls `ctx.settingsUi.open()`, which raises the `shell.modal` entry `settings`, and that entry fills the frame's dialog card with the shared panel frame, its navigation, and the selected page. The frame supplies the dismissal layer, focus trap, Escape and backdrop dismissal, and the shortcut modal context `settings`; the panel's close control dismisses the same presentation, and the settings command matches that modal context. The entry is registered only while the Peer may read the settings description, so a composition without the shell never shows it.
+
 When the page reconnects to a Host running another release, a **Service version changed** dialog draws two lines: **Service** from the Host's previous release (gray) to its current release, joined by a thin solid green arrow because the Host already switched, and **Page** from the release this page booted from to the Host's release (gray), joined by an equally thin dashed gray arrow because only a reload completes it. A line shows versions when its two versions differ and commits otherwise. The page applies no plugin update from that release. **Reload to load the new version** loads it; **Not now**, the close control, a mask click, and Escape keep the page at its own release and stop asking about that Host release. When the Host returns to the page's release, the dialog closes and live updates resume.
 
 When the section navigation exceeds the panel's available height, the list scrolls independently of the settings content and keeps the Settings title fixed; in browsers below 768px the strip scrolls along its own axis the same way.
@@ -59,7 +61,7 @@ On a loopback browser, the shell renders **Open configuration file** only when t
 
 The onboarding ledger projects in ascending order and mounts exactly one step at a time. Registrants own durable completion, capability readiness, copy, mutations, and their visible wrapper, so independently registered flows cannot stack and the shell does not become a second configuration fact source. Visible steps own their dialog chrome and app-root `inert` lifecycle.
 
-Access: the settings shell and the `settings.open` shortcut are registered only while the current Peer may call `settings/describe`. The owner always has access.
+Access: the settings shell, its settings modal entry, and the `settings.open` shortcut are registered only while the current Peer may call `settings/describe`. The owner always has access.
 
 -----
 
@@ -73,7 +75,7 @@ The shell declares settings.launcher for an account-owned sidebar menu and retai
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The shell owns the chrome and the projections; it contributes the Coding Tools and Current version rows, while feature registrants own their additional content and copy. The panel's four seats — title, header, navigation, section — are its direct children and take their places from its grid, so one markup tree serves both the desktop rail and the mobile strip.
+The shell owns the chrome and the projections; it contributes the Coding Tools and Current version rows, while feature registrants own their additional content and copy. The panel's four seats — title, header, navigation, section — are direct children of the shared `SettingsPanelFrame` and take their places from its grid, so one markup tree serves the desktop rail, the mobile strip, and the settings modal.
 
 ### Ledger projections
 
@@ -131,6 +133,7 @@ These limits define what the shell itself provides versus what features must sup
 - **Mobile software keyboards require device validation** — browser regression tests cover layout and focus, but native Safari keyboard panning and installed-PWA behavior remain unverified.
 - **Additional General rows require their feature plugins** — the shell supplies Coding Tools and Current version; feature plugins supply the remaining preferences.
 - **The Windows caption badge keeps a side-opening bubble** — `DesktopUpdateBadge` occupies `sidebar.toggle.badge` in the caption and requests `side="right"`, so the Desktop-owned menu text can cover its bubble while the sidebar is collapsed on Windows; the sidebar toggle and New Session bubbles open below the caption instead (#4688).
+- **The settings modal omits the shell's document action and main-panel navigation** — the form profile's modal renders the shared panel frame, its sections, and its close control, but not the loopback-only **Open configuration file** action or onboarding steps; the Plugins entry, which leaves Settings for a main panel, dismisses the modal because the form profile hosts no main panel.
 
 <a id="dev-note"></a>
 ### Dev Note

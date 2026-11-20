@@ -46,6 +46,10 @@ A settings surface registers into the slot types this package declares. The shel
 
 To customize a page's navigation icon, use `ctx.slots.inject('settings.section.icon', ...)` and register an icon component with the same `id` as its `settings.section` contribution. Unmatched ids never render, and the icon's `label` option is not displayed. The component receives `size` in pixels and `active`; the shell owns the button, label, and decorative icon wrapper. Without a matching icon registration, the shell renders its default glyph. Disposing the icon contribution restores that glyph.
 
+### Opening the settings surface
+
+`ctx.settingsUi.open()` asks the shell to present its settings panel. The [settings shell](../ui-settings-general/README.md) provides the service while the current Peer may read the settings description and decides the presentation: a renderer that hosts the classic frame opens its sidebar dialog, and a form renderer raises the settings modal. Consumers read the service optionally (`ctx.get('settingsUi')`), so a composition without the shell has no settings surface, and the call carries no section argument — the shell's own launchers keep their section navigation.
+
 ### Observable success and failures
 
 A committed write folds its answer into the shared mirror. Refused writes refresh the latest Host values. Browser validation uses the serialized Config schema; the Host validates complete configuration, including checks that cannot be serialized.

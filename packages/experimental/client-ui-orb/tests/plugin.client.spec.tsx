@@ -134,6 +134,8 @@ const PLAYBACK: VoiceOutputSnapshot = {
 interface BenchOptions {
   /** Surface double to provide instead of the default recording double. */
   readonly surface?: ReturnType<typeof surfaceDouble>['service']
+  /** Settings presentation double provided before the plugin mounts. */
+  readonly settingsUi?: { readonly open: () => void }
   /** Playback double provided before the plugin mounts. */
   readonly output?: ReturnType<typeof outputDouble>
   /** Capture double provided before the plugin mounts. */
@@ -150,6 +152,7 @@ async function bench(options: BenchOptions = {}) {
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   runtime.ctx.provide('surface', surface as never)
+  if (options.settingsUi !== undefined) runtime.ctx.provide('settingsUi', options.settingsUi)
   const theme = {
     getTheme: () => ({ preference: 'system' as const }),
     setTheme: vi.fn(),
@@ -251,6 +254,15 @@ it('registers the overlay chrome, the chat dialog, and the system commands', asy
   expect(voiceCommand?.defaults).toEqual({})
   expect(voiceCommand?.label()).toBe(zh['command.voice'])
   expect(voiceCommand?.resolve({ region: 'page', modal: null, target: null })).toEqual({ status: 'pass' })
+})
+
+it('opens the settings panel from the orb menu action', async () => {
+  const open = vi.fn()
+  const b = await bench({ settingsUi: { open } })
+  const entry = b.runtime.slots.entries('shell.overlay')[0]
+  const face = entry?.inject?.() as { actions: { openSettings(): void } }
+  face.actions.openSettings()
+  expect(open).toHaveBeenCalledOnce()
 })
 
 it('starts a collapsed-orb capture and finishes it into the chat dialog', async () => {

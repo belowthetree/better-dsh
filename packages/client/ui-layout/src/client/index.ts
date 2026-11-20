@@ -282,9 +282,14 @@ export function apply(ctx: ClientContext): void {
       if (root !== undefined) delete root.dataset.surface
     }, 'ui-layout: surface presentation')
     void (async (): Promise<void> => {
-      for await (const snapshot of scope.surface.follow(controller.signal)) {
-        surfaceSnapshot.set(snapshot)
-        mirror(snapshot)
+      try {
+        for await (const snapshot of scope.surface.follow(controller.signal)) {
+          surfaceSnapshot.set(snapshot)
+          mirror(snapshot)
+        }
+      } catch (error) {
+        // Aborting ends the iteration without throwing; anything else leaves the last presentation in place.
+        console.error('ui-layout: surface observation failed', error)
       }
     })()
   })

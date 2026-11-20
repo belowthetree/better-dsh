@@ -6,7 +6,9 @@
  * across Loader rebuilds of the declaring chain.
  */
 import { describe, expect, onTestFinished, vi } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import { ok, type RemoteMock } from '@deepseek-ai/dsh-remote-mock'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types'
 import { createClientTest, type TestClient, webApp } from '@deepseek-ai/dsh-client-test-runtime/src/assembly/index.ts'
@@ -22,10 +24,16 @@ import type { DesktopChannelBridge } from '../src/types.ts'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
 import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from '../src/client/SettingsDocumentAction.tsx'
+import { SettingsModalSurface } from '../src/client/SettingsModalSurface.tsx'
+import type { SettingsModalInjected } from '../src/client/SettingsModalSurface.tsx'
+import { SETTINGS_MODAL_ID, SETTINGS_MODAL_SIZE } from '../src/client/settings-modal.ts'
+import { createSettingsShellStore } from '../src/client/shell-store.ts'
 
 const SELF = '@deepseek-ai/dsh-client-ui-settings-general'
 const SIDEBAR = '@deepseek-ai/dsh-client-ui-sidebar'
 const it = createClientTest({ roster: webApp })
+/** Settings surfaces exist only while the current Peer may read the settings description. */
+const withoutSettingsAccess = createClientTest({ roster: webApp }, { access: action => action !== 'settings/describe' })
 /** The whole roster's first boot pays the cold module transform of every plugin package. */
 const COLD_BOOT_TIMEOUT_MS = 60_000
 /** Dictionary namespace this plugin owns; every seat it fills declares it. */
@@ -83,6 +91,21 @@ function developerToolsRowOf(c: TestClient): DeveloperToolsRowInjected {
 function actionInjectedOf(c: TestClient): SettingsDocumentActionInjected {
   const entry = ownEntries(c, 'settings.action')[0]!
   return (entry.inject as unknown as () => SettingsDocumentActionInjected)()
+}
+
+/** Read the settings modal inject face from the type-erased stored registration. */
+function modalFaceOf(c: TestClient): SettingsModalInjected {
+  const entry = c.ctx.slots.entries('shell.modal').find(row => row.options.id === SETTINGS_MODAL_ID)
+  if (entry?.inject === undefined) throw new Error('the settings modal entry must inject its face')
+  const { hooks, close } = entry.inject()
+  if (typeof close !== 'function') throw new TypeError('the settings modal face must inject a close action')
+  if (typeof hooks !== 'object' || hooks === null) throw new TypeError('the settings modal face must inject hooks')
+  const { sections } = hooks as { sections?: object }
+  if (sections === undefined) throw new TypeError('the settings modal face must inject its section rows')
+  return {
+    hooks: { sections: sections as SettingsModalInjected['hooks']['sections'] },
+    close: close as SettingsModalInjected['close'],
+  }
 }
 
 function expectSeated(c: TestClient): void {
@@ -404,5 +427,73 @@ describe('ui-settings-general apply', () => {
     await c.unload(SELF)
     await c.flush()
     expect(overlay()).toBeUndefined()
+  })
+
+  it('presents the settings modal through the carrier and dismisses it from the panel', async ({ mock, start }) => {
+    const { c } = await client(mock, start)
+    const orbSurface: SurfaceSnapshot = {
+      form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
+      orbDocked: false, orbHovered: false, modalOpen: false,
+    }
+    let state: SurfaceSnapshot = orbSurface
+    const presentModal = vi.fn(async () => { state = { ...state, presentation: 'modal', modal: SETTINGS_MODAL_ID } })
+    const dismissModal = vi.fn(async () => { state = { ...state, presentation: 'orb', modal: null } })
+    const carrier = {
+      snapshot: () => state,
+      follow: async function* (): AsyncGenerator<SurfaceSnapshot> { yield state },
+      presentModal,
+      dismissModal,
+    }
+    const provider = c.ctx.plugin((child: Context) => { child.reflect.provide('surface', carrier) })
+    await provider.await()
+    const entry = c.ctx.slots.entries('shell.modal').find(row => row.options.id === SETTINGS_MODAL_ID)
+    expect(entry?.component).toBe(SettingsModalSurface)
+    expect(entry?.locale).toBe(NS)
+    expect(modalFaceOf(c).hooks.sections.getSnapshot().map(row => row.id)).toContain('general')
+    const settingsUi = c.ctx.get('settingsUi')
+    if (settingsUi === undefined) throw new Error('the settings presentation service must be provided')
+
+    settingsUi.open()
+    await vi.waitFor(() => { expect(presentModal).toHaveBeenCalledWith(SETTINGS_MODAL_ID, SETTINGS_MODAL_SIZE) })
+    modalFaceOf(c).close()
+    await vi.waitFor(() => { expect(dismissModal).toHaveBeenCalledOnce() })
+
+    // Both presentation failures are reported instead of escaping the gesture.
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      settingsUi.open()
+      await vi.waitFor(() => { expect(presentModal).toHaveBeenCalledTimes(2) })
+      presentModal.mockRejectedValueOnce(new Error('carrier closed'))
+      settingsUi.open()
+      await vi.waitFor(() => {
+        expect(report).toHaveBeenCalledWith('settings: presenting the settings panel failed', expect.any(Error))
+      })
+      dismissModal.mockRejectedValueOnce(new Error('carrier closed'))
+      modalFaceOf(c).close()
+      await vi.waitFor(() => {
+        expect(report).toHaveBeenCalledWith('settings: dismissing the settings panel failed', expect.any(Error))
+      })
+    } finally { report.mockRestore() }
+
+    await provider.dispose()
+    await c.unload(SELF)
+    await c.flush()
+    expect(c.ctx.slots.entries('shell.modal').some(row => row.options.id === SETTINGS_MODAL_ID)).toBe(false)
+    await vi.waitFor(() => { expect(c.ctx.get('settingsUi')).toBeUndefined() })
+  })
+
+  it('opens the sidebar dialog when the renderer hosts the classic frame', async ({ mock, start }) => {
+    const { c } = await client(mock, start)
+    const shell = (c.ctx.slots.entries('sidebar.settings')[0]!.store as ReturnType<typeof createSettingsShellStore>).create()
+    const settingsUi = c.ctx.get('settingsUi')
+    if (settingsUi === undefined) throw new Error('the settings presentation service must be provided')
+    settingsUi.open()
+    expect(shell.getSnapshot().open).toBe(true)
+  })
+
+  withoutSettingsAccess('withholds the settings modal and the presentation service without description access', async ({ start }) => {
+    const c = await start()
+    expect(c.ctx.slots.entries('shell.modal').some(row => row.options.id === SETTINGS_MODAL_ID)).toBe(false)
+    expect(c.ctx.get('settingsUi')).toBeUndefined()
   })
 })
