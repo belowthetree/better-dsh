@@ -2,6 +2,8 @@
 
 中文 | [English](README.en.md)
 
+![Better DSH 海报：大肥鱼悬浮球常驻桌面，回答气泡在旁边升起](docs/assets/better-dsh/poster.jpg)
+
 > 基于 DeepSeek Harness 的桌面 agent 交互形态：让 agent 常驻桌面，而不是成为一个需要造访的窗口。
 
 你是否受够了传统窗口 agent 交互的繁文缛节？Better DSH 把 agent 从「需要造访的窗口」变成「桌面上的常驻存在」：看视频、听歌、浏览帖子时，随时唤出工作台交代任务；回答在悬浮球旁升起，进度不用切窗口看。交互层建立在 DeepSeek Harness 之上，复用它的会话、工具与输入框，而不是另造一套。
