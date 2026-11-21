@@ -224,6 +224,14 @@ it('persists the theme choice and closes the settings menu on Escape', () => {
   expect(document.querySelector('[data-orb-menu-item="light"]')).toBeNull()
 })
 
+it('closes the settings menu when the orb window loses focus', () => {
+  fixture()
+  fireEvent.contextMenu(orb())
+  expect(document.querySelector('[data-orb-menu-item="dark"]')).not.toBeNull()
+  fireEvent.blur(window)
+  expect(document.querySelector('[data-orb-menu-item="dark"]')).toBeNull()
+})
+
 it('marks hover, press, and the reduced-motion preference', () => {
   const b = fixture()
   fireEvent.pointerEnter(orb())

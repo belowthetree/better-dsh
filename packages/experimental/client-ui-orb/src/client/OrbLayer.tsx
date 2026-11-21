@@ -195,14 +195,21 @@ export function OrbLayer(props: OrbLayerProps) {
     if (drag.moved()) actions.snap()
   }
 
-  // Escape closes the settings menu, matching the platform's context-menu behavior.
+  // Escape or leaving the orb window closes the settings menu, matching the
+  // platform's context-menu behavior: a click on the desktop or on another
+  // application blurs this window without reaching its document.
   useEffect(() => {
     if (!menuOpen) return undefined
-    const close = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setMenuOpen(false)
+    const close = (): void => { setMenuOpen(false) }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') close()
     }
-    window.addEventListener('keydown', close)
-    return () => { window.removeEventListener('keydown', close) }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('blur', close)
+    }
   }, [menuOpen])
 
   // The surface window hosts panel and modal presentations and the bubble
