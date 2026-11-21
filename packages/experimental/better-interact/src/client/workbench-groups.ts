@@ -9,6 +9,9 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
  */
 export const MANAGE_PAGE_ID = 'better-interact.manage' as WorkspaceId
 
+/** Agent preset that page lists, and the one it starts while it holds none. */
+export const MANAGE_PRESET = 'manage'
+
 /** One tab and its Session bookmarks in the workbench. */
 export interface WorkbenchPageGroup {
   readonly workspaceId: WorkspaceId
@@ -39,7 +42,7 @@ export function workbenchGroups(
   manageTitle: string,
 ): WorkbenchPageGroup[] {
   const managed = Object.values(sessions)
-    .filter(session => session.agentPreset === 'manage' && session.origin !== 'subagent')
+    .filter(session => session.agentPreset === MANAGE_PRESET && session.origin !== 'subagent')
     .sort((left, right) => right.updatedAt - left.updatedAt || (left.id < right.id ? -1 : 1))
     .map(session => session.id)
   const managedIds = new Set(managed)

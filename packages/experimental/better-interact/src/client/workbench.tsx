@@ -31,7 +31,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Dialog-owned notice shown as an inline failure line. */
-export type WorkbenchNotice = 'workbench.createFailed'
+export type WorkbenchNotice = 'workbench.createFailed' | 'workbench.manageFailed'
 
 /** Effective shortcut key labels shown by the card hints. */
 export interface WorkbenchHints {

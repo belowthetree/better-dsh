@@ -37,12 +37,18 @@ function row(id: string, overrides: Partial<SessionSummary> = {}): SessionSummar
   return { id: sid(id), displayTitle: id, running: false, retainedBy: {}, blank: true, updatedAt: 0, ...overrides }
 }
 
-function sessionList(sessions: readonly { readonly id: string; readonly updatedAt?: number; readonly mainView?: boolean }[]) {
+function sessionList(sessions: readonly {
+  readonly id: string
+  readonly updatedAt?: number
+  readonly mainView?: boolean
+  readonly agentPreset?: string
+}[]) {
   return createSnapshotStore<SessionListState>({
     ids: sessions.map(session => sid(session.id)),
     byId: Object.fromEntries(sessions.map(session => [session.id, row(session.id, {
       updatedAt: session.updatedAt ?? 0,
       ...session.mainView === true ? { retainedBy: { mainView: 1 } } : {},
+      ...session.agentPreset === undefined ? {} : { agentPreset: session.agentPreset },
     })])),
     phase: 'ready',
     projectionsBySession: {},
@@ -56,16 +62,22 @@ function view(id: string, title: string, sessionIds: readonly string[], updatedA
   }
 }
 
-function workspaceList(items: readonly WorkspaceView[]) {
+function workspaceList(items: readonly WorkspaceView[], archived: readonly string[] = []) {
   return createSnapshotStore<WorkspaceSnapshot>({
-    items, archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+    items, archivedSessionIds: archived.map(sid), pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
   })
 }
 
 function context(options: {
   readonly surface?: SurfaceSnapshot
-  readonly sessions?: readonly { readonly id: string; readonly updatedAt?: number; readonly mainView?: boolean }[]
+  readonly sessions?: readonly {
+    readonly id: string
+    readonly updatedAt?: number
+    readonly mainView?: boolean
+    readonly agentPreset?: string
+  }[]
   readonly workspaces?: readonly WorkspaceView[]
+  readonly archived?: readonly string[]
   readonly catalog?: readonly { readonly id: string; readonly keys: readonly string[] }[]
 } = {}) {
   const registrations: Registration[] = []
@@ -84,9 +96,11 @@ function context(options: {
   const openWorkspace = vi.fn(() => Promise.resolve())
   const pickDirectory = vi.fn<() => Promise<string | null>>(() => Promise.resolve(null))
   const createWorkspace = vi.fn(async () => view('ws-new', 'New', []))
+  const initializeDefault = vi.fn<() => Promise<WorkspaceView | undefined>>(async () => view('ws-default', 'default', []))
+  const createSession = vi.fn(async () => sid('created'))
   const snapshot = options.surface ?? ORB
   const sessions = sessionList(options.sessions ?? [{ id: 's1' }])
-  const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])])
+  const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])], options.archived)
   const catalog = createSnapshotStore(options.catalog ?? [])
   const pendingInteractions = createSnapshotStore(new Map())
   const ctx = {
@@ -97,8 +111,8 @@ function context(options: {
     },
     locale: { register: record, bind: vi.fn(() => (key: string) => key) },
     resources: { register: vi.fn(() => () => {}) },
-    sessions: { list: sessions },
-    workspaces: { list: workspaces, create: createWorkspace },
+    sessions: { list: sessions, create: createSession },
+    workspaces: { list: workspaces, create: createWorkspace, initializeDefault },
     uiWorkspace: {
       openSession, openWorkspace, pickDirectory, startSession: vi.fn(), connectWorkspace: vi.fn(),
     },
@@ -122,7 +136,7 @@ function context(options: {
   }
   return {
     ctx, registrations, commands, dictionaries, sessions, workspaces, catalog, presentModal, presentBubbles, dismissBubbles,
-    openSession, openWorkspace, pickDirectory, createWorkspace, disposers, pendingInteractions,
+    openSession, openWorkspace, pickDirectory, createWorkspace, initializeDefault, createSession, disposers, pendingInteractions,
   }
 }
 
@@ -261,6 +275,98 @@ it('connects a Workspace page that has no Session yet', () => {
   expect(workbench.hooks.pages.getSnapshot().active).toBe(ws('ws-1'))
   expect(openWorkspace).toHaveBeenCalledWith(ws('ws-1'))
   expect(openSession).not.toHaveBeenCalled()
+})
+
+it('starts the managed conversation when its page has no Session', async () => {
+  const { ctx, registrations, initializeDefault, createSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(MANAGE_PAGE_ID)
+  await vi.waitFor(() => {
+    expect(workbench.hooks.pages.getSnapshot()).toEqual({
+      active: MANAGE_PAGE_ID, sessions: { [MANAGE_PAGE_ID]: sid('created') },
+    })
+  })
+  expect(initializeDefault).toHaveBeenCalledOnce()
+  expect(createSession).toHaveBeenCalledWith({ agentPreset: 'manage', workspaceId: ws('ws-default') })
+})
+
+it('starts the managed conversation only once while it is being created', async () => {
+  const { ctx, registrations, createSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1'])],
+  })
+  let release: (sessionId: SessionId) => void = () => {}
+  createSession.mockImplementationOnce(async () => await new Promise<SessionId>((resolve) => { release = resolve }))
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(MANAGE_PAGE_ID)
+  await vi.waitFor(() => { expect(createSession).toHaveBeenCalledOnce() })
+  workbench.select(MANAGE_PAGE_ID)
+  expect(createSession).toHaveBeenCalledOnce()
+  release(sid('created'))
+  await vi.waitFor(() => {
+    expect(workbench.hooks.pages.getSnapshot().sessions[MANAGE_PAGE_ID]).toBe(sid('created'))
+  })
+})
+
+it('starts the managed conversation when every managed Session is archived', async () => {
+  const { ctx, registrations, createSession } = context({
+    sessions: [{ id: 'managed', updatedAt: 1, agentPreset: 'manage' }],
+    workspaces: [view('ws-1', 'Alpha', ['managed'])],
+    archived: ['managed'],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(MANAGE_PAGE_ID)
+  await vi.waitFor(() => { expect(createSession).toHaveBeenCalledOnce() })
+  expect(createSession).toHaveBeenCalledWith({ agentPreset: 'manage', workspaceId: ws('ws-default') })
+})
+
+it('starts a new managed conversation when its recorded Session is archived', async () => {
+  const { ctx, registrations, workspaces, createSession } = context({
+    sessions: [{ id: 'managed', updatedAt: 1, agentPreset: 'manage' }],
+    workspaces: [view('ws-1', 'Alpha', ['managed'])],
+  })
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(MANAGE_PAGE_ID)
+  expect(workbench.hooks.pages.getSnapshot().sessions[MANAGE_PAGE_ID]).toBe(sid('managed'))
+  createSession.mockClear()
+  workspaces.set({ ...workspaces.getSnapshot(), archivedSessionIds: [sid('managed')] })
+  workbench.select(MANAGE_PAGE_ID)
+  await vi.waitFor(() => { expect(createSession).toHaveBeenCalledOnce() })
+})
+
+it('starts the managed conversation in no Workspace when no default resolves', async () => {
+  const { ctx, registrations, initializeDefault, createSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1'])],
+  })
+  initializeDefault.mockResolvedValueOnce(undefined)
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(MANAGE_PAGE_ID)
+  await vi.waitFor(() => { expect(createSession).toHaveBeenCalledWith({ agentPreset: 'manage' }) })
+})
+
+it('reports a managed conversation that cannot start', async () => {
+  const { ctx, registrations, createSession } = context({
+    sessions: [{ id: 's1', updatedAt: 1 }],
+    workspaces: [view('ws-1', 'Alpha', ['s1'])],
+  })
+  const failure = new Error('preset missing')
+  createSession.mockRejectedValueOnce(failure)
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  apply(ctx as never)
+  const workbench = workbenchInjected(registrations)
+  workbench.select(MANAGE_PAGE_ID)
+  await vi.waitFor(() => { expect(workbench.hooks.notice.getSnapshot()).toBe('workbench.manageFailed') })
+  expect(error).toHaveBeenCalledWith('better-interact: starting the managed conversation failed', failure)
+  error.mockRestore()
 })
 
 it('cycles the Workspace pages with the next and previous commands only inside the dialog', () => {

@@ -20,7 +20,7 @@ import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
-import { workbenchGroups, type WorkbenchPageGroup } from './workbench-groups.ts'
+import { workbenchGroups, MANAGE_PAGE_ID, MANAGE_PRESET, type WorkbenchPageGroup } from './workbench-groups.ts'
 import type { WorkbenchHints, WorkbenchInjected, WorkbenchNotice } from './workbench.tsx'
 import { WorkbenchConversation, WorkbenchDialog, WORKBENCH_MODAL_SIZE } from './workbench.tsx'
 import { createWorkbenchPagesStore } from './workbench-pages.ts'
@@ -77,21 +77,49 @@ export function apply(ctx: Context): void {
   const pageOf = (sessionId: SessionId): WorkbenchPageGroup | undefined =>
     groups().find(item => item.sessionIds.includes(sessionId))
 
-  /** Session a page shows: its recorded Session, else its newest. */
+  /**
+   * Session a page shows: its recorded Session, else its newest. The managed
+   * page ignores archived rows, because it starts a conversation whenever no
+   * listed Session remains.
+   */
   const sessionOf = (workspace: WorkbenchPageGroup): SessionId | undefined => {
     const byId = ctx.sessions.list.getSnapshot().byId
+    const archived = workspace.manages
+      ? new Set(ctx.workspaces.list.getSnapshot().archivedSessionIds)
+      : new Set<SessionId>()
     const mapped = pages.store.getSnapshot().sessions[workspace.workspaceId]
-    if (mapped !== undefined && workspace.sessionIds.includes(mapped) && byId[mapped] !== undefined) return mapped
+    if (mapped !== undefined && workspace.sessionIds.includes(mapped)
+      && byId[mapped] !== undefined && !archived.has(mapped)) return mapped
     let newest: SessionId | undefined
     for (const sessionId of workspace.sessionIds) {
       const row = byId[sessionId]
-      if (row === undefined) continue
+      if (row === undefined || archived.has(sessionId)) continue
       if (newest === undefined || row.updatedAt > (byId[newest]?.updatedAt ?? 0)) newest = sessionId
     }
     return newest
   }
 
-  /** Show one page, opening its Session or connecting an empty real Workspace. */
+  /** In-flight start of the managed page's first conversation. */
+  let startingManaged: Promise<void> | undefined
+
+  /** Start the managed page's conversation in the Host default Workspace. */
+  const startManaged = (): void => {
+    if (startingManaged !== undefined) return
+    startingManaged = (async () => {
+      const workspace = await ctx.workspaces.initializeDefault()
+      const sessionId = await ctx.sessions.create({
+        agentPreset: MANAGE_PRESET,
+        ...(workspace === undefined ? {} : { workspaceId: workspace.workspaceId }),
+      })
+      pages.setSession(MANAGE_PAGE_ID, sessionId)
+      notice.set(null)
+    })().catch((error: unknown) => {
+      fail('starting the managed conversation')(error)
+      notice.set('workbench.manageFailed')
+    }).finally(() => { startingManaged = undefined })
+  }
+
+  /** Show one page, opening its Session, starting the managed one, or connecting an empty real Workspace. */
   const showPage = (workspaceId: WorkspaceId): void => {
     const workspace = groups().find(item => item.workspaceId === workspaceId)
     if (workspace === undefined) return
@@ -99,7 +127,8 @@ export function apply(ctx: Context): void {
     pages.select(workspaceId)
     const sessionId = sessionOf(workspace)
     if (sessionId === undefined) {
-      if (!workspace.manages) void navigation.openWorkspace(workspaceId).catch(fail('opening the workspace page'))
+      if (workspace.manages) startManaged()
+      else void navigation.openWorkspace(workspaceId).catch(fail('opening the workspace page'))
       return
     }
     pages.setSession(workspaceId, sessionId)
