@@ -38,9 +38,18 @@ export interface OrbChatInjected {
   hooks: {
     /** Capture snapshot, or null while the capture plugin is unmounted. */
     capture: HostObservable<VoiceCaptureSnapshot | null>
+    /** Whether the selected recognizer can transcribe a recording right now. */
+    voiceReadiness: HostObservable<VoiceReadiness>
   }
   actions: OrbChatActions
 }
+
+/**
+ * Recognition state behind the microphone button: the selected recognizer is
+ * ready, still preparing, absent from the Host roster, or its service has not
+ * answered yet.
+ */
+export type VoiceReadiness = 'connecting' | 'ready' | 'preparing' | 'missing'
 
 /** Complete props of the chat box; the frame owns the dismissal area, focus trap, and Escape. */
 export type QuickPromptProps =
@@ -49,7 +58,34 @@ export type QuickPromptProps =
   & InjectFace<OrbChatInjected>
 
 /** Dictation notice shown beside the actions after a recording settled without text. */
-type DictationNotice = 'voiceEmpty' | 'voiceFailed'
+type DictationNotice = 'voiceEmpty' | 'voiceFailed' | 'voiceSignInRequired' | 'voiceConnecting' | 'voicePreparing' | 'voiceMissing'
+
+const NOTICE_KEYS = {
+  voiceEmpty: 'prompt.voiceEmpty',
+  voiceFailed: 'prompt.voiceFailed',
+  voiceSignInRequired: 'prompt.voiceSignInRequired',
+  voiceConnecting: 'prompt.voiceConnecting',
+  voicePreparing: 'prompt.voicePreparing',
+  voiceMissing: 'prompt.voiceMissing',
+} as const
+
+/** The notice a microphone click reports while the recognizer cannot record. */
+const NOT_READY_NOTICE: Readonly<Record<Exclude<VoiceReadiness, 'ready'>, DictationNotice>> = {
+  connecting: 'voiceConnecting',
+  preparing: 'voicePreparing',
+  missing: 'voiceMissing',
+}
+
+/** Whether the capture failure carries the DeepSeek provider's structured sign-in requirement. */
+function requiresDeepSeekSignIn(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const cause = error.cause
+  if (typeof cause !== 'object' || cause === null || !('code' in cause)
+    || cause.code !== 'speech/transcription-failed' || !('details' in cause)) return false
+  const details = cause.details
+  return typeof details === 'object' && details !== null && 'providerCode' in details
+    && details.providerCode === 'DEEPSEEK_ASR_SIGN_IN_REQUIRED'
+}
 
 /**
  * Render the orb form's chat box.
@@ -60,6 +96,7 @@ export function QuickPrompt(props: QuickPromptProps) {
   const { actions, t } = props
   const { takeTranscript, submit, startDictation, finishDictation, cancelDictation } = actions
   const capture = props.useCapture(snapshot => snapshot)
+  const readiness = props.useVoiceReadiness(value => value)
   const [text, setText] = useState(() => takeTranscript() ?? '')
   const [sending, setSending] = useState(false)
   const [sendFailed, setSendFailed] = useState(false)
@@ -99,9 +136,10 @@ export function QuickPrompt(props: QuickPromptProps) {
     }
   }
 
-  /** Acquire the microphone; a rejected start keeps the box open with a notice. */
+  /** Acquire the microphone; an unrecognized start explains why instead of recording into a failure. */
   const startRecording = (): void => {
     setNotice(null)
+    if (readiness !== 'ready') { setNotice(NOT_READY_NOTICE[readiness]); return }
     owned.current = true
     startDictation().catch(() => {
       owned.current = false
@@ -115,9 +153,9 @@ export function QuickPrompt(props: QuickPromptProps) {
       owned.current = false
       if (transcript === '') { setNotice('voiceEmpty'); return }
       setText(current => current + transcript)
-    }).catch(() => {
+    }).catch((error: unknown) => {
       owned.current = false
-      setNotice('voiceFailed')
+      setNotice(requiresDeepSeekSignIn(error) ? 'voiceSignInRequired' : 'voiceFailed')
     })
   }
 
@@ -129,7 +167,7 @@ export function QuickPrompt(props: QuickPromptProps) {
   const status = phase === 'starting' ? t('prompt.voiceRequesting')
     : phase === 'capturing' ? t('prompt.voiceRecording')
       : phase === 'transcribing' ? t('prompt.voiceTranscribing')
-        : notice === null ? null : t(notice === 'voiceEmpty' ? 'prompt.voiceEmpty' : 'prompt.voiceFailed')
+        : notice === null ? null : t(NOTICE_KEYS[notice])
 
   return <div className={css.prompt} data-orb-prompt data-shell-modal-surface="bare">
     <h2 className={css.promptTitle}>{t('prompt.title')}</h2>
@@ -143,7 +181,7 @@ export function QuickPrompt(props: QuickPromptProps) {
       }} />
     {sendFailed && <p className={css.promptError} role="alert">{t('prompt.failed')}</p>}
     <div className={css.promptActions}>
-      {status !== null && <span className={css.promptStatus} data-orb-prompt-status role="status">{status}</span>}
+      {status !== null && <span className={css.promptStatus} data-orb-prompt-status data-notice={notice ?? undefined} role="status">{status}</span>}
       {capture !== null && <button type="button" className={css.promptMic} data-orb-prompt-mic
         data-recording={capture.phase === 'capturing' || undefined}
         disabled={capture.phase === 'starting' || capture.phase === 'transcribing'}

@@ -84,6 +84,28 @@ it('keeps an active capture when a mounted consumer fiber is disposed', async ()
   await audio.recording.dispose()
 })
 
+it('reaches a namespace the Remote gateway provides from its own fiber', async () => {
+  const ctx = new Context()
+  onTestFinished(async () => { await ctx.fiber.dispose() })
+  const unmount = vi.fn(async () => {})
+  class Remote extends Service {
+    constructor() { super(ctx, 'remote') }
+    async $mount(): Promise<() => Promise<void>> { return unmount }
+  }
+  new Remote()
+  const catalog = vi.fn(async () => ({ ok: true as const, value: {
+    providers: [], selection: { providerId: provider, language: 'auto' as const },
+    maxAudioBytes: 4 * 1024 * 1024, maxDurationSeconds: 120,
+  } }))
+  // The shipped gateway registers each mounted namespace as its own service in a
+  // fiber of its own; a sibling plugin only reaches it through an injecting scope.
+  await ctx.plugin((scoped: Context) => { scoped.provide('remote.speech', { catalog }) })
+  const dispose = await mountVoiceCapture(ctx, CONTRIBUTION)
+  await expect(ctx.voiceCapture.catalog()).resolves.toMatchObject({ providers: [] })
+  expect(catalog).toHaveBeenCalledOnce()
+  await dispose()
+})
+
 it('cancels an active recording when the capture plugin is withdrawn', async () => {
   const audio = captureFixture()
   stubFrames()

@@ -8,13 +8,14 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SurfaceMessage, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
+import type { VoiceCaptureCatalog, VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import * as plugin from '../src/client/index.ts'
 import { QuickPrompt } from '../src/client/QuickPrompt.tsx'
+import type { VoiceReadiness } from '../src/client/QuickPrompt.tsx'
 import { ORB_CHAT_MODAL_ID } from '../src/client/modals.ts'
 import {
   ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE, OrbWorkbench, OrbWorkbenchConversation,
@@ -109,17 +110,33 @@ function surfaceDouble(initial: SurfaceSnapshot = ORB_SURFACE) {
   }
 }
 
+/** Recognition catalog with the selected provider ready; the readiness observation reads it. */
+const READY_CATALOG: VoiceCaptureCatalog = {
+  providers: [{
+    id: 'test' as SpeechProviderId, name: 'Test recognizer', location: 'cloud', languages: ['auto'],
+    preparation: { phase: 'ready' },
+  }],
+  selection: { providerId: 'test' as SpeechProviderId, language: 'auto' },
+  maxAudioBytes: 4 * 1024 * 1024,
+  maxDurationSeconds: 120,
+}
+
 /** Capture observation double with the commands the orb and chat box issue. */
-function captureDouble(initial: VoiceCaptureSnapshot) {
+function captureDouble(initial: VoiceCaptureSnapshot, catalog: VoiceCaptureCatalog = READY_CATALOG) {
   const snapshots = observable(initial)
+  const catalogs = observable(catalog)
   const commands = {
     ...snapshots.service,
+    followCatalog: catalogs.service.follow,
     begin: vi.fn(async () => {}),
     finish: vi.fn(async () => ({ text: 'held transcript', audioSeconds: 1, inferenceSeconds: 0.1 })),
     takeTranscript: vi.fn((): string | null => null),
     cancel: vi.fn(async () => {}),
   }
-  return { publish: snapshots.publish, service: commands, get followers() { return snapshots.followers } }
+  return {
+    publish: snapshots.publish, publishCatalog: catalogs.publish, service: commands,
+    get followers() { return snapshots.followers },
+  }
 }
 
 /** Playback double recording the commands the orb issues. */
@@ -479,6 +496,28 @@ it('issues every registered action through the entry faces', async () => {
   chat.actions.cancelDictation()
   await flush()
   expect(capture.service.cancel).toHaveBeenCalledOnce()
+})
+
+it('tells the chat box why the microphone cannot record yet', async () => {
+  const surface = surfaceDouble({ ...ORB_SURFACE, role: 'surface' })
+  const capture = captureDouble(IDLE_CAPTURE)
+  const b = await bench({ surface: surface.service, capture })
+  await provideVoice(b.runtime, capture, outputDouble(PLAYBACK))
+  const chatEntry = b.runtime.slots.entries('shell.modal').find(entry => entry.options.id === ORB_CHAT_MODAL_ID)
+  const chat = chatEntry?.inject?.() as { hooks: { voiceReadiness: { getSnapshot(): VoiceReadiness } } }
+  expect(chat.hooks.voiceReadiness.getSnapshot()).toBe('ready')
+
+  capture.publishCatalog({ ...READY_CATALOG, providers: [] })
+  await flush()
+  expect(chat.hooks.voiceReadiness.getSnapshot()).toBe('missing')
+
+  const provider = READY_CATALOG.providers[0]!
+  capture.publishCatalog({
+    ...READY_CATALOG,
+    providers: [{ ...provider, preparation: { phase: 'downloading', resource: 'model.int8.onnx', completedBytes: 10 } }],
+  })
+  await flush()
+  expect(chat.hooks.voiceReadiness.getSnapshot()).toBe('preparing')
 })
 
 it('treats absent voice services as no-ops', async () => {

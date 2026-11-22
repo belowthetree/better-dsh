@@ -42,7 +42,7 @@ import { BundleDetailSection } from './BundleDetailSection.tsx'
 import { ClientSyncNotice } from './ClientSyncNotice.tsx'
 import css from './PluginManagerPage.module.css'
 
-/** Full component props assembled by the main slot renderer. */
+/** Full component props assembled by the slot renderer of either placement: the main panel, or the form profile's modal entry. */
 export type PluginManagerPageProps =
   PropsRuntime<'main'>
   & PropsLocale<'pluginManager'>

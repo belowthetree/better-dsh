@@ -10,7 +10,7 @@ import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-voice-capture/client'
-import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
+import type { VoiceCaptureCatalog, VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type {} from '@deepseek-ai/dsh-client-ui-voice-output/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
@@ -22,7 +22,7 @@ import type { OrbOverlayInjected, OrbSurfaceActions } from './OrbLayer.tsx'
 import { ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE, OrbWorkbench, OrbWorkbenchConversation } from './OrbWorkbench.tsx'
 import type { OrbWorkbenchInjected } from './OrbWorkbench.tsx'
 import { QuickPrompt } from './QuickPrompt.tsx'
-import type { OrbChatActions, OrbChatInjected } from './QuickPrompt.tsx'
+import type { OrbChatActions, OrbChatInjected, VoiceReadiness } from './QuickPrompt.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './orb-locales.ts'
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
@@ -36,6 +36,8 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
 
 /** Diagnostic name of the capture observation, used when its stream fails. */
 const CAPTURE_OBSERVATION = 'capture'
+/** Diagnostic name of the recognition-catalog observation, used when its stream fails. */
+const CATALOG_OBSERVATION = 'speech readiness'
 /** Diagnostic name of the playback observation, used when its stream fails. */
 const PLAYBACK_OBSERVATION = 'playback'
 const CAPTURE_STATE_CHANNEL = 'better-interact/capture-state'
@@ -57,6 +59,19 @@ function parsePlaybackState(payload: unknown): Pick<VoiceOutputSnapshot, 'speaki
   if (typeof payload !== 'object') return undefined
   const { speaking } = payload as { readonly speaking?: unknown }
   return typeof speaking === 'boolean' ? { speaking } : undefined
+}
+
+/**
+ * Whether the selected recognizer can transcribe now: it must exist, and a
+ * local provider must have its model loaded or loadable without a download.
+ * @param catalog - complete recognition catalog from the Host.
+ * @returns the readiness the microphone button reports.
+ */
+function readinessOf(catalog: VoiceCaptureCatalog): VoiceReadiness {
+  const provider = catalog.providers.find(item => item.id === catalog.selection.providerId)
+  if (provider === undefined) return 'missing'
+  const phase = provider.preparation.phase
+  return phase === 'ready' || phase === 'standby' || phase === 'waking' ? 'ready' : 'preparing'
 }
 
 /** Destination of one continuous voice observation. */
@@ -117,6 +132,7 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   const capture = createSnapshotStore<VoiceCaptureSnapshot | null>(null)
   const capturePhase = createSnapshotStore<Pick<VoiceCaptureSnapshot, 'phase'> | null>(null)
   const voice = createSnapshotStore<Pick<VoiceOutputSnapshot, 'speaking'> | null>(null)
+  const readiness = createSnapshotStore<VoiceReadiness>('connecting')
   const publishCapture = (value: VoiceCaptureSnapshot | null, force = false): void => {
     capture.set(value)
     const next = value === null ? null : { phase: value.phase }
@@ -144,6 +160,12 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
         }, CAPTURE_OBSERVATION)
         return async () => { await stop(); publishCapture(null) }
       }, 'orb: capture observation')
+      scope.effect(() => {
+        const stop = observe(signal => service.followCatalog(signal), {
+          set: (catalog) => { readiness.set(readinessOf(catalog)) },
+        }, CATALOG_OBSERVATION)
+        return async () => { await stop(); readiness.set('connecting') }
+      }, 'orb: speech readiness observation')
     })
     ctx.inject(['voiceOutput'], (scope) => {
       const service = scope.voiceOutput
@@ -320,7 +342,7 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   const chatActions: OrbChatActions = {
     takeTranscript, submit: submitPrompt, startDictation, finishDictation, cancelDictation,
   }
-  const chat: OrbChatInjected = { hooks: { capture }, actions: chatActions }
+  const chat: OrbChatInjected = { hooks: { capture, voiceReadiness: readiness }, actions: chatActions }
   ctx.slots.inject('shell.modal', () => ctx.slots.register({
     name: 'shell.modal', id: ORB_CHAT_MODAL_ID, locale: NS, inject: () => chat,
   }, QuickPrompt))

@@ -16,6 +16,7 @@ import type { LocaleSnapshot } from '@deepseek-ai/dsh-client-locale/client'
 import { bundleDetailKey, type BundleDetailsState } from '../src/client/detail-store.ts'
 import { createNavigationStore } from '../src/client/navigation-store.ts'
 import { PluginManagerPage } from '../src/client/PluginManagerPage.tsx'
+import { PluginsModalPage } from '../src/client/PluginsModalPage.tsx'
 import { PluginRefreshToast } from '../src/client/PluginRefreshToast.tsx'
 import type { PluginManagerPageProps } from '../src/client/index.ts'
 import type { PluginTab } from '../src/client/tab-ledger.ts'
@@ -237,6 +238,20 @@ function renderTab(
     },
   }
 }
+
+describe('PluginsModalPage', () => {
+  it('draws the frame\'s wide modal card around the page', () => {
+    const b = renderTab()
+    const { container } = render(<PluginsModalPage {...b.props} />)
+    const card = container.querySelector<HTMLElement>('[data-shell-modal-wide]')
+    if (card === null) throw new Error('the modal card host did not mount')
+    expect(card.getAttribute('aria-label')).toBe(en.title)
+    expect(card.hasAttribute('data-shell-modal-fill')).toBe(true)
+    expect(card.getAttribute('data-shell-modal-surface')).toBe('bare')
+    // The page renders inside the host's own card surface.
+    expect(card.querySelector('[data-plugin-panel]')).not.toBeNull()
+  })
+})
 
 describe('PluginManagerPage', () => {
   it('reports this page\'s client plugin synchronization on every view and retries it', () => {

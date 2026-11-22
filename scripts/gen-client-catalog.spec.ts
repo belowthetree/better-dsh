@@ -8,8 +8,10 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import ts from 'typescript'
 import { collectSlotEntries, oversizedSlotReports, resolveSlotEntries, validateSlotContracts } from './gen-client-catalog.ts'
-import type { SlotDeclaration, SlotRegistration, TypeDeclaration } from './slot-walk.ts'
+import { slotRegistrations } from './slot-walk.ts'
+import type { ScannedFile, SlotDeclaration, SlotRegistration, TypeDeclaration } from './slot-walk.ts'
 
 /** A declaration with every field the catalog needs, overridable per case. */
 function declaration(over: Partial<SlotDeclaration> = {}): SlotDeclaration {
@@ -232,6 +234,33 @@ describe('the per-slot report budget', () => {
   it('passes a slot whose report stays within the budget', () => {
     const entries = resolveSlotEntries([declaration({ ownerType: 'DemoOwnerProps' })], [], OWNER_TYPES, new Map())
     expect(oversizedSlotReports(entries)).toEqual([])
+  })
+})
+
+describe('registration children tables', () => {
+  /** One synthetic client source file the scanner reads registrations from. */
+  function scanned(source: string): ScannedFile {
+    return {
+      rel: 'packages/client/demo/src/client/index.ts',
+      package: '@deepseek-ai/dsh-client-demo',
+      sf: ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+    }
+  }
+
+  it('reads a table one component shares through a same-file const', () => {
+    const file = scanned([
+      "const PAGE_CHILDREN = { 'demo.seat': { kind: 'list', scope: 'root' } } as const",
+      "ctx.slots.register({ name: 'demo.parent', children: PAGE_CHILDREN }, Demo)",
+    ].join('\n'))
+    expect(slotRegistrations(file).map(registration => registration.children)).toEqual([['demo.seat']])
+  })
+
+  it('reports no children for a table it cannot read', () => {
+    const file = scanned([
+      'const TABLE = makeTable()',
+      "ctx.slots.register({ name: 'demo.parent', children: TABLE }, Demo)",
+    ].join('\n'))
+    expect(slotRegistrations(file).map(registration => registration.children)).toEqual([[]])
   })
 })
 

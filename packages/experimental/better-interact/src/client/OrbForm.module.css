@@ -355,6 +355,13 @@
   white-space: nowrap;
 }
 
+.promptStatus[data-notice='voiceSignInRequired'] {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 /* Dictation rides the composer's trailing controls: the same 28px ghost control
    as the shared microphone, with the recording state carrying the fill. */
 .promptMic {

@@ -4747,6 +4747,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'root\' (client-ui-layout), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-plugin-manager PluginsModalPage',
       'client-ui-settings-general SettingsModalSurface',
       'better-interact WorkbenchDialog',
       'better-interact QuickPrompt',

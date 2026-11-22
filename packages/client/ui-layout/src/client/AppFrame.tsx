@@ -239,7 +239,9 @@ function PresentationRoot({ presentation, modal, renderSlot, dismissModal }: {
     <div className={css.surfaceRoot} data-surface={presentation}>
       <div className={css.overlayLayer} data-shell-overlay>{overlays}</div>
       {presentation === 'modal' && modal !== null && (
-        <ModalLayer modal={modal} renderSlot={renderSlot} dismissModal={dismissModal} />
+        // One layer per entry: switching the presented entry mounts its own
+        // focus trap instead of leaving focus on the entry that just left.
+        <ModalLayer key={modal} modal={modal} renderSlot={renderSlot} dismissModal={dismissModal} />
       )}
     </div>
   )

@@ -215,7 +215,7 @@ it('maps a rejected transcription to the transcribe failure', async () => {
   const b = fixture({ transcribe: { ok: false, error: failure } })
   installFrames()
   await b.service.begin()
-  await expect(b.service.finish()).rejects.toMatchObject({ failure: 'transcribe', message: 'recognizer offline' })
+  await expect(b.service.finish()).rejects.toMatchObject({ failure: 'transcribe', message: 'recognizer offline', cause: failure })
   expect(b.service.snapshot()).toMatchObject({ phase: 'idle', failure: 'transcribe' })
   expect(audio.close).toHaveBeenCalled()
 })

@@ -1,5 +1,5 @@
 /** Mounting owns the Remote contribution and the provided service for one plugin lifetime. */
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { VoiceOutput } from '../src/protocol.ts'
@@ -44,6 +44,9 @@ function fixture(options: { audio?: AudioFixture } = {}): Fixture {
     expect(contribution).toBe(CONTRIBUTION)
     return unmount
   } })
+  // The mount reads the namespace through its injected scope, as it does against
+  // the gateway's own namespace fiber in the shipped composition.
+  ctx.provide('remote.speechOutput', speech.namespace)
   return { ctx, speech, audio: options.audio ?? audioFixture(), unmount }
 }
 
@@ -79,6 +82,29 @@ describe('mountVoiceOutput', () => {
     const dispose = await mountVoiceOutput(b.ctx, CONTRIBUTION, { audio: b.audio.factory })
     expect(b.ctx.get('voiceOutput')).toBeUndefined()
     expect(b.unmount).not.toHaveBeenCalled()
+    await dispose()
+  })
+
+  it('reaches a namespace the Remote gateway provides from its own fiber', async () => {
+    const ctx = new Context()
+    roots.push(ctx)
+    const speech = speechFixture()
+    const audio = audioFixture()
+    const unmount = vi.fn(async () => {})
+    class Remote extends Service {
+      constructor() { super(ctx, 'remote') }
+      async $mount(): Promise<() => Promise<void>> { return unmount }
+    }
+    new Remote()
+    // The shipped gateway registers each mounted namespace as its own service in
+    // a fiber of its own; a sibling plugin only reaches it through an injecting scope.
+    await ctx.plugin((scoped: Context) => { scoped.provide('remote.speechOutput', speech.namespace) })
+    const dispose = await mountVoiceOutput(ctx, CONTRIBUTION, { audio: audio.factory })
+    const speaking = voiceOutputOf(ctx).speak('hello')
+    await settle()
+    expect(speech.synthesize).toHaveBeenCalledOnce()
+    voiceOutputOf(ctx).stop()
+    await speaking
     await dispose()
   })
 

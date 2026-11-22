@@ -214,7 +214,7 @@ export function slotRegistrations(file: ScannedFile): SlotRegistration[] {
             ...node.expression.name.text === 'registerFactory' ? { factory: true } : {},
             ...id === undefined ? {} : { id },
             ...entryKey === undefined ? {} : { entryKey },
-            children: childKeys(options),
+            children: childKeys(options, file.sf),
             source: `${file.rel}:${String(lineOf(file.sf, node))}`,
           })
         }
@@ -414,15 +414,54 @@ function stringProperty(options: ts.ObjectLiteralExpression, name: string): stri
 }
 
 /** The SlotMap keys a registration's `children` table declares. */
-function childKeys(options: ts.ObjectLiteralExpression): string[] {
+function childKeys(options: ts.ObjectLiteralExpression, sf: ts.SourceFile): string[] {
   for (const property of options.properties) {
     if (!ts.isPropertyAssignment(property)) continue
     if (memberName(property.name) !== 'children') continue
-    if (!ts.isObjectLiteralExpression(property.initializer)) return []
-    return property.initializer.properties
+    const table = tableLiteral(property.initializer, sf)
+    if (table === undefined) return []
+    return table.properties
       .flatMap(child => (child.name === undefined ? [] : [memberName(child.name)]))
   }
   return []
+}
+
+/**
+ * The object literal a `children` initializer names: written inline, or the
+ * same-file `const` holding one table that several placements of one component
+ * share. Any other initializer carries no readable declaration.
+ * @param initializer - the property's initializer expression.
+ * @param sf - source file the table may be declared in.
+ * @returns the table literal, or undefined when the initializer is not one.
+ */
+function tableLiteral(initializer: ts.Expression, sf: ts.SourceFile): ts.ObjectLiteralExpression | undefined {
+  const written = unwrapTable(initializer)
+  if (ts.isObjectLiteralExpression(written)) return written
+  if (!ts.isIdentifier(written)) return undefined
+  for (const statement of sf.statements) {
+    if (!ts.isVariableStatement(statement)) continue
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== written.text) continue
+      if (declaration.initializer === undefined) return undefined
+      const value = unwrapTable(declaration.initializer)
+      return ts.isObjectLiteralExpression(value) ? value : undefined
+    }
+  }
+  return undefined
+}
+
+/**
+ * The expression a declaration writes, past the type-level wrappers that keep
+ * a table's literal shape: `as const`, `satisfies T`, and parentheses.
+ * @param expression - the written expression.
+ * @returns the wrapped expression.
+ */
+function unwrapTable(expression: ts.Expression): ts.Expression {
+  let current = expression
+  while (ts.isAsExpression(current) || ts.isSatisfiesExpression(current) || ts.isParenthesizedExpression(current)) {
+    current = current.expression
+  }
+  return current
 }
 
 /** The component argument as written; a non-identifier expression is collapsed. */

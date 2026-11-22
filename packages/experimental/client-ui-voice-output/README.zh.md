@@ -41,7 +41,7 @@ kind: "package-reference"
 <details>
 <summary>维护者信息 — 点击展开</summary>
 
-插件一步完成两件事：挂载 `speechOutput` Remote 贡献并提供 `ctx.voiceOutput`；移除插件时两者一起撤回。播放会读取一次各提供方公布的音色（按 id 去重，`stella` 与 `tide` 来自 DeepSeek 提供方），并把目录的 `maxTextChars` 作为每次请求的文本上限；更长的回复被截断，而不是拆成多次计费请求。
+插件一步完成两件事：挂载 `speechOutput` Remote 贡献并提供 `ctx.voiceOutput`；移除插件时两者一起撤回。网关挂载的命名空间是它自己 fiber 上的服务，兄弟插件无法按属性读取，因此服务运行在注入 `remote.speechOutput` 的作用域中，并通过该作用域调用 Remote。播放会读取一次各提供方公布的音色（按 id 去重，`stella` 与 `tide` 来自 DeepSeek 提供方），并把目录的 `maxTextChars` 作为每次请求的文本上限；更长的回复被截断，而不是拆成多次计费请求。
 
 自动播放不属于 React 组件。`ActiveReplyObserver` 通过客户端对象层读取活动会话：`ctx.sessions.list` 中主视图保留的那一行，再借用其 `SessionBinding` 的事件窗口。它只消费追加的持久事件与助手结算事件，因此替换窗口与更早分页（首次打开、重连基线、历史翻页）不会把整段对话当作新回复重放。`turn/start` 让上一轮的播放过期，`assistant/message` 中可见的文本块成为候选回复；工具结果、用户消息、无消息的尝试与仅含推理的消息从不朗读。
 

@@ -15,12 +15,18 @@ export async function mountVoiceCapture(ctx: Context, contribution: TypertRemote
   const surface = ctx.get('surface')?.snapshot()
   if (surface?.form === 'orb' && surface.role !== 'surface') return async () => {}
   const disposeRemote = await ctx.remote.$mount(contribution)
-  const service = new VoiceCaptureService(ctx)
-  ctx.effect(() => () => service.dispose(), 'voice capture: service disposal')
-  const withdraw = ctx.provide('voiceCapture', service)
+  // The namespace service is provided inside the Remote gateway's own fiber,
+  // which no sibling fiber reads without injecting it. The capture service runs
+  // in a scope that injects the namespace, like every consumer of a generated
+  // Remote, so its calls resolve through the scope rather than the plugin body.
+  const capture = ctx.inject(['remote.speech'], (scoped) => {
+    const service = new VoiceCaptureService(scoped)
+    scoped.effect(() => () => service.dispose(), 'voice capture: service disposal')
+    scoped.provide('voiceCapture', service)
+  })
+  await capture
   return async () => {
-    withdraw()
-    await service.dispose()
+    await capture.dispose()
     await disposeRemote()
   }
 }

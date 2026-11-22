@@ -44,9 +44,10 @@ class CaptureError extends Error implements VoiceCaptureError {
   /**
    * @param failure - closed failure member naming what went wrong.
    * @param message - diagnostic message the caller localizes for unrecognized failures.
+   * @param options - the originating Remote or recorder failure.
    */
-  constructor(readonly failure: VoiceCaptureFailure, message: string) {
-    super(message)
+  constructor(readonly failure: VoiceCaptureFailure, message: string, options?: ErrorOptions) {
+    super(message, options)
     this.name = 'VoiceCaptureError'
   }
 }
@@ -314,7 +315,7 @@ export class VoiceCaptureService implements VoiceCapture {
   #reject(error: unknown, failure: VoiceCaptureFailure): VoiceCaptureError {
     const message = error instanceof Error ? error.message : String(error)
     this.#publish({ phase: 'idle', level: 0, failure })
-    return new CaptureError(failure, message)
+    return new CaptureError(failure, message, { cause: error })
   }
 
   /**

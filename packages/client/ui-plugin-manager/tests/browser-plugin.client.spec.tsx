@@ -13,11 +13,12 @@ import { allowAllAccess, StaticRemoteAccess, TestRemote, usePinnedBrowserLanguag
 import * as settings from '@deepseek-ai/dsh-client-ui-settings/client'
 import { apply, inject, NS, PANEL_ID } from '../src/client/index.ts'
 import { PluginManagerPage } from '../src/client/PluginManagerPage.tsx'
+import { PluginsModalPage } from '../src/client/PluginsModalPage.tsx'
 import { PluginRefreshToast, type PluginRefreshToastFace } from '../src/client/PluginRefreshToast.tsx'
 import { PluginsPanelIcon } from '../src/client/PluginsPanelIcon.tsx'
 import type { PluginManagerFace } from '../src/client/manager-store.ts'
 import type { createNavigationStore } from '../src/client/navigation-store.ts'
-import type { PluginsSettingsLinkInjected } from '../src/client/PluginsSettingsLink.tsx'
+import { PluginsSettingsLink, type PluginsSettingsLinkInjected } from '../src/client/PluginsSettingsLink.tsx'
 import type { ClientSyncFace } from '../src/client/PluginManagerPage.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
@@ -65,7 +66,19 @@ class SwitchableAccess extends Service {
   }
 }
 
-async function bench(allows: ((action: string) => boolean) | 'switchable' = () => true) {
+/** The classic frame's carrier: no presentation commands, no form. */
+const CLASSIC_SURFACE = {
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
+  orbDocked: false, orbHovered: false, modalOpen: false,
+} as const
+
+/** The form profile's carrier: the page has no main column to occupy. */
+const FORM_SURFACE = {
+  form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null,
+  orbDocked: false, orbHovered: false, modalOpen: false,
+} as const
+
+async function bench(allows: ((action: string) => boolean) | 'switchable' = () => true, form = false) {
   const ctx = new Context()
   onTestFinished(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(SlotRegistry).await()
@@ -95,11 +108,16 @@ async function bench(allows: ((action: string) => boolean) | 'switchable' = () =
   const selectPanel = vi.fn<ILayout['selectPanel']>((activePanelId) => { panelInfo.set({ activePanelId }) })
   const clientSync = createSnapshotStore({ syncing: false, failures: [] as { id: string; message: string }[] })
   const retryClient = vi.fn(() => Promise.resolve())
+  const presentModal = vi.fn(() => Promise.resolve())
   ctx.provide('modules', { entries: { state: clientSync, retry: retryClient } })
   ctx.provide('layout', { panelInfo, selectPanel, beginNavigation: () => new AbortController().signal,
     toggleSidebar: vi.fn(), openRightbar: vi.fn(), closeRightbar: vi.fn() })
+  ctx.provide('surface', { snapshot: () => (form ? FORM_SURFACE : CLASSIC_SURFACE), presentModal })
   await ctx.plugin(settings).await()
-  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, list, remote, selectPanel, panelInfo, access, clientSync, retryClient }
+  return {
+    ctx, slots: ctx.get('slots') as SlotRegistry, locale, list, remote, selectPanel, panelInfo, access, clientSync,
+    retryClient, presentModal,
+  }
 }
 
 function declare(slots: SlotRegistry): () => void {
@@ -183,9 +201,12 @@ describe('ui-plugin-manager browser plugin', () => {
     const navigation = (b.slots.entries('main')[0]!.store as ReturnType<typeof createNavigationStore>).create()
     navigation.actions.setView({ kind: 'more' })
     const linkInjected: object = link.inject!()
+    // The classic shell leaves the dialog for the main column; no modal is presented.
+    expect((linkInjected as PluginsSettingsLinkInjected).dismissSettings).toBe(true)
     ;(linkInjected as PluginsSettingsLinkInjected).openPlugins()
     expect(b.panelInfo.getSnapshot().activePanelId).toBe(PANEL_ID)
     expect(navigation.getSnapshot()).toEqual({ tab: 'installed', view: { kind: 'list' } })
+    expect(b.presentModal).not.toHaveBeenCalled()
     // The page reads this page's client synchronization from the module system and retries through it.
     const pageInjected: object = b.slots.entries('main')[0]!.inject!()
     const sync = pageInjected as ClientSyncFace
@@ -238,7 +259,56 @@ describe('ui-plugin-manager browser plugin', () => {
   })
 
   it('declares only the services the page and its Remote methods use', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.pluginManager', 'remote.pluginInventory', 'remote.pluginRegistryProbe', 'configForms', 'layout', 'remoteAccess', 'modules'])
+    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.pluginManager', 'remote.pluginInventory', 'remote.pluginRegistryProbe', 'configForms', 'layout', 'remoteAccess', 'modules', 'surface'])
+  })
+
+  it('keeps the page in the frame\'s modal card on a form profile and presents it from navigation and Settings', async () => {
+    const b = await bench(() => true, true)
+    const removeRoot = b.slots.register({
+      name: 'root',
+      children: {
+        'main': { kind: 'keyed', scope: 'root' },
+        'shell.overlay': { kind: 'list', scope: 'root' },
+        'sidebar.panellist': { kind: 'list', scope: 'root' },
+        'settings.section': { kind: 'list', scope: 'root' },
+        'shell.modal': { kind: 'list', scope: 'root' },
+      },
+    } as never, () => null)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    // A form profile renders no main column, so the page's one declaring registration is its modal card.
+    expect(b.slots.entries('main')).toEqual([])
+    const entry = b.slots.entries('shell.modal').find(item => item.options.id === PANEL_ID)!
+    expect(entry.component).toBe(PluginsModalPage)
+    expect(entry.locale).toBe(NS)
+    expect(b.slots.spec('plugins.item')).toMatchObject({ kind: 'list', scope: 'root' })
+    expect(b.slots.spec('plugins.row.config')).toMatchObject({ kind: 'keyed', scope: 'root' })
+    assert(entry.store && 'create' in entry.store)
+    const navigation = entry.store.create()
+    b.ctx.pluginNavigation.openList()
+    // The carrier's card carries the page; no main panel is selected.
+    expect(b.presentModal).toHaveBeenCalledWith(PANEL_ID, { heightRatio: 0.85, width: 1152 })
+    expect(b.selectPanel).not.toHaveBeenCalled()
+    expect(navigation.getSnapshot()).toEqual({ tab: 'installed', view: { kind: 'list' } })
+    b.ctx.pluginNavigation.openBundle('dsh-navigation-test')
+    expect(b.presentModal).toHaveBeenCalledTimes(2)
+    expect(navigation.getSnapshot()).toEqual({ tab: 'installed', view: { kind: 'package', name: 'dsh-navigation-test' } })
+    // Settings offers the same entry; it presents into the modal Settings occupies instead of leaving it.
+    const link = b.slots.entries('settings.section')[0]!
+    expect(link.component).toBe(PluginsSettingsLink)
+    expect(link.options).toMatchObject({ id: PANEL_ID, order: 15 })
+    const linkInjected: object = link.inject!()
+    expect((linkInjected as PluginsSettingsLinkInjected).dismissSettings).toBe(false)
+    ;(linkInjected as PluginsSettingsLinkInjected).openPlugins()
+    expect(b.presentModal).toHaveBeenCalledTimes(3)
+    expect(navigation.getSnapshot()).toEqual({ tab: 'installed', view: { kind: 'list' } })
+    // A carrier that rejects the presentation leaves navigation working; the failure is reported, not thrown.
+    b.presentModal.mockRejectedValueOnce(new Error('window is gone'))
+    b.ctx.pluginNavigation.openList()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(navigation.getSnapshot()).toEqual({ tab: 'installed', view: { kind: 'list' } })
+    removeRoot()
+    expect(b.slots.entries('shell.modal').filter(item => item.options.id === PANEL_ID)).toEqual([])
   })
 
   it('reads the Host again on a later grant after showing the page, and not while access is withdrawn', async () => {

@@ -105,7 +105,10 @@ export default class SpeechController extends TypertRemoteService {
     } catch (error) {
       signal.throwIfAborted()
       const reason = error instanceof Error ? error.message : String(error)
-      throw new RemoteError('speech/transcription-failed', reason, { reason })
+      const providerCode = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+        ? error.code : undefined
+      throw new RemoteError('speech/transcription-failed', reason,
+        { reason, ...providerCode === undefined ? {} : { providerCode } })
     }
   }
 }

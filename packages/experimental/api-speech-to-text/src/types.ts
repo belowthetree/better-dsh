@@ -6,8 +6,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** Audio encoding or intake limits prevented transcription. */
     'speech/invalid-audio': { readonly reason: string }
-    /** The selected provider rejected transcription. */
-    'speech/transcription-failed': { readonly reason: string }
+    /** The selected provider rejected transcription; providerCode preserves its stable failure class when present. */
+    'speech/transcription-failed': { readonly reason: string; readonly providerCode?: string }
   }
 }
 

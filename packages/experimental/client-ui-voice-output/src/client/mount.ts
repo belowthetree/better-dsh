@@ -21,14 +21,19 @@ export async function mountVoiceOutput(
   const surface = ctx.get('surface')?.snapshot()
   if (surface?.form === 'orb' && surface.role !== 'surface') return async () => {}
   const disposeRemote = await ctx.remote.$mount(contribution)
-  const service = new VoiceOutputService(ctx, options)
-  ctx.effect(() => () => { service.dispose() }, 'voice output: playback disposal')
-  void ctx.inject(['sessions'], scoped => service.observe(scoped.sessions))
-  void ctx.inject(['voiceCapture'], scoped => service.observeCapture(scoped.voiceCapture))
-  const withdraw = ctx.provide('voiceOutput', service)
+  // The namespace service is provided inside the Remote gateway's own fiber,
+  // which no sibling fiber reads without injecting it: the playback service
+  // therefore runs in a scope that injects the namespace.
+  const output = ctx.inject(['remote.speechOutput'], (scoped) => {
+    const service = new VoiceOutputService(scoped, options)
+    scoped.effect(() => () => { service.dispose() }, 'voice output: playback disposal')
+    void scoped.inject(['sessions'], inner => service.observe(inner.sessions))
+    void scoped.inject(['voiceCapture'], inner => service.observeCapture(inner.voiceCapture))
+    scoped.provide('voiceOutput', service)
+  })
+  await output
   return async () => {
-    withdraw()
-    service.dispose()
+    await output.dispose()
     await disposeRemote()
   }
 }

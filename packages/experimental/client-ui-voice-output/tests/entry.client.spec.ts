@@ -22,6 +22,9 @@ function fixture() {
   const disposeRemote = vi.fn(async () => {})
   const mount = vi.fn(async () => disposeRemote)
   ctx.provide('remote', { $mount: mount, speechOutput: speech.namespace } as never)
+  // The shipped gateway provides the mounted namespace as its own service; the
+  // entry reaches it through the scope that injects it.
+  ctx.provide('remote.speechOutput', speech.namespace)
   return { ctx, mount }
 }
 

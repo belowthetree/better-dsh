@@ -1,6 +1,7 @@
 /**
  * Plugin manager, browser half: the **Plugins** entry of the sidebar and the
- * management page it opens in the main column. The page installs, enables,
+ * management page it opens in the main column, or in the frame's modal card on
+ * a form profile, which renders no column. The page installs, enables,
  * disables, and removes the bundles of the Host's profile through the
  * `pluginManager` Remote and switches their rows in the profile's user layer.
  * A plugin that carries its own configuration renders it on this page through
@@ -11,10 +12,13 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: the ctx.modules Context merge.
 import type {} from '@deepseek-ai/dsh-client-modules/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-// Type-only: the root `main` keyed slot the page registers into, declared by
-// ui-layout with the panel id brand, and the `sidebar.panellist` list the
-// entry registers into, declared by ui-sidebar.
+// Type-only: the root `main` keyed slot and the `shell.modal` list slot the
+// page registers into, declared by ui-layout with the panel id brand, and the
+// `sidebar.panellist` list the entry registers into, declared by ui-sidebar.
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+// Type-only: the ctx.surface Context merge, and the size hint the form
+// profile's modal presentation accepts.
+import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -26,6 +30,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // through the owning package's client-safe types subpath).
 import type {} from '@deepseek-ai/dsh-plugin-manager/types'
 import { PluginManagerPage } from './PluginManagerPage.tsx'
+import { PluginsModalPage } from './PluginsModalPage.tsx'
 import { createPluginHeaderRef } from './header-scroll.ts'
 import { PluginRefreshToast, type PluginRefreshToastFace } from './PluginRefreshToast.tsx'
 import { PluginsPanelIcon } from './PluginsPanelIcon.tsx'
@@ -49,7 +54,7 @@ declare module '@deepseek-ai/cordis' {
       bundle(packageName: string): HostObservable<boolean>
     }
 
-    /** Cross-plugin navigation to the Plugins panel. */
+    /** Cross-plugin navigation to the Plugins page. */
     pluginNavigation: {
       /**
        * Open a bundle's details without changing the current Session.
@@ -57,7 +62,11 @@ declare module '@deepseek-ai/cordis' {
        * @param packageName - npm package name of the bundle.
        */
       openBundle(packageName: string): void
-      /** Open the Plugins main list without opening a dialog or changing the current Session. */
+      /**
+       * Open the Plugins main list without opening a dialog or changing the
+       * current Session. A form profile, which renders no main column,
+       * presents the page in its modal card instead.
+       */
       openList(): void
     }
   }
@@ -85,8 +94,31 @@ export const NS = 'pluginManager'
 /** The id shared by the sidebar entry and the main panel it opens. */
 export const PANEL_ID = 'plugins' as MainPanelId
 
+/**
+ * Dialog size of the form profile's Plugins card: the page's 960-pixel column
+ * plus its own insets, inside the frame's 24-pixel backdrop margin.
+ */
+const PLUGINS_MODAL_SIZE: ModalSizeHint = { heightRatio: 0.85, width: 1152 }
+
+/**
+ * Slots the page declares for other plugins' contributions. The page has one
+ * declaring registration per profile — the main column, or the form profile's
+ * modal card — so the two placements share this table.
+ */
+const PAGE_CHILDREN = {
+  'plugins.add.actions': { kind: 'list', scope: 'root' },
+  'plugins.tab': { kind: 'list', scope: 'root' },
+  'plugins.item': { kind: 'list', scope: 'root' },
+  'plugins.bundle.activation': { kind: 'keyed', scope: 'root' },
+  'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
+  'plugins.row.config': { kind: 'keyed', scope: 'root' },
+  'plugins.detail.actions': { kind: 'list', scope: 'root' },
+  'plugins.detail.badge': { kind: 'list', scope: 'root' },
+  'plugins.detail.section': { kind: 'list', scope: 'root' },
+} as const
+
 /** Services required by the sidebar registration, the Remote methods, and access; the inventory says whether the Host manages a profile. */
-export const inject = ['slots', 'locale', 'remote', 'remote.pluginManager', 'remote.pluginInventory', 'remote.pluginRegistryProbe', 'configForms', 'layout', 'remoteAccess', 'modules']
+export const inject = ['slots', 'locale', 'remote', 'remote.pluginManager', 'remote.pluginInventory', 'remote.pluginRegistryProbe', 'configForms', 'layout', 'remoteAccess', 'modules', 'surface']
 
 /**
  * Contribute the Plugins entry to the sidebar with the management page it
@@ -129,58 +161,76 @@ export function apply(ctx: ClientContext): void {
         dismissNotice: face.dismissNotice,
       }),
     }, PluginRefreshToast))
-    yield ctx.slots.inject('main', function* () {
-      const handle = createNavigationStore(), instance = handle.create()
-      const store: typeof handle = { ...handle, create: () => instance }
-      yield ctx.slots.register({
-        name: 'main',
-        key: PANEL_ID,
+    // A form profile renders no main column, so its Plugins page lives in the
+    // frame's modal card: the settings entry and every navigation caller
+    // present that card instead of selecting a panel.
+    const formProfile = ctx.surface.snapshot().presentation !== 'classic'
+    const handle = createNavigationStore(), instance = handle.create()
+    const store: typeof handle = { ...handle, create: () => instance }
+    const pageInjected = () => ({
+      ...face,
+      createHeaderRef: createPluginHeaderRef,
+      hooks: { ...face.hooks, clientSync: ctx.modules.entries.state },
+      retryClient: () => { void ctx.modules.entries.retry().catch((error: unknown) => { ctx.logger.error(error) }) },
+    })
+    /** Show the page where this shell renders it: the main column, or the form modal. */
+    const showPage = (): void => {
+      if (!formProfile) { ctx.layout.selectPanel(PANEL_ID); return }
+      ctx.surface.presentModal(PANEL_ID, PLUGINS_MODAL_SIZE).catch((error: unknown) => {
+        ctx.logger.error(error)
+      })
+    }
+    const openList = (): void => {
+      showPage()
+      instance.actions.setTab('installed')
+      instance.actions.setView({ kind: 'list' })
+    }
+    // The classic shell shows the page in its main column; a form profile
+    // renders no column, so the page occupies the frame's modal card instead.
+    // A slot key has one declaring owner, so a profile registers exactly one;
+    // the main column's placement leads because it owns the page's slots in the
+    // shipped composition.
+    if (!formProfile) {
+      yield ctx.slots.inject('main', function* () {
+        yield ctx.slots.register({
+          name: 'main',
+          key: PANEL_ID,
+          locale: NS,
+          store,
+          inject: pageInjected,
+          children: PAGE_CHILDREN,
+        }, PluginManagerPage)
+        yield ctx.layout.panelInfo.subscribe(() => {
+          if (ctx.layout.panelInfo.getSnapshot().activePanelId !== PANEL_ID) instance.actions.setView({ kind: 'list' })
+        })
+      })
+    } else {
+      yield ctx.slots.inject('shell.modal', () => ctx.slots.register({
+        name: 'shell.modal',
+        id: PANEL_ID,
         locale: NS,
         store,
-        inject: () => ({
-          ...face,
-          createHeaderRef: createPluginHeaderRef,
-          hooks: { ...face.hooks, clientSync: ctx.modules.entries.state },
-          retryClient: () => { void ctx.modules.entries.retry().catch((error: unknown) => { ctx.logger.error(error) }) },
-        }),
-        children: {
-          'plugins.add.actions': { kind: 'list', scope: 'root' },
-          'plugins.tab': { kind: 'list', scope: 'root' },
-          'plugins.item': { kind: 'list', scope: 'root' },
-          'plugins.bundle.activation': { kind: 'keyed', scope: 'root' },
-          'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
-          'plugins.row.config': { kind: 'keyed', scope: 'root' },
-          'plugins.detail.actions': { kind: 'list', scope: 'root' },
-          'plugins.detail.badge': { kind: 'list', scope: 'root' },
-          'plugins.detail.section': { kind: 'list', scope: 'root' },
-        },
-      }, PluginManagerPage)
-      yield ctx.layout.panelInfo.subscribe(() => {
-        if (ctx.layout.panelInfo.getSnapshot().activePanelId !== PANEL_ID) instance.actions.setView({ kind: 'list' })
-      })
-      const openList = (): void => {
-        ctx.layout.selectPanel(PANEL_ID)
+        inject: pageInjected,
+        children: PAGE_CHILDREN,
+      }, PluginsModalPage))
+    }
+    const disposeNavigation = ctx.reflect.provide('pluginNavigation', {
+      openList,
+      openBundle: (packageName: string) => {
+        showPage()
         instance.actions.setTab('installed')
-        instance.actions.setView({ kind: 'list' })
-      }
-      const disposeNavigation = ctx.reflect.provide('pluginNavigation', {
-        openList,
-        openBundle: (packageName: string) => {
-          ctx.layout.selectPanel(PANEL_ID)
-          instance.actions.setTab('installed')
-          instance.actions.setView({ kind: 'package', name: packageName })
-        },
-      })
-      yield () => { void disposeNavigation() }
-      // Settings lists one entry that leads here.
-      yield ctx.slots.inject('settings.section', () => ctx.slots.register({
-        name: 'settings.section',
-        id: PANEL_ID,
-        order: 15,
-        label: () => t('settingsEntry'),
-        inject: (): PluginsSettingsLinkInjected => ({ openPlugins: openList }),
-      }, PluginsSettingsLink))
+        instance.actions.setView({ kind: 'package', name: packageName })
+      },
     })
+    yield () => { void disposeNavigation() }
+    // Settings lists one entry that leads here.
+    yield ctx.slots.inject('settings.section', () => ctx.slots.register({
+      name: 'settings.section',
+      id: PANEL_ID,
+      order: 15,
+      label: () => t('settingsEntry'),
+      inject: (): PluginsSettingsLinkInjected => ({ openPlugins: openList, dismissSettings: !formProfile }),
+    }, PluginsSettingsLink))
     yield ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
       name: 'sidebar.panellist',
       id: PANEL_ID,

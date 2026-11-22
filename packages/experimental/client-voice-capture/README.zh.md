@@ -29,7 +29,7 @@ kind: "package-reference"
 
 orb 形态只在 `surface` 渲染进程中挂载真实录音器。`orb` 与 `bubbles` 角色不挂载 Remote 或服务；Better 用主渲染进程的控制与阶段投影取代次级直接采集。
 
-`begin()` 获取所选麦克风并开始录音；并发采集、已释放的服务或获取失败都会拒绝。`finish()` 停止录音器，编码规范的 16 kHz 单声道 PCM16 WAV，用 `begin()` 时记住的选择请求语音 Remote 识别，并在服务回到 `idle` 后返回识别结果。`cancel()` 停止并丢弃录音，且从不上传。命令失败会让服务回到 `idle` 并携带封闭失败联合中的一个成员（`unavailable`、`permission`、`empty`、`cancelled`、`interrupted`、`deviceMissing`、`transcribe`），下一次 `begin()` 会清除它。没有专属成员的失败（包括被拒绝的 Remote 识别）都归为 `transcribe`，并在拒绝值上保留诊断信息。`finish({ hold: true })` 还会把转写发布到 `snapshot().pendingTranscript`，直到 `takeTranscript()` 取走一次，因此面板收起时也能在输入框出现之前完成采集。
+`begin()` 获取所选麦克风并开始录音；并发采集、已释放的服务或获取失败都会拒绝。`finish()` 停止录音器，编码规范的 16 kHz 单声道 PCM16 WAV，用 `begin()` 时记住的选择请求语音 Remote 识别，并在服务回到 `idle` 后返回识别结果。`cancel()` 停止并丢弃录音，且从不上传。命令失败会让服务回到 `idle` 并携带封闭失败联合中的一个成员（`unavailable`、`permission`、`empty`、`cancelled`、`interrupted`、`deviceMissing`、`transcribe`），下一次 `begin()` 会清除它。没有专属成员的失败（包括被拒绝的 Remote 识别）都归为 `transcribe`，并在拒绝值上保留诊断信息、在 `cause` 中保留原始失败。`finish({ hold: true })` 还会把转写发布到 `snapshot().pendingTranscript`，直到 `takeTranscript()` 取走一次，因此面板收起时也能在输入框出现之前完成采集。
 
 `setDevice(device)` 使用既有的 `dsh.voice-input.microphone` 存储键保存浏览器输入偏好，因此本包出现之前记录的偏好继续有效；空 id 表示跟随系统输入。`catalog()` 解开语音 Remote 目录并拒绝其错误分支，`followCatalog(signal)` 在传输重连之间保持镜像。`configure`、`prepare` 与 `cancelPreparation` 转发给语音 Remote，使消费者保留其选择与准备界面。`preview(device, onFailure, signal)` 为电平表获取一个麦克风，但不录音、不上传；中止信号会释放等待中或已完成的获取。
 
@@ -39,7 +39,7 @@ orb 形态只在 `surface` 渲染进程中挂载真实录音器。`orb` 与 `bub
 <details>
 <summary>实现细节——点击展开</summary>
 
-`/protocol` 导出是浏览器两侧共享的纯类型声明，运行时没有任何导入。`/client` 导出是 Cordis 插件：它挂载语音 Remote 贡献、构造服务，并在提供 `ctx.voiceCapture` 之前把服务释放注册为 fiber effect。释放按顺序执行：撤回服务以唤醒依赖者、服务释放全部录音器与预览、最后完成 Remote 卸载。
+`/protocol` 导出是浏览器两侧共享的纯类型声明，运行时没有任何导入。`/client` 导出是 Cordis 插件：它挂载语音 Remote 贡献、构造服务，并在提供 `ctx.voiceCapture` 之前把服务释放注册为 fiber effect。网关挂载的命名空间是它自己 fiber 上的服务，兄弟插件无法按属性读取，因此服务运行在注入 `remote.speech` 的作用域中，并通过该作用域调用 Remote。释放按顺序执行：撤回服务以唤醒依赖者、服务释放全部录音器与预览、最后完成 Remote 卸载。
 
 同一时间只有一个录音器实例，它属于服务而不是某个渲染控件。电平循环仅在 `capturing` 阶段通过 `requestAnimationFrame` 读取录音器分析器，其他阶段发布零值。`finish` 会把编码音频截断到宿主时长上限与由 `maxAudioBytes` 推导的字节上限中较小者，因此即使计时器超出，规范 WAV 仍处于 Remote 接收限制之内。设备中断、录音器错误与轨道结束都会先释放轨道，再发布失败。
 

@@ -71,6 +71,10 @@ it('preserves cancellation and reports recognizer failures', async () => {
   await expect(api.transcribe({ audioBase64: recording() }, AbortSignal.abort(new Error('cancel')))).rejects.toThrow('cancel')
   recognize.mockRejectedValueOnce(new Error('offline'))
   await expect(api.transcribe({ audioBase64: recording() }, new AbortController().signal)).rejects.toMatchObject({ code: 'speech/transcription-failed', message: 'offline' })
+  recognize.mockRejectedValueOnce(Object.assign(new Error('sign in required'), { code: 'DEEPSEEK_ASR_SIGN_IN_REQUIRED' }))
+  await expect(api.transcribe({ audioBase64: recording() }, new AbortController().signal)).rejects.toMatchObject({
+    code: 'speech/transcription-failed', details: { providerCode: 'DEEPSEEK_ASR_SIGN_IN_REQUIRED' },
+  })
   recognize.mockRejectedValueOnce('failed')
   await expect(api.transcribe({ audioBase64: recording() }, new AbortController().signal)).rejects.toMatchObject({ message: 'failed' })
 })

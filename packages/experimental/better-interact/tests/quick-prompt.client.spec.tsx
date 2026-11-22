@@ -7,7 +7,7 @@ import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import { afterEach, expect, it, vi } from 'vitest'
 import { QuickPrompt } from '../src/client/QuickPrompt.tsx'
-import type { QuickPromptProps } from '../src/client/QuickPrompt.tsx'
+import type { QuickPromptProps, VoiceReadiness } from '../src/client/QuickPrompt.tsx'
 import { zh } from '../src/client/orb-locales.ts'
 
 afterEach(cleanup)
@@ -26,8 +26,13 @@ function capture(phase: VoiceCaptureSnapshot['phase'], patch: Partial<VoiceCaptu
   }
 }
 
-function fixture(initial: { capture?: VoiceCaptureSnapshot | null; transcript?: string | null } = {}) {
+function fixture(initial: {
+  capture?: VoiceCaptureSnapshot | null
+  transcript?: string | null
+  readiness?: VoiceReadiness
+} = {}) {
   const captureStore = createSnapshotStore<VoiceCaptureSnapshot | null>(initial.capture ?? null)
+  const readinessStore = createSnapshotStore<VoiceReadiness>(initial.readiness ?? 'ready')
   const actions = {
     takeTranscript: vi.fn((): string | null => initial.transcript ?? null),
     submit: vi.fn(async () => {}),
@@ -37,11 +42,12 @@ function fixture(initial: { capture?: VoiceCaptureSnapshot | null; transcript?: 
   }
   const props = {
     useCapture: bindSnapshotSelector(captureStore),
+    useVoiceReadiness: bindSnapshotSelector(readinessStore),
     actions,
     t: makeTranslate(zh),
   } as QuickPromptProps
   render(<QuickPrompt {...props} />)
-  return { capture: captureStore, actions }
+  return { capture: captureStore, readiness: readinessStore, actions }
 }
 
 const input = (): HTMLTextAreaElement => document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
@@ -182,12 +188,49 @@ it('reports an empty transcript and a failed capture without changing the input'
   expect(input().value).toBe('keep me')
 })
 
+it('reports the DeepSeek sign-in requirement without exposing the diagnostic message', async () => {
+  const b = fixture({ capture: capture('capturing') })
+  const cause = {
+    code: 'speech/transcription-failed',
+    details: { providerCode: 'DEEPSEEK_ASR_SIGN_IN_REQUIRED' },
+  }
+  b.actions.finishDictation.mockRejectedValueOnce(new Error('private provider diagnostic', { cause }))
+  await click(mic() as HTMLElement)
+  act(() => { b.capture.set(capture('idle')) })
+  expect(status()?.textContent).toBe(zh['prompt.voiceSignInRequired'])
+  expect(status()?.getAttribute('data-notice')).toBe('voiceSignInRequired')
+  expect(status()?.textContent).not.toContain('private provider diagnostic')
+})
+
 it('reports a rejected recording start', async () => {
   const b = fixture({ capture: capture('idle') })
   b.actions.startDictation.mockRejectedValueOnce(new Error('microphone busy'))
   await click(mic() as HTMLElement)
   expect(status()?.textContent).toBe(zh['prompt.voiceFailed'])
   expect(b.actions.startDictation).toHaveBeenCalledOnce()
+})
+
+it('explains an unready recognizer instead of recording into a failure', async () => {
+  const b = fixture({ capture: capture('idle'), readiness: 'missing' })
+  await click(mic() as HTMLElement)
+  expect(b.actions.startDictation).not.toHaveBeenCalled()
+  expect(status()?.textContent).toBe(zh['prompt.voiceMissing'])
+  expect(status()?.getAttribute('data-notice')).toBe('voiceMissing')
+
+  act(() => { b.readiness.set('preparing') })
+  await click(mic() as HTMLElement)
+  expect(b.actions.startDictation).not.toHaveBeenCalled()
+  expect(status()?.textContent).toBe(zh['prompt.voicePreparing'])
+
+  act(() => { b.readiness.set('connecting') })
+  await click(mic() as HTMLElement)
+  expect(b.actions.startDictation).not.toHaveBeenCalled()
+  expect(status()?.textContent).toBe(zh['prompt.voiceConnecting'])
+
+  act(() => { b.readiness.set('ready') })
+  await click(mic() as HTMLElement)
+  expect(b.actions.startDictation).toHaveBeenCalledOnce()
+  expect(status()).toBeNull()
 })
 
 it('cancels the recording it started when the box unmounts', async () => {
