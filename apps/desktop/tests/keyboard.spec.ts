@@ -79,8 +79,8 @@ type KeyboardFixture = Omit<ReturnType<typeof installDesktopShortcuts>, 'attach'
 }
 // Electron is substituted at module load; fixtures implement the native members exercised by this installer.
 const installFixture = installDesktopShortcuts as (
-  getWindows: () => readonly (WindowFixture | BrowserWindow)[], userData: string,
-  platform: Parameters<typeof installDesktopShortcuts>[2], updateMenu: () => void,
+  getWindows: () => readonly (WindowFixture | BrowserWindow)[], systemOwner: () => WindowFixture | undefined,
+  userData: string, platform: Parameters<typeof installDesktopShortcuts>[3], updateMenu: () => void,
   overlayInput: (window: WindowFixture) => { readonly revision: number; readonly blocked: boolean },
 ) => KeyboardFixture
 type GuestsFixture = {
@@ -123,7 +123,7 @@ async function fixture(platform: 'macos' | 'windows' | 'linux' = 'macos') {
   const windows: WindowFixture[] = [window]
   const updateMenu = vi.fn()
   const updateOverlays = new DesktopUpdateOverlays()
-  const keyboard = installFixture(() => windows, root, platform, updateMenu,
+  const keyboard = installFixture(() => windows, () => windows[0], root, platform, updateMenu,
     window => updateOverlays.input(window))
   keyboard.attach(window)
   onTestFinished(() => { keyboard.dispose() })
@@ -909,4 +909,62 @@ it('reports an accelerator the operating system already owns as a failed registr
   })
   expect(f.contents.send.mock.calls.some(([channel, state]) =>
     channel === DESKTOP_IPC.shortcutsGlobalChanged && (state as SystemShortcutState).registrations[0]?.status === 'failed')).toBe(true)
+})
+
+it('routes an OS-global activation to the primary renderer even while a secondary window has focus', async () => {
+  const f = await fixture('macos')
+  const secondary = f.addWindow()
+  f.window.isFocused.mockReturnValue(false)
+  secondary.window.isFocused.mockReturnValue(true)
+  const system: ShortcutDefinition = { id: 'orb.toggle' as ShortcutCommandId, scope: 'system',
+    defaults: desktopDefaults({ code: 'KeyK', modifiers: ['primary'] }) }
+  const snapshot = await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet, [system])
+  f.contents.send.mockClear()
+  secondary.contents.send.mockClear()
+
+  globals.callbacks.get('Command+K')!()
+
+  expect(f.contents.send).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.shortcutsInput,
+    { kind: 'global', commandId: 'orb.toggle', revision: snapshot.revision })
+  expect(secondary.contents.send).not.toHaveBeenCalled()
+})
+
+it('accepts the system catalog only from the primary renderer regardless of renderer load order', async () => {
+  const f = await fixture('macos')
+  const secondary = f.addWindow()
+  const system: ShortcutDefinition = { id: 'orb.toggle' as ShortcutCommandId, scope: 'system',
+    defaults: desktopDefaults({ code: 'KeyK', modifiers: ['primary'] }) }
+  const secondaryGet = (definitions: readonly ShortcutDefinition[]) => f.handlers.get(DESKTOP_IPC.shortcutsGet)!(
+    { sender: secondary.contents, senderFrame: secondary.frame }, definitions) as Promise<ShortcutConfigSnapshot>
+
+  expect((await secondaryGet([system])).status).toBe('ready')
+  expect(globals.registered.size).toBe(0)
+
+  await f.call(DESKTOP_IPC.shortcutsGet, [system])
+  expect(globals.registered).toEqual(new Set(['Command+K']))
+
+  await secondaryGet([{ id: 'orb.other' as ShortcutCommandId, scope: 'system',
+    defaults: desktopDefaults({ code: 'KeyJ', modifiers: ['primary'] }) }])
+  expect(globals.registered).toEqual(new Set(['Command+K']))
+})
+
+it('keeps primary global registration through secondary navigation and closure, and clears it only for the primary', async () => {
+  const f = await fixture('macos')
+  const secondary = f.addWindow()
+  const system: ShortcutDefinition = { id: 'orb.toggle' as ShortcutCommandId, scope: 'system',
+    defaults: desktopDefaults({ code: 'KeyK', modifiers: ['primary'] }) }
+  const snapshot = await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet, [system])
+  f.contents.send.mockClear()
+
+  secondary.contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false })
+  expect(globals.registered).toEqual(new Set(['Command+K']))
+  globals.callbacks.get('Command+K')!()
+  expect(f.contents.send).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.shortcutsInput,
+    { kind: 'global', commandId: 'orb.toggle', revision: snapshot.revision })
+
+  secondary.window.emit('closed')
+  expect(globals.registered).toEqual(new Set(['Command+K']))
+
+  f.contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false })
+  expect(globals.registered.size).toBe(0)
 })

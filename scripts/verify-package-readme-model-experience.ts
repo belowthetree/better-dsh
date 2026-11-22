@@ -67,7 +67,6 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/client-voice-capture': { kind: 'none', reason: 'Owns browser recording and transient transcripts without submitting or registering any model input.' },
   'packages/experimental/text-to-speech': { kind: 'none', reason: 'Routes transient synthesis without adding model requests or Session events.' },
   'packages/experimental/api-text-to-speech': { kind: 'none', reason: 'Transports already-logged assistant text and transient audio; ordinary replies own the model-visible text.' },
-  'packages/experimental/client-ui-orb': { kind: 'none', reason: 'Renders process-local presentation state and registers the orb toggle command without contributing model input.' },
   'packages/experimental/client-ui-voice-output': { kind: 'none', reason: 'Reads already-logged assistant text for transient synthesis; playback and auto-speak policy add no requests or events.' },
   'packages/experimental/better-bundle': { kind: 'indirect', reason: 'The bundle declares and mounts the manage preset, whose plugins own the model-visible persona, instructions, and tools.' },
   'packages/experimental/liveshare': { kind: 'indirect', reason: 'The host drives viewer prompts into the shared Session, so model requests follow the viewer input the host forwards.' },

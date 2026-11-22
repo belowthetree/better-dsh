@@ -25,7 +25,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在需要麦克风采集的浏览器组合中挂载本包。插件注入 `remote`，并在挂载生成的语音 Remote 贡献后提供 `ctx.voiceCapture`。消费者注入该服务并读取 `snapshot()`：阶段（`idle`、`starting`、`capturing`、`transcribing`）、已选麦克风、实时输入电平、上一次失败、宿主机的采集上限，以及为下一次完成采集记住的识别选择。只要这些事实不变，快照就保持同一引用；`follow(signal)` 会先产出当前值，再产出直到信号中止前的每一次变化。
+在需要麦克风采集的浏览器组合中挂载本包。插件注入 `remote` 与 `surface`（web-app 组合已为两个语音 bundle 提供后者），并在挂载生成的语音 Remote 贡献后提供 `ctx.voiceCapture`。消费者注入该服务并读取 `snapshot()`：阶段（`idle`、`starting`、`capturing`、`transcribing`）、已选麦克风、实时输入电平、上一次失败、宿主机的采集上限，以及为下一次完成采集记住的识别选择。只要这些事实不变，快照就保持同一引用；`follow(signal)` 会先产出当前值，再产出直到信号中止前的每一次变化。
+
+orb 形态只在 `surface` 渲染进程中挂载真实录音器。`orb` 与 `bubbles` 角色不挂载 Remote 或服务；Better 用主渲染进程的控制与阶段投影取代次级直接采集。
 
 `begin()` 获取所选麦克风并开始录音；并发采集、已释放的服务或获取失败都会拒绝。`finish()` 停止录音器，编码规范的 16 kHz 单声道 PCM16 WAV，用 `begin()` 时记住的选择请求语音 Remote 识别，并在服务回到 `idle` 后返回识别结果。`cancel()` 停止并丢弃录音，且从不上传。命令失败会让服务回到 `idle` 并携带封闭失败联合中的一个成员（`unavailable`、`permission`、`empty`、`cancelled`、`interrupted`、`deviceMissing`、`transcribe`），下一次 `begin()` 会清除它。没有专属成员的失败（包括被拒绝的 Remote 识别）都归为 `transcribe`，并在拒绝值上保留诊断信息。`finish({ hold: true })` 还会把转写发布到 `snapshot().pendingTranscript`，直到 `takeTranscript()` 取走一次，因此面板收起时也能在输入框出现之前完成采集。
 

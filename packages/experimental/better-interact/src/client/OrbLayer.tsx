@@ -16,14 +16,14 @@ import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/client'
-import { activeSession, orbLabelKey, orbVisualState } from './state.ts'
-import type { OrbVisualState } from './state.ts'
+import { activeSession, orbLabelKey, orbVisualState } from './orb-state.ts'
+import type { OrbVisualState } from './orb-state.ts'
 import { usePointerDrag } from './use-pointer-drag.ts'
 import orbSidePeek from './assets/orb-side-peek.png'
 import orbStanding from './assets/orb-standing.png'
 import matureSidePeek from './assets/orb-mature-side-peek.png'
 import matureStanding from './assets/orb-mature-standing.png'
-import type { NS, OrbKey } from './locales.ts'
+import type { NS, OrbKey } from './orb-locales.ts'
 import css from './OrbForm.module.css'
 
 /** The two artwork sets the settings menu can switch between. */
@@ -96,9 +96,9 @@ export interface OrbOverlayInjected {
     /** Carrier presentation snapshot. */
     surface: HostObservable<SurfaceSnapshot>
     /** Microphone capture snapshot, or null while the capture plugin is unmounted. */
-    capture: HostObservable<VoiceCaptureSnapshot | null>
+    capture: HostObservable<Pick<VoiceCaptureSnapshot, 'phase'> | null>
     /** Playback snapshot, or null while the playback plugin is unmounted. */
-    voice: HostObservable<VoiceOutputSnapshot | null>
+    voice: HostObservable<Pick<VoiceOutputSnapshot, 'speaking'> | null>
     /** Whether the user asked for reduced motion. */
     reducedMotion: HostObservable<boolean>
     /** The persisted theme preference of the client. */

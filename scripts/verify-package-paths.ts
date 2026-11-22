@@ -56,6 +56,15 @@ function realPackageNames(repoRoot: string): Set<string> {
  * period) is trimmed before the existence check.
  */
 const PKG_REF = /\bpackages\/[A-Za-z0-9._/-]+/g
+const EXTERNAL_BLOB_PACKAGE_REF = /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/blob\/[^/\s)]+\/(packages\/[A-Za-z0-9._/-]+)/g
+
+/** Whether this exact package reference belongs to an external tagged blob link, not the current tree. */
+function isExternalBlobPackageReference(line: string, ref: string): boolean {
+  for (const match of line.matchAll(EXTERNAL_BLOB_PACKAGE_REF)) {
+    if (match[1] === ref) return true
+  }
+  return false
+}
 
 function isDriftedPackageReference(repoRoot: string, packageNames: ReadonlySet<string>, ref: string): boolean {
   if (existsSync(resolve(repoRoot, ref))) return false
@@ -90,7 +99,8 @@ export function findPackagePathViolations(repoRoot: string, absPath: string, pac
     PKG_REF,
     // Remove trailing separators or sentence punctuation matched greedily.
     ref => ref.replace(/[./]+$/, ''),
-    ref => isDriftedPackageReference(repoRoot, packageNames, ref),
+    (ref, line) => !isExternalBlobPackageReference(line, ref)
+      && isDriftedPackageReference(repoRoot, packageNames, ref),
     historicalSchemaRegion,
   )
 }

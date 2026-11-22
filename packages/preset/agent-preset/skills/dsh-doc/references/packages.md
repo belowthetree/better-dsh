@@ -212,10 +212,9 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 |---|---|---|
 | `@deepseek-ai/dsh-action-cards` | no | Optional action cards below answers: card state, user actions and status notices |
 | `@deepseek-ai/dsh-api-text-to-speech` | yes | Authenticated speech synthesis for browser clients |
-| `@deepseek-ai/dsh-better-interact` | no | Agent interactivity for the orb form: an output bubble column and a workbench dialog with one conversation page per Workspace |
+| `@deepseek-ai/dsh-better-interact` | no | Desktop orb form with quick management chat, output bubbles, and Workspace-paged workbenches |
 | `@deepseek-ai/dsh-client-ui-action-cards` | no | Action cards below completed answers: the shared card frame, kind bodies and the layer that hides the answer blocks offering them |
 | `@deepseek-ai/dsh-client-ui-creation-recommendations` | no | Body of the personalized page card: location choice, creation progress, Undo and Restore |
-| `@deepseek-ai/dsh-client-ui-orb` | no | Orb form client plugins: floating orb overlay, centered chat dialog, quick voice setup card, and the orb.toggle system command |
 | `@deepseek-ai/dsh-client-ui-plugin-recommendations` | no | Official plugin card body with catalog text and enabling |
 | `@deepseek-ai/dsh-client-ui-voice-output` | no | Browser-side speech playback: auto-speak policy, voice selection, and the speechOutput Remote mount |
 | `@deepseek-ai/dsh-client-voice-capture` | no | Shared microphone capture service: device preference, WAV encoding, and speech Remote transcription |
@@ -434,7 +433,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 |---|---|---|
 | `@deepseek-ai/dsh-session-log-export` | yes | Web Session-log ZIP export and Session Markdown copy |
 | `@deepseek-ai/dsh-session-query-sqlite` | yes | Concrete ctx.sessionQuery backend with SQLite FTS5 search |
-| `@deepseek-ai/dsh-tool-session-list` | no | Read-only paginated Workspace and Session metadata tools |
+| `@deepseek-ai/dsh-tool-session-list` | yes | Read-only paginated Workspace and Session metadata tools |
 
 ## settings
 

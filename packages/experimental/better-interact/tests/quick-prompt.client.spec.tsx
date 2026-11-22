@@ -8,7 +8,7 @@ import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-t
 import { afterEach, expect, it, vi } from 'vitest'
 import { QuickPrompt } from '../src/client/QuickPrompt.tsx'
 import type { QuickPromptProps } from '../src/client/QuickPrompt.tsx'
-import { zh } from '../src/client/locales.ts'
+import { zh } from '../src/client/orb-locales.ts'
 
 afterEach(cleanup)
 

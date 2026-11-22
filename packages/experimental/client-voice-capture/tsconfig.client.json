@@ -25,6 +25,9 @@
       "path": "../../client/store"
     },
     {
+      "path": "../../client/surface/tsconfig.client.json"
+    },
+    {
       "path": "../api-speech-to-text"
     },
     {

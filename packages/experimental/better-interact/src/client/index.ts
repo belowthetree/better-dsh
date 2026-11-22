@@ -1,7 +1,6 @@
 /**
- * Better-interact client plugin: the output bubble column that reports agent
- * work on the desktop, and the workbench dialog that hosts one page per
- * Workspace without the shell's side panels.
+ * Better-interact client plugin: the resident orb and quick management prompt,
+ * output bubbles, and the Workspace-paged workbench without classic shell chrome.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -17,19 +16,22 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
-import { workbenchGroups, MANAGE_PAGE_ID, MANAGE_PRESET, type WorkbenchPageGroup } from './workbench-groups.ts'
+import { workbenchGroups, MANAGE_PAGE_ID, type WorkbenchPageGroup } from './workbench-groups.ts'
 import type { WorkbenchHints, WorkbenchInjected, WorkbenchNotice } from './workbench.tsx'
 import { WorkbenchConversation, WorkbenchDialog, WORKBENCH_MODAL_SIZE } from './workbench.tsx'
 import { createWorkbenchPagesStore } from './workbench-pages.ts'
+import { ManagementSessionController } from './management-session.ts'
+import { applyOrb, orbLocales } from './orb.ts'
+import { NS as ORB_NS } from './orb-locales.ts'
 import type { BubblesInjected } from './bubbles.tsx'
 import { BubblesLayer, BubbleStack } from './bubbles.tsx'
 
 /** Required services: the frame seat, the carrier, the catalogs, Workspace navigation, and pending requests. */
 export const inject = [
-  'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace', 'uiSession',
+  'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace', 'uiSession', 'theme',
 ]
 
 /** Command id opening the workbench; it has a default binding and stays rebindable. */
@@ -47,6 +49,17 @@ export const WORKBENCH_NEW_WORKSPACE_COMMAND_ID = 'betterInteract.workspace.new'
 /** Command id moving keyboard focus to the active Session bookmark. */
 export const WORKBENCH_SESSIONS_COMMAND_ID = 'betterInteract.workbench.sessions'
 
+/** Bubble intent executed by the surface renderer that owns Workspace navigation. */
+const OPEN_SESSION_CHANNEL = 'better-interact/open-session'
+
+/** Parse the one cross-renderer Session-navigation intent at the message boundary. */
+function openSessionIntent(payload: unknown): { readonly sessionId: SessionId } | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined
+  const { kind, sessionId } = payload as { readonly kind?: unknown; readonly sessionId?: unknown }
+  if (kind !== 'open' || typeof sessionId !== 'string' || sessionId.length === 0) return undefined
+  return { sessionId: SessionId(sessionId) }
+}
+
 /**
  * Session the main view retains, if any.
  * @param byId - current Session catalog rows.
@@ -62,6 +75,7 @@ function mainViewSession(byId: Readonly<Record<SessionId, SessionSummary>>): Ses
  */
 export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'better-interact: copy')
+  ctx.effect(() => ctx.locale.register(ORB_NS, orbLocales), 'better-interact: orb copy')
   ctx.effect(() => ctx.resources.register(workbenchResourceProvider(ctx.sessions)), 'better-interact: workbench resource')
   const t = ctx.locale.bind(NS)
   const navigation: UiWorkspace = ctx.uiWorkspace
@@ -69,6 +83,7 @@ export function apply(ctx: Context): void {
     console.error(`better-interact: ${step} failed`, error)
   }
   const pages = createWorkbenchPagesStore()
+  const management = new ManagementSessionController({ sessions: ctx.sessions, workspaces: ctx.workspaces })
   const notice = createSnapshotStore<WorkbenchNotice | null>(null)
   const focus = createSnapshotStore(0)
   const workspaces = (): readonly WorkspaceView[] => ctx.workspaces.list.getSnapshot().items
@@ -99,24 +114,15 @@ export function apply(ctx: Context): void {
     return newest
   }
 
-  /** In-flight start of the managed page's first conversation. */
-  let startingManaged: Promise<void> | undefined
-
-  /** Start the managed page's conversation in the Host default Workspace. */
+  /** Start the managed page's conversation through the form's shared resolver. */
   const startManaged = (): void => {
-    if (startingManaged !== undefined) return
-    startingManaged = (async () => {
-      const workspace = await ctx.workspaces.initializeDefault()
-      const sessionId = await ctx.sessions.create({
-        agentPreset: MANAGE_PRESET,
-        ...(workspace === undefined ? {} : { workspaceId: workspace.workspaceId }),
-      })
+    void management.create('required').then((sessionId) => {
       pages.setSession(MANAGE_PAGE_ID, sessionId)
       notice.set(null)
-    })().catch((error: unknown) => {
+    }).catch((error: unknown) => {
       fail('starting the managed conversation')(error)
       notice.set('workbench.manageFailed')
-    }).finally(() => { startingManaged = undefined })
+    })
   }
 
   /** Show one page, opening its Session, starting the managed one, or connecting an empty real Workspace. */
@@ -169,6 +175,11 @@ export function apply(ctx: Context): void {
 
   /** Open the dialog on the page holding one Session. */
   const showSession = (sessionId: SessionId): void => {
+    if (ctx.surface.snapshot().role !== 'surface') {
+      void ctx.surface.sendMessage('surface', OPEN_SESSION_CHANNEL, { kind: 'open', sessionId: String(sessionId) })
+        .catch(fail('sending the Session navigation intent'))
+      return
+    }
     notice.set(null)
     const workspace = pageOf(sessionId)
     if (workspace !== undefined) {
@@ -178,6 +189,16 @@ export function apply(ctx: Context): void {
     }
     presentWorkbench()
   }
+
+  ctx.effect(() => ctx.surface.onMessage(OPEN_SESSION_CHANNEL, (message) => {
+    if (message.origin !== 'orb' && message.origin !== 'bubbles') return
+    const intent = openSessionIntent(message.payload)
+    if (intent === undefined) {
+      console.error('better-interact: rejected an invalid Session navigation intent')
+      return
+    }
+    showSession(intent.sessionId)
+  }), 'better-interact: Session navigation intents')
 
   /** Pick a directory on the Host and open it as a Workspace page. */
   const createFromDirectory = async (): Promise<void> => {
@@ -316,7 +337,7 @@ export function apply(ctx: Context): void {
   const surface = createSnapshotStore<SurfaceSnapshot>(ctx.surface.snapshot())
   ctx.effect(() => {
     const lifetime = new AbortController()
-    void (async (): Promise<void> => {
+    const running = (async (): Promise<void> => {
       try {
         for await (const snapshot of ctx.surface.follow(lifetime.signal)) surface.set(snapshot)
       } catch (error) {
@@ -324,7 +345,10 @@ export function apply(ctx: Context): void {
         fail('observing the carrier')(error)
       }
     })()
-    return () => { lifetime.abort() }
+    return async () => {
+      lifetime.abort()
+      await running
+    }
   }, 'better-interact: surface observation')
 
   // Pages follow the catalogs: a Workspace or Session that leaves takes its page
@@ -386,4 +410,6 @@ export function apply(ctx: Context): void {
     locale: NS,
     inject: () => bubbles,
   }, BubbleStack)), 'better-interact: bubble stack')
+
+  applyOrb(ctx, { management, surface })
 }

@@ -277,7 +277,6 @@ flowchart TD
     pkg_better_interact["better-interact"]
     pkg_client_ui_action_cards["client-ui-action-cards"]
     pkg_client_ui_creation_recommendations["client-ui-creation-recommendations"]
-    pkg_client_ui_orb["client-ui-orb"]
     pkg_client_ui_plugin_recommendations["client-ui-plugin-recommendations"]
     pkg_client_ui_voice_output["client-ui-voice-output"]
     pkg_client_voice_capture["client-voice-capture"]
@@ -1735,7 +1734,6 @@ flowchart TD
 | [`better-interact`](../packages/experimental/better-interact) | `experimental` | — |
 | [`client-ui-action-cards`](../packages/experimental/client-ui-action-cards) | `experimental` | — |
 | [`client-ui-creation-recommendations`](../packages/experimental/client-ui-creation-recommendations) | `experimental` | — |
-| [`client-ui-orb`](../packages/experimental/client-ui-orb) | `experimental` | — |
 | [`client-ui-plugin-recommendations`](../packages/experimental/client-ui-plugin-recommendations) | `experimental` | — |
 | [`client-ui-voice-output`](../packages/experimental/client-ui-voice-output) | `experimental` | — |
 | [`client-voice-capture`](../packages/experimental/client-voice-capture) | `experimental` | — |

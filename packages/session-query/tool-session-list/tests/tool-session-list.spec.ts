@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { Session, SessionHeader } from '@deepseek-ai/dsh-session'
@@ -25,6 +25,7 @@ import WorkspaceRegistry, { WorkspaceId, workspaceDomainSpec } from '@deepseek-a
 import type { WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as ToolSessionList from '../src/index.ts'
+import { listSessions, listWorkspaces } from '../src/list.ts'
 
 const contexts: Context[] = []
 const roots: string[] = []
@@ -105,6 +106,8 @@ async function mount(options: {
   archived?: string[]
   cached?: Array<[string, CheckpointRecord]>
   cache?: boolean
+  config?: ToolSessionList.Config
+  callerCwd?: string | null
 } = {}) {
   const workspaces = options.workspaces ?? []
   const ctx = new Context()
@@ -136,7 +139,16 @@ async function mount(options: {
   }
   await ctx.sessionProjections.register(titleProjectionDefinition)
   await ctx.plugin(ListingQuery)
-  const fiber = await ctx.plugin(ToolSessionList)
+  const fiber = options.config === undefined
+    ? await ctx.plugin(ToolSessionList)
+    : await ctx.plugin(ToolSessionList, options.config)
+  const caller = options.callerCwd === undefined ? undefined : ctx.sessions.create(SessionId('caller'), {
+    meta: {
+      createdAt: 1,
+      ...options.callerCwd === null ? {} : { cwd: options.callerCwd },
+    },
+  })
+  const agent = caller === undefined ? undefined : { id: caller.id, session: caller } as Agent
   const read = vi.spyOn(ctx.sessionQuery, 'readSession')
   const titles = vi.spyOn(ctx.sessionQuery, 'readTitleSnapshots')
   const open = vi.spyOn(ctx.sessionPersistence, 'open')
@@ -149,6 +161,7 @@ async function mount(options: {
     open,
     call: (name: string, args: unknown = {}, signal = new AbortController().signal) => executeToolFixture(ctx, {
       name, arguments: args, callId: ToolCallId(`list-${++callId}`), signal,
+      ...agent === undefined ? {} : { agent },
     }),
   }
 }
@@ -276,6 +289,68 @@ describe('read-only Session list tools', () => {
     expect(stored).not.toHaveBeenCalled()
     expect(value(await mounted.call('list_session'))).toEqual([item('other-member', 60), item('same-cwd', 30), item('member', 20)])
     expect(corpus).toHaveBeenCalledOnce()
+  })
+
+  it('defaults to runtime-wide access without requiring a caller and validates workspaceAccess', async () => {
+    expect(ToolSessionList.Config({}).workspaceAccess).toBe('all')
+    expect(ToolSessionList.Config({ workspaceAccess: 'current' }).workspaceAccess).toBe('current')
+    expect(() => ToolSessionList.Config({ workspaceAccess: 'other' as never })).toThrow()
+    const mounted = await mount({ headers: [header('cold', 10)] })
+    expect(value(await mounted.call('list_session'))).toEqual([item('cold', 10)])
+    const signal = new AbortController().signal
+    expect(listWorkspaces(mounted.ctx, {}, signal)).toEqual([])
+    expect(await listSessions(mounted.ctx, {}, signal)).toEqual([item('cold', 10)])
+    expect(() => listWorkspaces(mounted.ctx, {}, signal, { mode: 'current' }))
+      .toThrow('current workspace listing requires an agent session with a working directory')
+  })
+
+  it('restricts both tools to the current workspace of the caller and rejects an explicit foreign workspace_id', async () => {
+    const path = await directory()
+    const otherPath = join(path, 'other')
+    await mkdir(otherPath)
+    const current = workspace(path, ['member'], 'Current')
+    const mounted = await mount({
+      config: { workspaceAccess: 'current' },
+      callerCwd: path,
+      headers: [
+        header('member', 20, { cwd: path }),
+        header('same-cwd-unassigned', 30, { cwd: path }),
+        header('other-member', 60, { cwd: otherPath }),
+      ],
+      workspaces: [
+        ['current', current],
+        ['other', workspace(otherPath, ['other-member'], 'Other')],
+      ],
+    })
+    const corpus = vi.spyOn(mounted.ctx.sessionQuery, 'listSessions')
+    const expectedWorkspace = {
+      workspace_id: 'current', title: current.title, path: current.path,
+      created_at: current.createdAt, updated_at: current.updatedAt,
+    }
+    expect(value(await mounted.call('list_workspace'))).toEqual([expectedWorkspace])
+    expect(value(await mounted.call('list_session'))).toEqual([item('member', 20)])
+    expect(value(await mounted.call('list_session', { workspace_id: 'current' }))).toEqual([item('member', 20)])
+    const rejected = await mounted.call('list_session', { workspace_id: 'other' })
+    expect(rejected.isError).toBe(true)
+    expect(rejected.error?.info).toMatchObject({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
+    expect(corpus).not.toHaveBeenCalled()
+    const schema = mounted.ctx.tools.schemas().find(tool => tool.name === 'list_session')
+    expect(schema?.parameters.properties).toHaveProperty('workspace_id.description', expect.stringContaining('current workspace of the caller'))
+  })
+
+  it.each(['agent', 'cwd', 'registration'] as const)('fails closed in current mode without a resolvable %s', async (missing) => {
+    const path = await directory()
+    const mounted = await mount({
+      config: { workspaceAccess: 'current' },
+      ...missing === 'agent' ? {} : { callerCwd: missing === 'cwd' ? null : path },
+    })
+    const corpus = vi.spyOn(mounted.ctx.sessionQuery, 'listSessions')
+    for (const name of ['list_workspace', 'list_session']) {
+      const result = await mounted.call(name)
+      expect(result.isError).toBe(true)
+      expect(result.error?.info).toMatchObject({ name: 'ToolContextUnavailableError', code: 'TOOL_CONTEXT_UNAVAILABLE' })
+    }
+    expect(corpus).not.toHaveBeenCalled()
   })
 
   it('defaults to twenty rows and accepts the upper page limit', async () => {

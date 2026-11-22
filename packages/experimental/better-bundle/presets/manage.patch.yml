@@ -27,6 +27,8 @@
             name: '@deepseek-ai/dsh-time-context'
           - id: tool-session-list
             name: '@deepseek-ai/dsh-tool-session-list'
+            config:
+              workspaceAccess: current
           - id: tool-session-query
             name: '@deepseek-ai/dsh-tool-session-query'
             config:

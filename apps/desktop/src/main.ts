@@ -74,7 +74,8 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { DesktopProductWindow } from './product-window.ts'
-import { DesktopSurfaceController, parseSurfaceCommand, type SurfaceWindowEffects } from './surface-controller.ts'
+import { DesktopSurfaceController, parseSurfaceCommand, parseSurfaceMessage, parseSurfaceMessageChannel, type SurfaceWindowEffects } from './surface-controller.ts'
+import { DesktopSurfaceMessageBroker } from './surface-messages.ts'
 import { deepLinkProfileName, desktopLaunchSelection, DEFAULT_DESKTOP_PROFILE, type DesktopLaunchSelection } from './profile-selection.ts'
 import { materializeBundledProfile, readBundledProfileDefaults } from './bundled-profile.ts'
 import { readDesktopFormProfile } from './desktop-profile.ts'
@@ -550,6 +551,15 @@ async function main(): Promise<void> {
     persist: saveFormLayout,
     workArea: surfaceWorkArea,
   }
+  const surfaceMessages = new DesktopSurfaceMessageBroker((target, message) => {
+    const window = formWindow(target)
+    if (window === undefined || window.isDestroyed()
+      || !window.webContents.mainFrame.url.startsWith(`${SCHEME}://app/`)) {
+      throw new Error(`dsh desktop: surface message target ${target} is unavailable`)
+    }
+    window.webContents.send(DESKTOP_IPC.surfaceMessageEvent, message)
+  })
+  app.on('will-quit', () => { surfaceMessages.dispose() })
   if (requestedForm.kind === 'orb') {
     // Display changes move the persisted orb back inside the remaining work area.
     const reflow = (): void => { surfaceController?.reflow() }
@@ -1021,7 +1031,7 @@ async function main(): Promise<void> {
 
   installDesktopDirectoryPicker(() => productWindowList())
   installMicrophonePermissions(session.defaultSession, () => productWindowList().map(window => window.webContents))
-  const shortcuts = installDesktopShortcuts(() => productWindowList(), app.getPath('userData'),
+  const shortcuts = installDesktopShortcuts(() => productWindowList(), () => productWindows.current(), app.getPath('userData'),
     process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux', () => { refreshApplicationMenu() }, window => updateOverlays.input(window))
   app.on('will-quit', () => { shortcuts.dispose() })
 
@@ -1036,6 +1046,28 @@ async function main(): Promise<void> {
       throw new Error('dsh desktop: the classic presentation has no surface commands')
     }
     surfaceController.dispatch(command, formRole)
+  })
+  ipcMain.handle(DESKTOP_IPC.surfaceMessage, async (event, payload: unknown) => {
+    const { formRole } = assertProductOwner(event)
+    const message = parseSurfaceMessage(payload)
+    if (message === undefined) throw new Error('dsh desktop: rejected an invalid surface message')
+    if (formRole === undefined || formRole === 'onboarding' || surfaceController === undefined) {
+      throw new Error('dsh desktop: surface messages require a form renderer')
+    }
+    const target = formWindow(message.target)
+    if (target === undefined || target.isDestroyed()
+      || !target.webContents.mainFrame.url.startsWith(`${SCHEME}://app/`)) {
+      throw new Error(`dsh desktop: surface message target ${message.target} is unavailable`)
+    }
+    await surfaceMessages.send(formRole, message.target, message.channel, message.payload)
+  })
+  ipcMain.on(DESKTOP_IPC.surfaceMessageReady, (event, payload: unknown) => {
+    const formRole = productWindowOwner(event)?.formRole
+    if (formRole === undefined || formRole === 'onboarding' || typeof payload !== 'object' || payload === null) return
+    const { channel: rawChannel, active } = payload as { readonly channel?: unknown; readonly active?: unknown }
+    const channel = parseSurfaceMessageChannel(rawChannel)
+    if (channel === undefined || typeof active !== 'boolean') return
+    surfaceMessages.setReady(formRole, channel, active)
   })
   /** Last pointer presence each renderer reported; the cursor watchdog corrects a dropped leave. */
   const pointerReports = new Map<DesktopFormRole, boolean>()
@@ -1614,7 +1646,11 @@ async function main(): Promise<void> {
       window.on('show', () => { sessionEnding = false })
     }
     window.on('blur', formFocusLost)
-    window.on('closed', () => { navigations.delete(window); orbWindows.detach(window) })
+    window.on('closed', () => {
+      surfaceMessages.drop('orb')
+      navigations.delete(window)
+      orbWindows.detach(window)
+    })
     trackRenderer(window)
     return window
   }
@@ -1632,7 +1668,11 @@ async function main(): Promise<void> {
       if (quitting || shellInstallerOwnsQuit || sessionEnding) return
       event.preventDefault()
     })
-    window.on('closed', () => { navigations.delete(window); bubblesWindows.detach(window) })
+    window.on('closed', () => {
+      surfaceMessages.drop('bubbles')
+      navigations.delete(window)
+      bubblesWindows.detach(window)
+    })
     trackRenderer(window)
     return window
   }
@@ -1733,7 +1773,11 @@ async function main(): Promise<void> {
       window.on('focus', () => { sessionEnding = false })
       window.on('show', () => { sessionEnding = false })
     }
-    window.on('closed', () => { navigations.delete(window); productWindows.detach(window) })
+    window.on('closed', () => {
+      surfaceMessages.drop('surface')
+      navigations.delete(window)
+      productWindows.detach(window)
+    })
     trackRenderer(window)
     return window
   }

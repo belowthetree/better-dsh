@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import {
-  DesktopSurfaceController, MAX_MODAL_ID_CHARS, parseSurfaceCommand, type SurfaceWindowEffects,
+  DesktopSurfaceController, MAX_MODAL_ID_CHARS, MAX_SURFACE_MESSAGE_CHANNEL_CHARS, MAX_SURFACE_MESSAGE_JSON_BYTES,
+  parseSurfaceCommand, parseSurfaceMessage, type SurfaceWindowEffects,
 } from '../src/surface-controller.ts'
 import type { DesktopFormLayout } from '../src/form-layout.ts'
 import { bubblesBounds, modalBounds, orbBounds, panelBounds, type DesktopFormRole, type FormPresentationBounds } from '../src/form-window.ts'
@@ -86,6 +87,45 @@ function boundsOf(window: ReturnType<typeof effects>, role: DesktopFormRole): Fo
 function lastOf<Value>(entries: readonly Applied<Value>[], role: DesktopFormRole): Value | undefined {
   return entries.filter(entry => entry.role === role).at(-1)?.value
 }
+
+describe('parseSurfaceMessage', () => {
+  it.each(['orb', 'surface', 'bubbles'] as const)('accepts one bounded JSON message for %s', (target) => {
+    expect(parseSurfaceMessage({ target, channel: 'better/intent', payload: { kind: 'open' } }))
+      .toEqual({ target, channel: 'better/intent', payload: { kind: 'open' } })
+  })
+
+  it('forwards a canonical JSON copy rather than the renderer-owned object', () => {
+    const source = { nested: { value: 1 } }
+    const result = parseSurfaceMessage({ target: 'surface', channel: 'better/intent', payload: source })
+    expect(result?.payload).toEqual(source)
+    expect(result?.payload).not.toBe(source)
+  })
+
+  it('rejects invalid roles, channels, and non-JSON or oversized payloads', () => {
+    const cyclic: { self?: unknown } = {}
+    cyclic.self = cyclic
+    let deep: unknown = null
+    for (let index = 0; index < 70; index++) deep = { nested: deep }
+    const invalid = [
+      null,
+      { target: 'classic', channel: 'better/intent', payload: null },
+      { target: 'surface', channel: '', payload: null },
+      { target: 'surface', channel: 'better', payload: null },
+      { target: 'surface', channel: 'Better/Intent', payload: null },
+      { target: 'surface', channel: `better/${'x'.repeat(MAX_SURFACE_MESSAGE_CHANNEL_CHARS)}`, payload: null },
+      { target: 'surface', channel: 'better/intent', payload: undefined },
+      { target: 'surface', channel: 'better/intent', payload: 'x'.repeat(MAX_SURFACE_MESSAGE_JSON_BYTES) },
+      { target: 'surface', channel: 'better/intent', payload: cyclic },
+      { target: 'surface', channel: 'better/intent', payload: new Map([['large', 'x'.repeat(MAX_SURFACE_MESSAGE_JSON_BYTES)]]) },
+      { target: 'surface', channel: 'better/intent', payload: new Uint8Array(MAX_SURFACE_MESSAGE_JSON_BYTES) },
+      { target: 'surface', channel: 'better/intent', payload: Number.NaN },
+      { target: 'surface', channel: 'better/intent', payload: { nested: undefined } },
+      { target: 'surface', channel: 'better/intent', payload: [undefined] },
+      { target: 'surface', channel: 'better/intent', payload: deep },
+    ]
+    for (const input of invalid) expect(parseSurfaceMessage(input)).toBeUndefined()
+  })
+})
 
 describe('parseSurfaceCommand', () => {
   it.each([

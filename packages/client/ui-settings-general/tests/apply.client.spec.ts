@@ -6,7 +6,6 @@
  * across Loader rebuilds of the declaring chain.
  */
 import { describe, expect, onTestFinished, vi } from 'vitest'
-import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import { ok, type RemoteMock } from '@deepseek-ai/dsh-remote-mock'
@@ -436,16 +435,16 @@ describe('ui-settings-general apply', () => {
       orbDocked: false, orbHovered: false, modalOpen: false,
     }
     let state: SurfaceSnapshot = orbSurface
-    const presentModal = vi.fn(async () => { state = { ...state, presentation: 'modal', modal: SETTINGS_MODAL_ID } })
-    const dismissModal = vi.fn(async () => { state = { ...state, presentation: 'orb', modal: null } })
-    const carrier = {
-      snapshot: () => state,
-      follow: async function* (): AsyncGenerator<SurfaceSnapshot> { yield state },
-      presentModal,
-      dismissModal,
-    }
-    const provider = c.ctx.plugin((child: Context) => { child.reflect.provide('surface', carrier) })
-    await provider.await()
+    const surface = c.ctx.get('surface')
+    if (surface === undefined) throw new Error('the web composition must provide its surface service')
+    const snapshot = vi.spyOn(surface, 'snapshot').mockImplementation(() => state)
+    const presentModal = vi.spyOn(surface, 'presentModal').mockImplementation(async () => {
+      state = { ...state, presentation: 'modal', modal: SETTINGS_MODAL_ID }
+    })
+    const dismissModal = vi.spyOn(surface, 'dismissModal').mockImplementation(async () => {
+      state = { ...state, presentation: 'orb', modal: null }
+    })
+    onTestFinished(() => { snapshot.mockRestore(); presentModal.mockRestore(); dismissModal.mockRestore() })
     const entry = c.ctx.slots.entries('shell.modal').find(row => row.options.id === SETTINGS_MODAL_ID)
     expect(entry?.component).toBe(SettingsModalSurface)
     expect(entry?.locale).toBe(NS)
@@ -475,7 +474,6 @@ describe('ui-settings-general apply', () => {
       })
     } finally { report.mockRestore() }
 
-    await provider.dispose()
     await c.unload(SELF)
     await c.flush()
     expect(c.ctx.slots.entries('shell.modal').some(row => row.options.id === SETTINGS_MODAL_ID)).toBe(false)

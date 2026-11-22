@@ -10,6 +10,7 @@ import { MANAGE_PAGE_ID } from '../src/client/workbench-groups.ts'
 import type { WorkbenchPagesState } from '../src/client/workbench-pages.ts'
 import { WorkbenchConversation, WorkbenchDialog, scrollTabsByWheel } from '../src/client/workbench.tsx'
 import type { WorkbenchNotice } from '../src/client/workbench.tsx'
+import { FixedChatConversationView } from '../src/client/embedded-conversation.tsx'
 
 type SessionRow = {
   readonly updatedAt: number
@@ -313,6 +314,12 @@ it('composes the shared conversation content with the fixed chat view', () => {
     { variant: 'embedded', phase: 'hero', hero: true },
   ])
   expect(typeof fixedView(calls)).toBe('function')
+})
+
+it('fixes the shared embedded View to Chat', () => {
+  const renderSlot = vi.fn()
+  render(createElement(FixedChatConversationView, { renderSlot } as never))
+  expect(renderSlot).toHaveBeenCalledExactlyOnceWith('conversation.session', { view: 'chat' })
 })
 
 it('follows a running conversation', () => {

@@ -38,6 +38,8 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     dragBy: async () => {},
     snap: async () => {},
     pointerInside: () => {},
+    sendMessage: async () => {},
+    subscribeMessages: () => () => {},
   }
   return {
     api,

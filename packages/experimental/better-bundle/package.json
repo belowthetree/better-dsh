@@ -41,8 +41,6 @@
     "@deepseek-ai/dsh-agent-instructions": "workspace:*",
     "@deepseek-ai/dsh-agent-preset": "workspace:*",
     "@deepseek-ai/dsh-better-interact": "workspace:*",
-    "@deepseek-ai/dsh-client-surface": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-orb": "workspace:*",
     "@deepseek-ai/dsh-client-voice-capture": "workspace:*",
     "@deepseek-ai/dsh-client-ui-voice-output": "workspace:*",
     "@deepseek-ai/dsh-command-compact": "workspace:*",

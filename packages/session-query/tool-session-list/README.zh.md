@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-无需恢复 agent（智能体）运行或读取冷会话的日志，即可发现工作区和会话。可以列出空工作区、查找某工作区中的会话，或列出已归档会话。结果包含标识符及轻量元数据，并限制每页条目数。当调用者可以查看整个已挂载运行时的元数据时，启用这些工具。
+无需恢复 agent（智能体）运行或读取冷会话的日志，即可发现工作区和会话。可以列出空工作区、查找某工作区中的会话，或列出已归档会话。结果包含标识符及轻量元数据，并限制每页条目数。当调用者可以查看整个已挂载运行时或仅其当前工作区的元数据时，启用这些工具。
 
 ## 目录
 
@@ -25,11 +25,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在预期调用者获取工具的作用域中挂载此可选插件。它没有配置字段，默认配置方案不包含它。
+在预期调用者获取工具的作用域中挂载此可选插件，默认配置方案不包含它。`workspaceAccess` 接受 `all` 或 `current`，默认为 `all`；仅当预设可以查看调用者已注册的当前工作区且不能查看其外任何内容时，才选择 `current`。
 
 ### 访问范围与组合
 
-授予这些工具即授予读取已挂载运行时中全部 Workspace 和 Session 的权限。工具可用性就是访问控制；没有逐 agent 的 Workspace ACL，也不会隐式限制到调用者的工作目录。LiveShare 的工具允许列表不包含这些工具。
+`all` 保持原有行为，授予读取已挂载运行时中全部 Workspace 和 Session 的权限。`current` 把调用 Agent Session 记录的工作目录解析为一个已注册工作区，并在两个工具的执行器中强制限定到该工作区，绝不回退到全运行时枚举。LiveShare 的工具允许列表不包含这些工具。
 
 插件需要 `tools`、`sessions`、`sessionQuery`、`workspaceRegistry` 和 `sessionProjections`。投影缓存为冷会话提供元数据；没有缓存时，冷条目使用下文规定的元数据缺失值。在 headless 配置方案中，基础 bundle 已提供其他依赖；在配置方案补丁中添加 Workspace 注册表和此插件：
 
@@ -47,15 +47,15 @@ kind: "package-reference"
 
 两个工具都直接返回数组。[工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-session-list)定义参数。先过滤和排序，再分页；每次调用默认返回 20 条，最多接受 100 条，起始偏移为零。继续遍历时，将偏移增加已返回的条目数；空数组表示遍历结束。
 
-`list_workspace` 保留注册表顺序，并包含没有会话的工作区。`list_session` 从不返回 subagent 会话。它默认包含未归档会话；没有指定 `workspace_id` 时，也包含不属于任何 Workspace 的会话。显式选择 Workspace 时使用已记录的成员关系，而非相同的工作目录。归档筛选匹配每个 Session 自身的 ID。
+`list_workspace` 保留注册表顺序，并包含没有会话的工作区。`list_session` 从不返回 subagent 会话。它默认包含未归档会话；没有指定 `workspace_id` 时，也包含不属于任何 Workspace 的会话。显式选择 Workspace 时使用已记录的成员关系，而非相同的工作目录。在 `current` 模式下，`list_workspace` 只返回调用者的工作区，`list_session` 默认只查该工作区，并拒绝其他 `workspace_id`。归档筛选匹配每个 Session 自身的 ID。
 
 会话按 `updated_at` 降序排列，时间相同则按 Session ID 升序排列。活动时间取创建时间与最近人工提示词时间的较晚值；助手活动和标题变化不会推进它。标题来自实时投影或持久化投影元数据。标题不可用时为 `null`，活动元数据不可用时回退到创建时间。时间戳使用 ISO 8601 字符串。置顶顺序和侧边栏手动顺序不影响结果。
 
-指定 `workspace_id` 时，调用从 Workspace 注册表索引读取成员 header，不做持久化 I/O，因此工作量随成员数增长。不指定 `workspace_id` 时，先枚举所有已存储和 live Session 的 header。随后的筛选、元数据读取和排序同步执行。调用不承诺在这段工作中及时处理新收到的取消请求，也不承诺所有 Session 共享同一个快照。
+指定 `workspace_id` 时，调用从 Workspace 注册表索引读取成员 header，不做持久化 I/O，因此工作量随成员数增长。不指定 `workspace_id` 时，先枚举所有已存储和 live Session 的 header。`current` 模式始终使用注册表索引路径，绝不枚举整个语料。随后的筛选、元数据读取和排序同步执行。调用不承诺在这段工作中及时处理新收到的取消请求，也不承诺所有 Session 共享同一个快照。
 
 ### 失败
 
-无效分页参数或未知的 `workspace_id` 以 `ToolArgsError`（`INVALID_ARGS`）失败；使用 `list_workspace` 查找已注册的 ID。查询和存储故障使调用失败。取消不返回部分结果。这些失败不会修改会话或 Workspace 记录。
+无效分页参数或未知的 `workspace_id` 以 `ToolArgsError`（`INVALID_ARGS`）失败；使用 `list_workspace` 查找允许的 ID。在 `current` 模式下，其他工作区的 ID 也以同样方式失败。缺少 Agent、工作目录或匹配的已注册工作区时，以 `ToolContextUnavailableError`（`TOOL_CONTEXT_UNAVAILABLE`）失败，绝不扩大访问范围。查询和存储故障使调用失败。取消不返回部分结果。这些失败不会修改会话或 Workspace 记录。
 
 -----
 
@@ -65,7 +65,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-选定 Workspace 时读取 `Workspace.getSessionHeaders()`；不指定范围时使用现有的仅 header 查询列表。两者都把 header 与投影元数据结合。实时条目通过 `ctx.sessionQuery.getListMetadata` 读取空白状态与提示词活动时间，与 Session API 读取同一个投影。标题投影仍由 `dsh-session-title` 拥有。冷条目读取投影缓存，不打开底层日志，缓存未命中时也一样。不需要 Session 控制器，也不会激活 agent。
+选定 Workspace 时读取 `Workspace.getSessionHeaders()`；不指定范围时使用现有的仅 header 查询列表。`current` 在两条路径之前从工具执行的 Agent Session 解析工作区，并在读取整个语料之前拒绝显式指定的其他 ID。两者都把 header 与投影元数据结合。实时条目通过 `ctx.sessionQuery.getListMetadata` 读取空白状态与提示词活动时间，与 Session API 读取同一个投影。标题投影仍由 `dsh-session-title` 拥有。冷条目读取投影缓存，不打开底层日志，缓存未命中时也一样。不需要 Session 控制器，也不会激活 agent。
 
 | 文件 | 职责 |
 |---|---|
@@ -101,7 +101,7 @@ kind: "package-reference"
 
 #### KV Cache 影响
 
-工具可用性不变时，schema 保持稳定。调用追加普通工具调用与结果历史，不替换之前的消息；启用或禁用工具会改变 schema 前缀。
+工具可用性与 `workspaceAccess` 不变时，schema 保持稳定。调用追加普通工具调用与结果历史，不替换之前的消息；启用或禁用工具或改变 `workspaceAccess` 会改变 schema 前缀。
 
 ## 已知限制与待办工作
 
@@ -113,7 +113,7 @@ kind: "package-reference"
 - **分页不是稳定快照**——并发的注册表或 Session 变化可能让条目在多次调用间移动。会话列表先读取全部候选项，再选取一页，因此每页大小不限制总工作量；不指定范围的调用随 Session 总数增长。
 - **空白会话也会列出**——还没有 turn 的 Session（例如 Workspace 中未使用的新 Session）是普通结果；它的 `updated_at` 等于 `created_at`，标题通常为 `null`。
 - **不指定范围的列表只有单测覆盖**——录制的 headless 回放中每次 `list_session` 调用都带 `workspace_id`，因此不指定 Workspace 的枚举只在单元测试中运行。
-- **元数据访问覆盖整个运行时**——需要逐 agent Workspace 授权的调用者，必须先定义独立的访问策略，再为其启用这些工具。
+- **默认元数据访问覆盖整个运行时**——`all` 保持原有行为。`current` 要求调用方 Agent 具有已注册的工作区，无法解析该上下文时拒绝调用；其他访问策略仍需独立定义。
 
 <a id="dev-note"></a>
 ### 开发备注

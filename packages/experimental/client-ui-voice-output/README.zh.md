@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用此包
 
-配置需要 `text-to-speech`、`api-text-to-speech` 两行以及本包；better bundle 已组合这三行。插件注入 `remote`，并在 `sessions` 可用时观察会话对象层，因此经典帧、悬浮球与输入区都不持有播放逻辑。悬浮球通过 `ctx.voiceOutput` 读取朗读状态，调用 `setMuted`、`setPolicy` 与 `setVoice`，并按名称列出 `snapshot().voices`。
+配置需要 `text-to-speech`、`api-text-to-speech` 两行以及本包；better bundle 已组合这三行。插件注入 `remote` 与 `surface`（web-app 组合已为两个语音 bundle 提供后者），并在 `sessions` 可用时观察会话对象层，因此经典帧、悬浮球与输入区都不持有播放逻辑。orb 形态只在 surface 渲染进程中挂载播放；Better 把朗读状态投影到常驻悬浮球。设置与播放命令通过主渲染进程的 `ctx.voiceOutput` 调用 `setMuted`、`setPolicy` 与 `setVoice`，其快照按名称列出目录音色。
 
 策略决定自动播放。`off` 不朗读任何回复，显式的 `speak(text)` 仍会播放；`all` 朗读活动会话中每条已完成的助手回复；`voice` 只朗读其轮次由一次语音转写发起的回复。语音发起判定是启发式的：采集快照从 `transcribing` 回到 `idle` 时打开 60 秒窗口，窗口内提交的第一条用户消息标记它被认领所在轮次，标记在该次提交后清除。
 
@@ -80,9 +80,8 @@ kind: "package-reference"
 - 语音发起标记是启发式的：它依赖 60 秒窗口、只消费一次提交，并把标记归给持久用户消息被认领的轮次，因此排队或 steer 提交可能归错轮次。
 - 不提供逐条消息的朗读操作；显式 `speak(text)` 供后续控件使用。
 - 不使用浏览器系统语音；可选音色只来自语音 Remote 的提供方。
-- 播放、队列与朗读状态只在进程内存在，刷新页面即丢失，而策略、音色与静音会保留。
+- 播放、队列与朗读状态只存在于拥有它们的渲染进程（orb 形态的 surface）中，重新加载该进程会丢失这些状态，而策略、音色与静音会保留。
 - 需要 `text-to-speech` 与 `api-text-to-speech` 两行；缺少时插件不执行任何操作，只报告 `unavailable` 失败。
-- 语音发起标记在服务开始跟随会话时读取 `ctx.get('voiceCapture')`，因此配置必须先提供 `client-voice-capture`，再提供本包（better bundle 已如此）。调整行顺序会让标记静默失效。
 
 -----
 

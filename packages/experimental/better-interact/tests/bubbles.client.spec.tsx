@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   BUBBLE_HOVER_LEAVE_MS, BUBBLE_MOTION_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
-  assistantText, bubbleKind, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack,
+  assistantText, bubbleKind, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack, selectBubbleTarget,
 } from '../src/client/bubbles.tsx'
+import { parseWorkbenchAddress, workbenchAddress } from '../src/client/resource.ts'
 import type { ReminderInteraction } from '../src/client/reminders.ts'
 
 /** Orb presentation of the committed form profile. */
@@ -40,6 +42,24 @@ function chat(input: {
       items: () => (input.answers ?? []).map(answer => ({ turn: answer.turn, anchorKey: 'a', prompt: '', response: answer.response })),
     },
   } as never
+}
+
+function sessionCatalog(
+  ...rows: readonly { readonly id: string; readonly updatedAt?: number; readonly running?: boolean }[]
+): SessionListState {
+  return {
+    ids: rows.map(row => row.id as SessionId),
+    byId: Object.fromEntries(rows.map(row => [row.id, {
+      id: row.id as SessionId,
+      displayTitle: row.id,
+      running: row.running === true,
+      retainedBy: {},
+      blank: false,
+      updatedAt: row.updatedAt ?? 0,
+    }])),
+    phase: 'ready',
+    projectionsBySession: {},
+  }
 }
 
 function stack(options: {
@@ -167,23 +187,71 @@ describe('bubbleOutputs', () => {
   })
 })
 
+describe('selectBubbleTarget', () => {
+  it('reports the latest output rather than the first catalog row', () => {
+    const catalog = sessionCatalog(
+      { id: 'first', updatedAt: 1 },
+      { id: 'answer', updatedAt: 9 },
+      { id: 'older', updatedAt: 4 },
+    )
+    expect(selectBubbleTarget(catalog, undefined)).toBe('answer')
+  })
+
+  it('prioritizes running activity over a newer settled answer', () => {
+    const catalog = sessionCatalog(
+      { id: 'settled', updatedAt: 20 },
+      { id: 'running', updatedAt: 5, running: true },
+    )
+    expect(selectBubbleTarget(catalog, undefined)).toBe('running')
+  })
+
+  it('holds the running target through newer activity and catalog reordering', () => {
+    const catalog = sessionCatalog(
+      { id: 'other', updatedAt: 30, running: true },
+      { id: 'current', updatedAt: 2, running: true },
+    )
+    expect(selectBubbleTarget(catalog, 'current' as SessionId)).toBe('current')
+  })
+
+  it('keeps the current target on equal activity and handles an empty catalog', () => {
+    const catalog = sessionCatalog({ id: 'other', updatedAt: 2 }, { id: 'current', updatedAt: 2 })
+    expect(selectBubbleTarget(catalog, 'current' as SessionId)).toBe('current')
+    expect(selectBubbleTarget(catalog, 'other' as SessionId)).toBe('other')
+    expect(selectBubbleTarget(sessionCatalog(), undefined)).toBeUndefined()
+  })
+
+  it('ignores a stale current target and catalog rows whose summaries have not arrived', () => {
+    const base = sessionCatalog({ id: 'available', updatedAt: 2 })
+    const catalog = { ...base, ids: [...base.ids, 'missing' as SessionId] }
+    expect(selectBubbleTarget(catalog, 'removed' as SessionId)).toBe('available')
+  })
+})
+
 describe('BubblesLayer', () => {
-  function layer(options: { readonly reference?: boolean; readonly surface?: SurfaceSnapshot } = {}) {
+  function layer(options: {
+    readonly reference?: boolean
+    readonly surface?: SurfaceSnapshot
+    readonly catalog?: SessionListState
+  } = {}) {
     const renderSlot = vi.fn(() => <div data-testid="stack" />)
     const surface = options.surface ?? ORB
+    const catalog = options.catalog ?? sessionCatalog({ id: 'session-1' })
     const show = vi.fn()
     const hide = vi.fn()
+    const useResource = vi.fn((address: string) => ({
+      value: options.reference === false ? {} : { reference: { sessionId: parseWorkbenchAddress(address) } },
+    }))
     const props = {
       useSurface: (select: (value: SurfaceSnapshot) => unknown) => select(surface),
-      useSessions: (select: (value: { readonly ids: readonly string[] }) => unknown) =>
-        select({ ids: ['session-1'] }),
-      useResource: () => ({ value: options.reference === false ? {} : { reference: { sessionId: 'session-1' } } }),
-      SessionProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="bound">{children}</div>,
+      useSessions: (select: (value: SessionListState) => unknown) => select(catalog),
+      useResource,
+      SessionProvider: ({ children, session }: { children: React.ReactNode; session: { sessionId: SessionId } }) =>
+        <div data-testid="bound" data-session={session.sessionId}>{children}</div>,
       renderSlot,
       show,
       hide,
     }
-    return { props, renderSlot, show, hide }
+    return { props, renderSlot, show, hide, useResource }
   }
 
   it('renders nothing while the catalog retains no Session', () => {
@@ -198,6 +266,44 @@ describe('BubblesLayer', () => {
     render(createElement(BubblesLayer, props as never))
     expect(screen.getByTestId('bound')).toBeTruthy()
     expect(renderSlot).toHaveBeenCalledWith('better-interact.bubbles.stack', {})
+  })
+
+  it('binds the active Session instead of the first catalog row', () => {
+    const { props, useResource } = layer({
+      catalog: sessionCatalog({ id: 'first', updatedAt: 1 }, { id: 'active', updatedAt: 8, running: true }),
+    })
+    render(createElement(BubblesLayer, props as never))
+    expect(useResource).toHaveBeenLastCalledWith(workbenchAddress('active' as SessionId))
+    expect(screen.getByTestId('bound').getAttribute('data-session')).toBe('active')
+  })
+
+  it('keeps the streaming target until it settles, then follows newer activity', () => {
+    const initial = layer({
+      catalog: sessionCatalog(
+        { id: 'current', updatedAt: 2, running: true },
+        { id: 'other', updatedAt: 1 },
+      ),
+    })
+    const view = render(createElement(BubblesLayer, initial.props as never))
+    expect(initial.useResource).toHaveBeenLastCalledWith(workbenchAddress('current' as SessionId))
+
+    const streaming = layer({
+      catalog: sessionCatalog(
+        { id: 'other', updatedAt: 10, running: true },
+        { id: 'current', updatedAt: 2, running: true },
+      ),
+    })
+    view.rerender(createElement(BubblesLayer, streaming.props as never))
+    expect(streaming.useResource).toHaveBeenLastCalledWith(workbenchAddress('current' as SessionId))
+
+    const settled = layer({
+      catalog: sessionCatalog(
+        { id: 'other', updatedAt: 10, running: true },
+        { id: 'current', updatedAt: 2 },
+      ),
+    })
+    view.rerender(createElement(BubblesLayer, settled.props as never))
+    expect(settled.useResource).toHaveBeenLastCalledWith(workbenchAddress('other' as SessionId))
   })
 
   it('asks for the column when the carrier reports the orb hover', () => {

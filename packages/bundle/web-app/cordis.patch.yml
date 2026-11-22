@@ -275,6 +275,9 @@
     - id: ui-shortcuts
       name: '@deepseek-ai/dsh-client-ui-shortcuts'
 
+    - id: client-surface
+      name: '@deepseek-ai/dsh-client-surface'
+
     - id: ui-layout
       name: '@deepseek-ai/dsh-client-ui-layout'
 

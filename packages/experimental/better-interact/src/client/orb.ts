@@ -1,28 +1,21 @@
-/**
- * Browser entry of the orb form. One apply call registers the locale
- * dictionaries, observes the surface carrier and the optional voice services
- * into snapshot stores, contributes the `shell.overlay` orb and the
- * `shell.modal` chat box, and registers the system-scope orb commands. The
- * conversation, composer, approvals, and questions keep coming from the classic
- * frame; this package owns orb and chat chrome only.
- */
+/** Orb chrome, quick prompt, dedicated management workbench, and their commands. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
-// Type-only: the `settingsUi` presentation capability the orb menu asks for.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type {} from '@deepseek-ai/dsh-client-ui-voice-output/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { ManagementSessionController } from './management-session.ts'
 import { ORB_CHAT_MODAL_ID } from './modals.ts'
 import { OrbLayer } from './OrbLayer.tsx'
 import type { OrbOverlayInjected, OrbSurfaceActions } from './OrbLayer.tsx'
@@ -30,10 +23,7 @@ import { ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE, OrbWorkbench, OrbWork
 import type { OrbWorkbenchInjected } from './OrbWorkbench.tsx'
 import { QuickPrompt } from './QuickPrompt.tsx'
 import type { OrbChatActions, OrbChatInjected } from './QuickPrompt.tsx'
-import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
-
-/** Required services: the frame seats, the form carrier, the command registry, the theme, and the conversation this form writes to. */
-export const inject = ['surface', 'slots', 'locale', 'shortcuts', 'sessions', 'theme']
+import { de, en, es, fr, ja, NS, pt, ru, zh } from './orb-locales.ts'
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap {
@@ -44,95 +34,78 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
   }
 }
 
-/** Diagnostic name of the surface observation, used when its stream fails. */
-const SURFACE_OBSERVATION = 'surface'
 /** Diagnostic name of the capture observation, used when its stream fails. */
 const CAPTURE_OBSERVATION = 'capture'
 /** Diagnostic name of the playback observation, used when its stream fails. */
 const PLAYBACK_OBSERVATION = 'playback'
-/** Id of the management Agent preset the chat conversation runs under. */
-const MANAGEMENT_PRESET = 'manage'
-/**
- * Storage key remembering the management Session across orb window reloads.
- * The v2 key seeds a fresh conversation in the Host default Workspace instead
- * of reusing a Session created in the profile's working directory.
- */
-const MANAGEMENT_SESSION_KEY = 'dsh.orb.management-session.v2'
+const CAPTURE_STATE_CHANNEL = 'better-interact/capture-state'
+const PLAYBACK_STATE_CHANNEL = 'better-interact/playback-state'
+const VOICE_INTENT_CHANNEL = 'better-interact/voice-intent'
 
-/** Destination of one continuous observation; the surface and voice stores satisfy it. */
+/** Parse the orb-only capture projection at the renderer-message boundary. */
+function parseCapturePhase(payload: unknown): Pick<VoiceCaptureSnapshot, 'phase'> | null | undefined {
+  if (payload === null) return null
+  if (typeof payload !== 'object') return undefined
+  const { phase } = payload as { readonly phase?: unknown }
+  return phase === 'idle' || phase === 'starting' || phase === 'capturing' || phase === 'transcribing'
+    ? { phase } : undefined
+}
+
+/** Parse the orb-only playback projection at the renderer-message boundary. */
+function parsePlaybackState(payload: unknown): Pick<VoiceOutputSnapshot, 'speaking'> | null | undefined {
+  if (payload === null) return null
+  if (typeof payload !== 'object') return undefined
+  const { speaking } = payload as { readonly speaking?: unknown }
+  return typeof speaking === 'boolean' ? { speaking } : undefined
+}
+
+/** Destination of one continuous voice observation. */
 interface ObservationSink<T> {
-  /**
-   * Adopt one observed value.
-   * @param value - latest published value.
-   */
   set(value: T): void
 }
 
-/**
- * Follow one signal-scoped observation into a store for as long as the returned disposer allows.
- * @param follow - the source's observation factory.
- * @param store - target snapshot store.
- * @param label - diagnostic name reported when the observation fails.
- * @returns disposer aborting the observation.
- */
+/** Follow one signal-scoped voice observation until the returned disposer aborts it. */
 function observe<T>(
   follow: (signal: AbortSignal) => AsyncIterable<T>,
   store: ObservationSink<T>,
   label: string,
-): () => void {
+): () => Promise<void> {
   const lifetime = new AbortController()
-  void (async (): Promise<void> => {
+  const running = (async (): Promise<void> => {
     try {
       for await (const value of follow(lifetime.signal)) store.set(value)
     } catch (error) {
-      // Aborting ends the iteration without throwing; anything else is a defect worth reporting.
       console.error(`orb: ${label} observation failed`, error)
     }
   })()
-  return () => { lifetime.abort() }
-}
-
-/**
- * Read the management Session remembered by this window.
- * @returns the stored Session id, or null without usable storage.
- */
-function rememberedManagementSession(): string | null {
-  try {
-    return window.localStorage.getItem(MANAGEMENT_SESSION_KEY)
-  } catch (error) {
-    // The orb window may run without usable storage; the Host catalog still identifies the conversation.
-    console.debug('orb: management session preference unavailable', error)
-    return null
+  return async () => {
+    lifetime.abort()
+    await running
   }
 }
 
-/**
- * Remember the management Session for the next orb window mount.
- * @param id - the Session the chat writes to.
- */
-function rememberManagementSession(id: string): void {
-  try {
-    window.localStorage.setItem(MANAGEMENT_SESSION_KEY, id)
-  } catch (error) {
-    // Losing persistence only costs a new management Session on the next launch.
-    console.debug('orb: management session preference unavailable', error)
-  }
+/** Shared services and observations supplied by the Better plugin root. */
+export interface OrbPluginOptions {
+  /** Management Session resolver shared with the general workbench. */
+  readonly management: ManagementSessionController
+  /** Root-owned carrier observation shared with Bubbles and the general workbench. */
+  readonly surface: HostObservable<SurfaceSnapshot>
 }
 
 /**
- * Activate the orb form's client plugins.
- * @param ctx - client runtime owning the frame seats, the carrier, and the command registry.
+ * Activate the Orb entries over the shared Better management Session and surface observation.
+ * @param ctx - Client context carrying the frame, commands, Session, theme, and optional voice services.
+ * @param options - shared management Session resolver and carrier observation.
+ * @returns nothing; registrations remain owned by the Better plugin fiber.
  */
-export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'orb: copy')
+export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   const t = ctx.locale.bind(NS)
-
-  const surface = createSnapshotStore<SurfaceSnapshot>(ctx.surface.snapshot())
-  ctx.effect(() => observe(signal => ctx.surface.follow(signal), surface, SURFACE_OBSERVATION), 'orb: surface')
+  const { management, surface } = options
+  const role = surface.getSnapshot().role
+  const primary = role === 'surface'
 
   const reducedMotion = createSnapshotStore(false)
   ctx.effect(() => {
-    // Headless client registrations run without browser media APIs.
     const query = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : undefined
     if (query === undefined) return () => {}
     reducedMotion.set(query.matches)
@@ -142,120 +115,80 @@ export function apply(ctx: ClientContext): void {
   }, 'orb: reduced motion')
 
   const capture = createSnapshotStore<VoiceCaptureSnapshot | null>(null)
-  const voice = createSnapshotStore<VoiceOutputSnapshot | null>(null)
-  ctx.inject(['voiceCapture'], (scope) => {
-    const service = scope.voiceCapture
-    capture.set(service.snapshot())
-    scope.effect(() => {
-      const stop = observe(signal => service.follow(signal), capture, CAPTURE_OBSERVATION)
-      return () => { stop(); capture.set(null) }
-    }, 'orb: capture observation')
-  })
-  ctx.inject(['voiceOutput'], (scope) => {
-    const service = scope.voiceOutput
-    voice.set(service.snapshot())
-    scope.effect(() => {
-      const stop = observe(signal => service.follow(signal), voice, PLAYBACK_OBSERVATION)
-      return () => { stop(); voice.set(null) }
-    }, 'orb: playback observation')
-  })
+  const capturePhase = createSnapshotStore<Pick<VoiceCaptureSnapshot, 'phase'> | null>(null)
+  const voice = createSnapshotStore<Pick<VoiceOutputSnapshot, 'speaking'> | null>(null)
+  const publishCapture = (value: VoiceCaptureSnapshot | null, force = false): void => {
+    capture.set(value)
+    const next = value === null ? null : { phase: value.phase }
+    if (!force && capturePhase.getSnapshot()?.phase === next?.phase) return
+    capturePhase.set(next)
+    if (primary) {
+      void ctx.surface.sendMessage('orb', CAPTURE_STATE_CHANNEL, next).catch(reportFailure)
+    }
+  }
+  const publishPlayback = (value: Pick<VoiceOutputSnapshot, 'speaking'> | null, force = false): void => {
+    if (!force && voice.getSnapshot()?.speaking === value?.speaking) return
+    voice.set(value)
+    if (primary) {
+      void ctx.surface.sendMessage('orb', PLAYBACK_STATE_CHANNEL,
+        value === null ? null : { speaking: value.speaking }).catch(reportFailure)
+    }
+  }
+  if (primary) {
+    ctx.inject(['voiceCapture'], (scope) => {
+      const service = scope.voiceCapture
+      publishCapture(service.snapshot())
+      scope.effect(() => {
+        const stop = observe(signal => service.follow(signal), {
+          set: (value) => { publishCapture(value) },
+        }, CAPTURE_OBSERVATION)
+        return async () => { await stop(); publishCapture(null) }
+      }, 'orb: capture observation')
+    })
+    ctx.inject(['voiceOutput'], (scope) => {
+      const service = scope.voiceOutput
+      publishPlayback({ speaking: service.snapshot().speaking })
+      scope.effect(() => {
+        const stop = observe(signal => service.follow(signal), {
+          set: (value) => { publishPlayback({ speaking: value.speaking }) },
+        }, PLAYBACK_OBSERVATION)
+        return async () => { await stop(); publishPlayback(null) }
+      }, 'orb: playback observation')
+    })
+  }
 
   const theme = createSnapshotStore<ThemePreference>(ctx.theme.getTheme().preference)
   ctx.effect(() => ctx.on('theme/change', () => {
     theme.set(ctx.theme.getTheme().preference)
   }), 'orb: theme preference')
 
-  /** Report one carrier command failure without interrupting the gesture that issued it. */
   const reportFailure = (error: unknown): void => {
     console.error('orb: surface command failed', error)
   }
-  /**
-   * Run one carrier command and contain its rejection.
-   * @param command - carrier command to issue.
-   */
   const issue = (command: () => Promise<void>): void => { command().catch(reportFailure) }
-
-  /** Report one capture command failure without interrupting the gesture that issued it. */
   const reportVoiceFailure = (error: unknown): void => {
     console.error('orb: voice capture command failed', error)
   }
-  /**
-   * Resolve the Host default Workspace, creating it on first use when the
-   * profile allows that. The management Session lives there so its
-   * session-query tools see the same Workspace the user works in.
-   * @returns the default Workspace id, or undefined when no Workspace service
-   *   or default Workspace is available.
-   */
-  const defaultWorkspaceId = async (): Promise<WorkspaceId | undefined> => {
-    const workspaces = ctx.get('workspaces')
-    if (workspaces === undefined) return undefined
-    try {
-      return (await workspaces.initializeDefault())?.workspaceId
-    } catch (error) {
-      // A failed default Workspace must not block the chat: the Host still creates the Session.
-      console.warn('orb: default workspace unavailable', error)
-      return undefined
-    }
-  }
 
-  /** Session created or resumed by this window's chat; avoids a second create while the catalog catches up. */
-  let managementTarget: Awaited<ReturnType<typeof ctx.sessions.create>> | undefined
-
-  /**
-   * Resolve the chat's management Session: the remembered Session while the
-   * Host still lists it, otherwise a new one under the management preset in
-   * the Host default Workspace.
-   * @returns the Session that receives the chat prompt.
-   */
-  const managementSession = async (): Promise<Awaited<ReturnType<typeof ctx.sessions.create>>> => {
-    if (managementTarget !== undefined) return managementTarget
-    const sessions = ctx.sessions
-    const remembered = rememberedManagementSession()
-    const known = remembered === null
-      ? undefined
-      : sessions.list.getSnapshot().ids.find(id => String(id) === remembered)
-    if (known !== undefined) {
-      managementTarget = known
-      return known
-    }
-    const workspaceId = await defaultWorkspaceId()
-    const created = await sessions.create({
-      agentPreset: MANAGEMENT_PRESET,
-      ...(workspaceId === undefined ? {} : { workspaceId }),
-    })
-    rememberManagementSession(String(created))
-    managementTarget = created
-    return created
-  }
-
-  /**
-   * Send one prompt to the orb's management conversation.
-   * @param text - trimmed prompt text.
-   * @returns after the Host accepted the prompt.
-   */
   const submitPrompt = async (text: string): Promise<void> => {
-    const target = await managementSession()
+    const target = await management.resolve()
     await ctx.sessions.using(target, { source: 'orbPrompt' }, async (reference) => {
       const binding = await reference.ready
       const result = await binding.session.prompt([{ type: 'text', text }], 'queue')
       if (!result.ok) throw result.error
     })
-    // The prompt is accepted; raise the dedicated workbench so the answer has a visible surface.
     openWorkbench()
   }
 
-  /** @returns the transcript a capture held for the chat box, consumed once. */
   const takeTranscript = (): string | null => ctx.get('voiceCapture')?.takeTranscript() ?? null
-
-  /** Retained conversation behind the management workbench; null while the card is closed. */
   let workbenchReference: SessionReference | null = null
-  /** Reference store the workbench modal renders from. */
   const workbenchStore = createSnapshotStore<SessionReference | null>(null)
-  /** In-flight preparation, so overlapping surface snapshots retain once. */
   let preparingWorkbench: Promise<void> | undefined
+  let workbenchGeneration = 0
+  let workbenchDisposed = false
 
-  /** Release the workbench's retained conversation. */
   const closeWorkbench = (): void => {
+    workbenchGeneration += 1
     if (workbenchReference !== null) {
       workbenchReference.release()
       workbenchReference = null
@@ -263,56 +196,91 @@ export function apply(ctx: ClientContext): void {
     workbenchStore.set(null)
   }
 
-  /** Retain the management conversation for an open workbench. */
   const prepareWorkbench = (): void => {
-    if (workbenchReference !== null || preparingWorkbench !== undefined) return
-    preparingWorkbench = (async () => {
-      const target = await managementSession()
+    if (workbenchDisposed || workbenchReference !== null || preparingWorkbench !== undefined) return
+    const generation = workbenchGeneration
+    const preparing = (async () => {
+      const target = await management.resolve()
+      if (generation !== workbenchGeneration || surface.getSnapshot().modal !== ORB_WORKBENCH_MODAL_ID) return
+      ctx.uiWorkspace.openSession(target)
       const reference = ctx.sessions.retain(target, { source: 'orbChat', facets: { conversation: true } })
-      if (surface.getSnapshot().modal !== ORB_WORKBENCH_MODAL_ID) {
+      if (generation !== workbenchGeneration || surface.getSnapshot().modal !== ORB_WORKBENCH_MODAL_ID) {
         reference.release()
         return
       }
       workbenchReference = reference
       workbenchStore.set(reference)
     })().catch((error: unknown) => {
-      console.error('orb: management workbench unavailable', error)
-    }).finally(() => { preparingWorkbench = undefined })
+      if (generation === workbenchGeneration) console.error('orb: management workbench unavailable', error)
+    }).finally(() => {
+      if (preparingWorkbench === preparing) preparingWorkbench = undefined
+      if (generation !== workbenchGeneration && !workbenchDisposed && workbenchReference === null
+        && surface.getSnapshot().modal === ORB_WORKBENCH_MODAL_ID) prepareWorkbench()
+    })
+    preparingWorkbench = preparing
   }
 
-  /** Present the management workbench; the surface window prepares its conversation. */
   const openWorkbench = (): void => {
     issue(() => ctx.surface.presentModal(ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE))
   }
 
   ctx.effect(() => {
+    workbenchDisposed = false
     const sync = (): void => {
       if (surface.getSnapshot().modal === ORB_WORKBENCH_MODAL_ID) prepareWorkbench()
       else closeWorkbench()
     }
     const stop = surface.subscribe(sync)
     sync()
-    return () => { stop(); closeWorkbench() }
+    return () => {
+      workbenchDisposed = true
+      stop()
+      closeWorkbench()
+    }
   }, 'orb: management workbench binding')
 
-  /** Present the centered chat modal. */
   const openChat = (): void => { issue(() => ctx.surface.presentModal(ORB_CHAT_MODAL_ID)) }
-  /** Open the settings panel in the form's modal presentation. */
   const openSettings = (): void => { ctx.get('settingsUi')?.open() }
-  /** Dismiss the active modal presentation and return to the orb. */
   const dismissModal = (): void => { issue(() => ctx.surface.dismissModal()) }
 
-  /**
-   * Start a capture from the collapsed orb, or finish it into the chat modal.
-   * A finished transcript is held by the capture service until the box mounts and takes it.
-   */
   const toggleVoice = (): void => {
+    if (role === 'orb') {
+      issue(() => ctx.surface.sendMessage('surface', VOICE_INTENT_CHANNEL, { kind: 'toggle' }))
+      return
+    }
     const service = ctx.get('voiceCapture')
     if (service === undefined) return
     const phase = service.snapshot().phase
     if (phase === 'idle') { service.begin().catch(reportVoiceFailure); return }
     if (phase !== 'capturing') return
     void service.finish({ hold: true }).then(() => { openChat() }, reportVoiceFailure)
+  }
+
+  ctx.effect(() => ctx.surface.onMessage(VOICE_INTENT_CHANNEL, (message) => {
+    if (!primary || message.origin !== 'orb') return
+    if (typeof message.payload !== 'object' || message.payload === null) return
+    const { kind } = message.payload as { readonly kind?: unknown }
+    if (kind === 'toggle') toggleVoice()
+    else if (kind === 'snapshot') {
+      publishCapture(capture.getSnapshot(), true)
+      publishPlayback(voice.getSnapshot(), true)
+    }
+  }), 'orb: voice intents')
+
+  if (role === 'orb') {
+    ctx.effect(() => ctx.surface.onMessage(CAPTURE_STATE_CHANNEL, (message) => {
+      if (message.origin !== 'surface') return
+      const state = parseCapturePhase(message.payload)
+      if (state === undefined) console.error('orb: rejected an invalid capture state')
+      else capturePhase.set(state)
+    }), 'orb: capture state')
+    ctx.effect(() => ctx.surface.onMessage(PLAYBACK_STATE_CHANNEL, (message) => {
+      if (message.origin !== 'surface') return
+      const state = parsePlaybackState(message.payload)
+      if (state === undefined) console.error('orb: rejected an invalid playback state')
+      else voice.set(state)
+    }), 'orb: playback state')
+    void ctx.surface.sendMessage('surface', VOICE_INTENT_CHANNEL, { kind: 'snapshot' }).catch(reportFailure)
   }
 
   const actions: OrbSurfaceActions = {
@@ -324,29 +292,25 @@ export function apply(ctx: ClientContext): void {
     toggleVoice,
     snap: () => { issue(() => ctx.surface.snap()) },
   }
-  /** Persist one theme preference so every client window follows it. */
   const setTheme = (preference: ThemePreference): void => { ctx.theme.setTheme(preference) }
   const overlay: OrbOverlayInjected = {
-    hooks: { surface, capture, voice, reducedMotion, theme },
+    hooks: { surface, capture: capturePhase, voice, reducedMotion, theme },
     actions: { ...actions, setTheme },
   }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'orb', locale: NS, inject: () => overlay,
   }, OrbLayer))
 
-  /** Start recording from the chat box's microphone. */
   const startDictation = async (): Promise<void> => {
     const service = ctx.get('voiceCapture')
     if (service === undefined) return
     await service.begin()
   }
-  /** @returns the transcript of the chat box's finished recording. */
   const finishDictation = async (): Promise<string> => {
     const service = ctx.get('voiceCapture')
     if (service === undefined) return ''
     return (await service.finish()).text
   }
-  /** Discard the chat box's recording when the box closes while it records. */
   const cancelDictation = (): void => {
     const service = ctx.get('voiceCapture')
     if (service === undefined) return
@@ -373,7 +337,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.shortcuts.register({
     id: 'orb.toggle' as ShortcutCommandId,
     label: () => t('command.toggle'),
-    // Searchable terms, not rendered copy: the localized label above is what the settings list shows.
     aliases: ['orb', 'chat', 'toggle'],
     defaults: {},
     regions: ['page'],
@@ -394,7 +357,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.shortcuts.register({
     id: 'orb.open' as ShortcutCommandId,
     label: () => t('command.open'),
-    // Searchable terms, not rendered copy: the localized label above is what the settings list shows.
     aliases: ['orb', 'chat', 'open', 'show'],
     defaults: {
       'desktop:windows': { code: 'KeyD', modifiers: ['control', 'alt'] },
@@ -408,7 +370,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.shortcuts.register({
     id: 'orb.workbench' as ShortcutCommandId,
     label: () => t('orb.menu.workbench'),
-    // Searchable terms, not rendered copy: the localized label above is what the settings list shows.
     aliases: ['orb', 'manage', 'workbench', 'conversation'],
     defaults: {},
     regions: ['page'],
@@ -419,7 +380,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.shortcuts.register({
     id: 'voice.pushToTalk' as ShortcutCommandId,
     label: () => t('command.voice'),
-    // Searchable terms, not rendered copy: the localized label above is what the settings list shows.
     aliases: ['voice', 'dictation', 'push to talk'],
     defaults: {},
     regions: ['page'],
@@ -430,3 +390,6 @@ export function apply(ctx: ClientContext): void {
       : { status: 'handled', run: toggleVoice },
   }), 'orb: push-to-talk command')
 }
+
+/** Orb locale dictionaries, registered by the root Better plugin. */
+export const orbLocales = { zh, en, ja, es, fr, de, ru, pt }

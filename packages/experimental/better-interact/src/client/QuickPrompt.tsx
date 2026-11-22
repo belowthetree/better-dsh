@@ -12,7 +12,7 @@ import {
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
-import type { NS } from './locales.ts'
+import type { NS } from './orb-locales.ts'
 import css from './OrbForm.module.css'
 
 /** Commands the chat box issues to the plugin's apply closure. */

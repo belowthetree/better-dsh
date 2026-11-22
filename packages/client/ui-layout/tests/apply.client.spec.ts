@@ -65,6 +65,8 @@ function fakeSurface(dismissModal: () => Promise<void> = async () => {}): FakeSu
       dragBy: async () => {},
       snap: async () => {},
       pointerInside: () => {},
+      sendMessage: async () => {},
+      subscribeMessages: () => () => {},
     },
     push: (snapshot) => {
       current = snapshot

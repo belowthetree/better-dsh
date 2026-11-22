@@ -51,6 +51,7 @@ One page per subsystem of the DeepSeek Harness: what it is, the data structures 
 | [compaction.md](compaction.md) | the compaction seam: the `compaction/*` session events, `CompactionResult`, the `CompactionEngine` interface |
 | [subagent.md](subagent.md) | the subagent seam: the named-provider registry, `SubagentStartRequest`/`Result`/`Run`, the start-time-vs-runtime capability split |
 | [voice-input.md](voice-input.md) | experimental named recognizers, transient audio and revision-guarded draft insertion |
+| [text-to-speech.md](text-to-speech.md) | experimental synthesis providers, persisted selection, transient speech output, and browser playback |
 | [translation.md](translation.md) | experimental anonymous text translation and explicit provider requests |
 | [agent-team.md](agent-team.md) | Agent Teams: shared task DAG and task ownership for a subagent tree |
 | [liveshare.md](liveshare.md) | the opt-in LiveShare bundle: nested share modes, a fork's ceiling and durability, enforcement installation, and the constraint a shared Session's externally driven turns run under |

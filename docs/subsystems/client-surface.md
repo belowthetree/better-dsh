@@ -12,6 +12,10 @@ The client surface capability reports one renderer window's role, shell form, an
 
 The Client plugin selects one adapter at activation: the Desktop preload capability `window.dshDesktop.surface` seeded from the `__DSH_SURFACE__` boot descriptor, or an inert adapter whose commands resolve without effect. A command resolves only after the carrier acknowledges it, and a rejected command leaves the last snapshot in place. Presentation commands from any form window drive the shared state, the bubble column shows and hides independently of the surface presentation, and pointer and drag reports stay with the window that sent them. Window geometry, work-area clamping, click-through, and layout persistence stay in the Electron main process; the renderer forwards pointer deltas and pointer presence. No presentation change writes a Session event or enters a model request.
 
+## Renderer messages
+
+`sendMessage(target, channel, payload)` delivers bounded JSON to the `orb`, `surface`, or `bubbles` role, and `onMessage(channel, listener)` subscribes to one exact channel. Main authenticates the origin and validates the channel and payload size without interpreting consumer fields. Consumers own message parsing, authority, cancellation, and disposal; the carrier does not replicate Session, recorder, or audio state.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <!-- END GENERATED cordis-surface -->

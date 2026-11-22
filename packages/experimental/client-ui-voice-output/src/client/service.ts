@@ -124,6 +124,8 @@ export class VoiceOutputService implements VoiceOutput {
   #snapshot: VoiceOutputSnapshot
   #providers = new Map<string, VoiceOutputProviderId>()
   #detach: (() => void) | undefined
+  #observer: ActiveReplyObserver | undefined
+  #capture: CapturePhaseSource | undefined
   #captureWatch: (() => void) | undefined
   #current: Playback | undefined
   #pending: PendingReply | undefined
@@ -222,9 +224,9 @@ export class VoiceOutputService implements VoiceOutput {
   }
 
   /**
-   * Follow the main-view Session's completed replies and the optional capture service.
+   * Follow the main-view Session's completed replies.
    * @param sessions - Session object-layer reads for the main-view selection and its event window.
-   * @returns disposer detaching the reply and capture observations.
+   * @returns disposer detaching the reply observation and any active capture watch.
    */
   observe(sessions: ReplySessionSource): () => void {
     if (this.#disposed) return () => {}
@@ -232,11 +234,33 @@ export class VoiceOutputService implements VoiceOutput {
       started: () => { this.#halt() },
       completed: (reply) => { this.#accept(reply) },
     })
+    this.#observer = observer
     this.#detach = observer.connect()
-    this.#captureWatch = this.#watchCapture(observer)
+    if (this.#capture !== undefined) this.#captureWatch = this.#watchCapture(observer, this.#capture)
     return () => {
       this.#detach?.()
       this.#detach = undefined
+      this.#captureWatch?.()
+      this.#captureWatch = undefined
+      if (this.#observer === observer) this.#observer = undefined
+    }
+  }
+
+  /**
+   * Follow an optional capture service for as long as its Cordis registration remains active.
+   * The source may arrive before or after the Session observation.
+   * @param capture - capture service whose finished transcriptions mark voice-initiated turns.
+   * @returns disposer that detaches only this registration's capture watch.
+   */
+  observeCapture(capture: CapturePhaseSource): () => void {
+    if (this.#disposed) return () => {}
+    this.#captureWatch?.()
+    this.#captureWatch = undefined
+    this.#capture = capture
+    if (this.#observer !== undefined) this.#captureWatch = this.#watchCapture(this.#observer, capture)
+    return () => {
+      if (this.#capture !== capture) return
+      this.#capture = undefined
       this.#captureWatch?.()
       this.#captureWatch = undefined
     }
@@ -252,6 +276,8 @@ export class VoiceOutputService implements VoiceOutput {
     this.#halt()
     this.#detach?.()
     this.#detach = undefined
+    this.#observer = undefined
+    this.#capture = undefined
     this.#captureWatch?.()
     this.#captureWatch = undefined
   }
@@ -464,15 +490,12 @@ export class VoiceOutputService implements VoiceOutput {
   }
 
   /**
-   * Follow the optional capture service and mark a turn when a capture finishes.
+   * Follow the capture service and mark a turn when a capture finishes.
    * @param observer - reply observer that owns the voice-turn mark.
-   * @returns disposer ending the capture observation, or undefined without a capture service.
+   * @param capture - capture registration observed by the plugin mount.
+   * @returns disposer ending the capture observation.
    */
-  #watchCapture(observer: ActiveReplyObserver): (() => void) | undefined {
-    // The optional capture service belongs to another package; this local shape
-    // names only the phase observation playback reads, so the two packages stay decoupled.
-    const capture = this.#ctx.get('voiceCapture') as CapturePhaseSource | undefined
-    if (capture === undefined) return undefined
+  #watchCapture(observer: ActiveReplyObserver, capture: CapturePhaseSource): () => void {
     const lifetime = new AbortController()
     let previous = capture.snapshot().phase
     const observe = async (): Promise<void> => {

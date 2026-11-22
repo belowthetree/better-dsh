@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import type { SurfaceSnapshot } from '../src/protocol.ts'
+import { describe, expect, it, vi } from 'vitest'
+import type { SurfaceMessage, SurfaceSnapshot } from '../src/protocol.ts'
 import type { SurfaceAdapter } from '../src/client/adapters.ts'
 import { SurfaceRuntime } from '../src/client/service.ts'
 
@@ -19,12 +19,15 @@ interface FakeAdapter {
   readonly followers: number
   /** Publish one snapshot to the connected runtime. */
   push(snapshot: SurfaceSnapshot): void
+  /** Deliver one consumer message to channel subscribers. */
+  emit(message: SurfaceMessage): void
 }
 
 function fakeAdapter(): FakeAdapter {
   const state = {
     current: BASE,
     listeners: new Set<(snapshot: SurfaceSnapshot) => void>(),
+    messageListeners: new Set<(message: SurfaceMessage) => void>(),
     commands: [] as string[],
     nextRead: undefined as SurfaceSnapshot | undefined,
   }
@@ -47,6 +50,11 @@ function fakeAdapter(): FakeAdapter {
     dragBy: async (deltaX, deltaY) => { state.commands.push(`dragBy:${String(deltaX)},${String(deltaY)}`) },
     snap: async () => { state.commands.push('snap') },
     pointerInside: (inside) => { state.commands.push(`pointerInside:${String(inside)}`) },
+    sendMessage: async (target, channel) => { state.commands.push(`message:${target}:${channel}`) },
+    subscribeMessages: (_channel, listener) => {
+      state.messageListeners.add(listener)
+      return () => { state.messageListeners.delete(listener) }
+    },
   }
   return {
     adapter, commands: state.commands,
@@ -56,6 +64,9 @@ function fakeAdapter(): FakeAdapter {
     push: (snapshot) => {
       state.current = snapshot
       for (const listener of [...state.listeners]) listener(snapshot)
+    },
+    emit: (message) => {
+      for (const listener of [...state.messageListeners]) listener(message)
     },
   }
 }
@@ -148,6 +159,32 @@ describe('SurfaceRuntime commands', () => {
     const runtime = new SurfaceRuntime(adapter)
     await expect(runtime.expand()).rejects.toThrow('window is gone')
     expect(runtime.snapshot()).toBe(BASE)
+  })
+})
+
+describe('SurfaceRuntime messages', () => {
+  it('sends messages and filters, contains, and disposes channel listeners', async () => {
+    const fake = fakeAdapter()
+    const runtime = new SurfaceRuntime(fake.adapter)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const seen: unknown[] = []
+      const off = runtime.onMessage('better/intent', (message) => { seen.push(message.payload) })
+      runtime.onMessage('better/intent', () => { throw new Error('consumer failed') })
+      const offOther = runtime.onMessage('voice/state', () => { throw new Error('unrelated channel') })
+      await runtime.sendMessage('surface', 'better/intent', { kind: 'open' })
+      fake.emit({ origin: 'orb', channel: 'voice/state', payload: null })
+      fake.emit({ origin: 'orb', channel: 'better/intent', payload: { id: 'one' } })
+      expect(fake.commands).toEqual(['message:surface:better/intent'])
+      expect(seen).toEqual([{ id: 'one' }])
+      expect(errors).toHaveBeenCalledWith('surface: message listener for better/intent failed', expect.any(Error))
+      off()
+      offOther()
+      fake.emit({ origin: 'orb', channel: 'better/intent', payload: { id: 'two' } })
+      expect(seen).toHaveLength(1)
+    } finally {
+      errors.mockRestore()
+    }
   })
 })
 

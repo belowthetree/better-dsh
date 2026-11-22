@@ -13,6 +13,7 @@ import { Config as PersonaConfig } from '@deepseek-ai/dsh-persona'
 import { Config as TimeContextConfig } from '@deepseek-ai/dsh-time-context'
 import { Config as AskUserConfig } from '@deepseek-ai/dsh-tool-ask-user'
 import { Config as SessionQueryConfig } from '@deepseek-ai/dsh-tool-session-query'
+import { Config as SessionListConfig } from '@deepseek-ai/dsh-tool-session-list'
 
 const BUNDLE_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -35,7 +36,6 @@ type ObjectConfig = Readonly<Record<string, unknown>>
 /** Plugin rows without a configuration schema, which must declare no config. */
 const UNCONFIGURED = new Set([
   '@deepseek-ai/dsh-command-compact',
-  '@deepseek-ai/dsh-tool-session-list',
 ])
 
 /**
@@ -56,6 +56,7 @@ const validators: Readonly<Record<string, (value: ObjectConfig) => unknown>> = {
   '@deepseek-ai/dsh-time-context': validator(TimeContextConfig),
   '@deepseek-ai/dsh-tool-ask-user': validator(AskUserConfig),
   '@deepseek-ai/dsh-tool-session-query': validator(SessionQueryConfig),
+  '@deepseek-ai/dsh-tool-session-list': validator(SessionListConfig),
 }
 
 /** Names of every plugin row, including the rows a group carries in `config`. */
@@ -112,4 +113,6 @@ it('validates the declaration and every preset row against its plugin config sch
   const config = presetDeclaration()
   AgentPreset.Config(config)
   validateRows(config.plugins)
+  expect(config.plugins.find(row => row.name === '@deepseek-ai/dsh-tool-session-list')?.config)
+    .toMatchObject({ workspaceAccess: 'current' })
 })

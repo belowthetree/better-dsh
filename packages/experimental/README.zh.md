@@ -67,7 +67,6 @@ kind: "package-group"
 | [`speech-to-text-sensevoice`](speech-to-text-sensevoice/README.zh.md) | 托管本地 SenseVoice 推理 | — |
 | [`api-speech-to-text`](api-speech-to-text/README.zh.md) | 带认证的临时转写 Remote | `ctx.speechController` |
 | [`client-ui-voice-input`](client-ui-voice-input/README.zh.md) | 基于共享捕获服务的输入区控件，插入前检查版本 | — |
-| [`client-ui-orb`](client-ui-orb/README.zh.md) | 形态的球体与面板外观、系统级开关命令，以及形态自有模态内容 | — |
 | [`client-ui-voice-output`](client-ui-voice-output/README.zh.md) | 基于语音输出 Remote 的播放、自动朗读策略、音色选择与静音 | `ctx.voiceOutput` |
 | [`client-voice-capture`](client-voice-capture/README.zh.md) | 共享麦克风捕获、设备偏好与语音 Remote 归属 | `ctx.voiceCapture` |
 | [`text-to-speech`](text-to-speech/README.zh.md) | 具名语音合成 Provider | `ctx.textToSpeech` |

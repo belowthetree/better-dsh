@@ -12,6 +12,10 @@
 
 Client 插件在激活时选择一个适配器：由 `__DSH_SURFACE__` 启动描述符播种的 Desktop preload 能力 `window.dshDesktop.surface`，或命令直接完成且无效果的惰性适配器。命令只在载体确认后完成，被载体拒绝的命令保留上一个快照。任一形态窗口发出的呈现命令都驱动共享状态，气泡列的显示与隐藏独立于 surface 呈现，而指针与拖拽上报只作用于来源窗口。窗口几何、工作区钳制、点击穿透与布局持久化留在 Electron 主进程；渲染进程只转发指针位移与指针是否在交互区域内。任何呈现变化都不写入 Session 事件，也不进入模型请求。
 
+## 渲染进程消息
+
+`sendMessage(target, channel, payload)` 把有界 JSON 投递给 `orb`、`surface` 或 `bubbles` 角色，`onMessage(channel, listener)` 订阅一个精确频道。主进程认证来源并校验频道与载荷大小，但不解释消费者字段。消费者拥有消息解析、权限、取消与释放；载体不复制 Session、录音器或音频状态。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <!-- END GENERATED cordis-surface -->

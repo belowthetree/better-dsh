@@ -77,6 +77,19 @@ export interface SurfaceSnapshot {
 /** Boot descriptor the carrier publishes before Client plugins load. */
 export type SurfaceDescriptor = SurfaceSnapshot
 
+/** Form window that may receive a renderer-to-renderer message. */
+export type SurfaceMessageRole = Exclude<SurfaceWindowRole, 'classic' | 'onboarding'>
+
+/** One role-addressed message delivered without interpretation by the Desktop carrier. */
+export interface SurfaceMessage {
+  /** Renderer role that sent the message. */
+  readonly origin: SurfaceMessageRole
+  /** Consumer-owned channel, parsed and bounded by the carrier. */
+  readonly channel: string
+  /** Consumer-owned JSON payload, bounded by the carrier. */
+  readonly payload: unknown
+}
+
 /** Desktop preload capability; the only privileged surface boundary. */
 export interface DesktopSurfaceApi {
   /** @returns the carrier's current presentation snapshot. */
@@ -127,6 +140,20 @@ export interface DesktopSurfaceApi {
    * @param inside - whether the pointer is over the reporting window's content.
    */
   pointerInside(inside: boolean): void
+  /**
+   * Send one bounded JSON message to another form renderer without giving it window authority.
+   * @param target - role that receives the message.
+   * @param channel - consumer-owned message channel.
+   * @param payload - JSON payload interpreted only by that consumer.
+   */
+  sendMessage(target: SurfaceMessageRole, channel: string, payload: unknown): Promise<void>
+  /**
+   * Observe messages delivered to this renderer and publish the channel's readiness.
+   * @param channel - exact channel to observe; the first subscriber marks it ready.
+   * @param listener - receives the carrier-authenticated origin and consumer payload.
+   * @returns disposer removing the listener and marking the channel unready after its last subscriber.
+   */
+  subscribeMessages(channel: string, listener: (message: SurfaceMessage) => void): () => void
 }
 
 /** Typed global apps/web writes from the boot payload before injections run. */

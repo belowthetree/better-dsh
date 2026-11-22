@@ -250,6 +250,14 @@ The persisted projection cache service. Opens the `session_projcache` domain at 
 
 ```ts cordis-catalog
 /**
+ * Remove one Session's durable checkpoint after its log is permanently
+ * deleted. The checkpoint is derived data, so this is best-effort and does
+ * not refuse an absent record.
+ * @param sessionId - the removed Session whose checkpoint must not outlive it.
+ */
+async evict(sessionId: SessionId): Promise<void>
+
+/**
  * The zero-I/O listing read: whole values viewed straight from the stored
  * rows (version-matching keys only) of the record bound to the caller's
  * lifecycle. The header is the only identity witness a listing holds, so
@@ -325,7 +333,7 @@ async write(session: Session): Promise<void>
 coldSnapshot( meta: SessionHeader, inheritedEventCount: SessionLogOffset, events: readonly SessionEvent[], ): ProjectionSnapshot
 ```
 
-Types: [Session](session.md) · [SessionEvent](session.md) · [SessionHeader](persistence.md) · [SessionLogOffset](session.md)
+Types: [Session](session.md) · [SessionEvent](session.md) · [SessionHeader](persistence.md) · [SessionId](core.md) · [SessionLogOffset](session.md)
 
 Source: [`packages/session/session-projection-cache/src/index.ts`](../../packages/session/session-projection-cache/src/index.ts)
 

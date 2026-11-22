@@ -1,5 +1,7 @@
 /** Carrier adapters for the surface service: the Desktop preload bridge and the inert Web carrier. */
-import type { DesktopSurfaceApi, ModalSizeHint, SurfaceBootGlobal, SurfaceDescriptor, SurfaceSnapshot } from '../protocol.ts'
+import type {
+  DesktopSurfaceApi, ModalSizeHint, SurfaceBootGlobal, SurfaceDescriptor, SurfaceMessage, SurfaceMessageRole, SurfaceSnapshot,
+} from '../protocol.ts'
 
 /** Presentation of a carrier that cannot change it: Web pages and classic Desktop windows. */
 const INERT_SNAPSHOT: SurfaceSnapshot = Object.freeze({
@@ -62,6 +64,10 @@ export interface SurfaceAdapter {
    * @param inside - whether the pointer is over the reporting window's content.
    */
   pointerInside(inside: boolean): void
+  /** Send one consumer-owned message to another form renderer. */
+  sendMessage(target: SurfaceMessageRole, channel: string, payload: unknown): Promise<void>
+  /** Observe messages and report readiness for one channel. */
+  subscribeMessages(channel: string, listener: (message: SurfaceMessage) => void): () => void
 }
 /* jscpd:ignore-end */
 
@@ -93,6 +99,8 @@ export function inertSurfaceAdapter(): SurfaceAdapter {
     dragBy: () => Promise.resolve(),
     snap: () => Promise.resolve(),
     pointerInside: () => {},
+    sendMessage: () => Promise.resolve(),
+    subscribeMessages: () => () => {},
   }
 }
 
@@ -120,6 +128,8 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
     dragBy: (deltaX, deltaY) => api.dragBy(deltaX, deltaY),
     snap: () => api.snap(),
     pointerInside: (inside) => { api.pointerInside(inside) },
+    sendMessage: (target, channel, payload) => api.sendMessage(target, channel, payload),
+    subscribeMessages: (channel, listener) => api.subscribeMessages(channel, listener),
   }
 }
 

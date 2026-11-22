@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/client'
 import type { HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -14,6 +13,7 @@ import { workbenchAddress } from './resource.ts'
 import { workbenchGroups } from './workbench-groups.ts'
 import type { WorkbenchPagesState } from './workbench-pages.ts'
 import css from './Workbench.module.css'
+import { EmbeddedConversation } from './embedded-conversation.tsx'
 
 /**
  * Dialog size the workbench asks the carrier for: four fifths of the work area
@@ -239,11 +239,6 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
   </section>
 }
 
-/** Chat view the workbench always shows, hiding the transcript's other Views. */
-export function FixedWorkbenchView(props: ConversationViewsProps) {
-  return <>{props.renderSlot('conversation.session', { view: 'chat' })}</>
-}
-
 /** Props of the session-scoped entry `better-interact.workbench.conversation`. */
 export type WorkbenchConversationProps =
   & PropsRuntime<'better-interact.workbench.conversation'>
@@ -254,19 +249,6 @@ export type WorkbenchConversationProps =
  * @param props - bound Session state, its Conversation state, and the Factory renderer.
  * @returns the conversation content rooted at the Chat view.
  */
-export function WorkbenchConversation(
-  { sessionId, useSession, useConversation, useSessions, renderFactorySlot }:WorkbenchConversationProps) {
-  const session = useSession(value => value)
-  const conversation = useConversation(value => value)
-  const active = conversation.activeTargets.size > 0
-    || (!session.blank && !session.awaitingFirstTurn)
-    || session.running
-  const shellPhase = active ? 'active' : session.promptAttempted ? 'engaging' : 'blank'
-  const summaryBlank = useSessions(state => state.byId[sessionId]?.blank)
-  const settling = shellPhase === 'blank' && session.openState === 'loading' && summaryBlank !== true
-  const hero = shellPhase === 'blank' && (session.openState === 'open' || summaryBlank === true)
-  const phase = settling ? 'settling' : hero ? 'hero' : 'active'
-  return renderFactorySlot('conversation.content', { variant: 'embedded', phase, hero }, {
-    slots: { views: FixedWorkbenchView },
-  })
+export function WorkbenchConversation(props: WorkbenchConversationProps) {
+  return <EmbeddedConversation {...props} />
 }

@@ -1,4 +1,4 @@
-﻿{
+{
   // Doubles as the resolution facade for vite-tsconfig-paths (vitest configs
   // point here). NEVER add include/files to this file: it would leak into
   // every extending package project and narrow the facade's match-all scope.
@@ -336,7 +336,6 @@
       "@deepseek-ai/dsh-client-shortcuts": ["./packages/client/shortcuts/src"],
       "@deepseek-ai/dsh-client-voice-capture/protocol": ["./packages/experimental/client-voice-capture/src/protocol.ts"],
       "@deepseek-ai/dsh-client-voice-capture/client": ["./packages/experimental/client-voice-capture/src/client/index.ts"],
-      "@deepseek-ai/dsh-client-ui-orb/client": ["./packages/experimental/client-ui-orb/src/client/index.ts"],
       "@deepseek-ai/dsh-better-interact/client": ["./packages/experimental/better-interact/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-voice-output/protocol": ["./packages/experimental/client-ui-voice-output/src/protocol.ts"],
       "@deepseek-ai/dsh-client-ui-voice-output/client": ["./packages/experimental/client-ui-voice-output/src/client/index.ts"],
@@ -487,7 +486,6 @@
       "@deepseek-ai/dsh-better-interact": ["./packages/experimental/better-interact/src"],
       "@deepseek-ai/dsh-brand": ["./packages/util/brand/src"],
       "@deepseek-ai/dsh-chunked-list": ["./packages/util/chunked-list/src"],
-      "@deepseek-ai/dsh-client-ui-orb": ["./packages/experimental/client-ui-orb/src"],
       "@deepseek-ai/dsh-client-ui-voice-output": ["./packages/experimental/client-ui-voice-output/src"],
       "@deepseek-ai/dsh-client-voice-capture": ["./packages/experimental/client-voice-capture/src"],
       "@deepseek-ai/dsh-cmdline": ["./packages/boot/cmdline/src"],

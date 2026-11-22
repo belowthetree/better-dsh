@@ -17,9 +17,9 @@ export type OrbLabelKey =
 /** Voice observations the orb reflects; an unmounted sibling plugin reports null. */
 export interface OrbVoiceObservation {
   /** Microphone capture snapshot from `ctx.voiceCapture`, or null while that plugin is unmounted. */
-  readonly capture: VoiceCaptureSnapshot | null
+  readonly capture: Pick<VoiceCaptureSnapshot, 'phase'> | null
   /** Playback snapshot from `ctx.voiceOutput`, or null while that plugin is unmounted. */
-  readonly voice: VoiceOutputSnapshot | null
+  readonly voice: Pick<VoiceOutputSnapshot, 'speaking'> | null
 }
 
 /**

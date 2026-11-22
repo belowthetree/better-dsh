@@ -6,11 +6,11 @@
  * from the orb menu.
  */
 import type { ModalSizeHint } from '@deepseek-ai/dsh-client-surface/client'
-import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { NS } from './locales.ts'
+import type { NS } from './orb-locales.ts'
 import css from './OrbWorkbench.module.css'
+import { EmbeddedConversation } from './embedded-conversation.tsx'
 
 /** Registered `shell.modal` entry id of the management workbench. */
 export const ORB_WORKBENCH_MODAL_ID = 'orb.workbench'
@@ -63,34 +63,7 @@ export type OrbWorkbenchConversationProps =
   & PropsRuntime<'orb.workbench.conversation'>
   & PropsRenderFactories
 
-/**
- * Render only the Chat view of the management conversation.
- * @param props - the view slot renderer and the bound Session's conversation context.
- * @returns the Chat view.
- */
-export function FixedOrbWorkbenchView(props: ConversationViewsProps) {
-  return <>{props.renderSlot('conversation.session', { view: 'chat' })}</>
-}
-
-/**
- * Compose the shared Conversation content for the management Session.
- * @param props - bound Session state, its Conversation state, and the Factory renderer.
- * @returns the conversation content rooted at the Chat view.
- */
-export function OrbWorkbenchConversation(
-  { sessionId, useSession, useConversation, useSessions, renderFactorySlot }: OrbWorkbenchConversationProps,
-) {
-  const session = useSession(value => value)
-  const conversation = useConversation(value => value)
-  const active = conversation.activeTargets.size > 0
-    || (!session.blank && !session.awaitingFirstTurn)
-    || session.running
-  const shellPhase = active ? 'active' : session.promptAttempted ? 'engaging' : 'blank'
-  const summaryBlank = useSessions(state => state.byId[sessionId]?.blank)
-  const settling = shellPhase === 'blank' && session.openState === 'loading' && summaryBlank !== true
-  const hero = shellPhase === 'blank' && (session.openState === 'open' || summaryBlank === true)
-  const phase = settling ? 'settling' : hero ? 'hero' : 'active'
-  return renderFactorySlot('conversation.content', { variant: 'embedded', phase, hero }, {
-    slots: { views: FixedOrbWorkbenchView },
-  })
+/** Compose the same fixed-Chat Conversation occurrence as the general workbench. */
+export function OrbWorkbenchConversation(props: OrbWorkbenchConversationProps) {
+  return <EmbeddedConversation {...props} />
 }

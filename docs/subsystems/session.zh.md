@@ -980,6 +980,18 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('fork') async fork(request: SessionForkRequest): Promise<SessionForkValue>
 
 /**
+ * Permanently remove one stored Session, its durable log, and its Workspace
+ * accounting. A running Session, a Session whose live Agent another consumer
+ * owns, or a parent of subagent Sessions is refused; an idle Agent this
+ * controller owns is stopped before its log is removed. A backend without
+ * deletion support refuses every call.
+ * @param request - the stored Session to remove.
+ * @param signal - caller cancellation before removal starts.
+ * @returns acknowledgement that the stored Session is gone.
+ */
+@Remote('delete') async delete(request: SessionDeleteRequest, signal: AbortSignal): Promise<SessionDeleteValue>
+
+/**
  * Admit one prompt after explicitly resuming its Session.
  * @param request - Session identity, prompt content, source metadata, and delivery mode.
  * @param signal - caller cancellation before prompt admission begins.

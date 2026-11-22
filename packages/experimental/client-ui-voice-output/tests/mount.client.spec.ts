@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { VoiceOutput } from '../src/protocol.ts'
+import type { CapturePhaseSource } from '../src/client/replies.ts'
 import { mountVoiceOutput } from '../src/client/mount.ts'
 import {
   assistantMessage, audioFixture, sessionFixture, speechFixture, turnStart, userMessage,
@@ -72,6 +73,15 @@ describe('mountVoiceOutput', () => {
     expect(b.unmount).toHaveBeenCalledOnce()
   })
 
+  it('does not mount playback in a secondary orb renderer', async () => {
+    const b = fixture()
+    b.ctx.provide('surface', { snapshot: () => ({ form: 'orb', role: 'bubbles' }) } as never)
+    const dispose = await mountVoiceOutput(b.ctx, CONTRIBUTION, { audio: b.audio.factory })
+    expect(b.ctx.get('voiceOutput')).toBeUndefined()
+    expect(b.unmount).not.toHaveBeenCalled()
+    await dispose()
+  })
+
   it('speaks an explicit request without any Session observation', async () => {
     const b = fixture()
     const dispose = await mountVoiceOutput(b.ctx, CONTRIBUTION, { audio: b.audio.factory })
@@ -99,6 +109,35 @@ describe('mountVoiceOutput', () => {
     events.append(assistantMessage(3, 1, 'spoken after mount'))
     await settle()
     expect(b.speech.synthesize).toHaveBeenCalledOnce()
+    await dispose()
+  })
+
+  it('marks a voice turn when capture appears after the Session observation', async () => {
+    const b = fixture()
+    const dispose = await mountVoiceOutput(b.ctx, CONTRIBUTION, { audio: b.audio.factory })
+    voiceOutputOf(b.ctx).setPolicy('voice')
+    const bench = sessionFixture()
+    const events = bench.session('one')
+    bench.focus('one')
+    events.replace([], false)
+    b.ctx.provide('sessions', bench.source)
+    await settle()
+
+    const capture = captureFixture('idle')
+    b.ctx.provide('voiceCapture', capture.source)
+    await settle()
+    capture.emit('transcribing')
+    await settle()
+    capture.emit('idle')
+    await settle()
+    events.append(turnStart(1, 1))
+    events.append(userMessage(2))
+    events.append(assistantMessage(3, 1, 'late capture'))
+    await settle()
+
+    expect(b.speech.synthesize).toHaveBeenCalledOnce()
+    b.audio.clips[0]!.ended()
+    await settle()
     await dispose()
   })
 
@@ -148,4 +187,23 @@ function stubAllPolicy(): void {
     setItem: (key: string, value: string) => { storage.set(key, value) },
     removeItem: (key: string) => { storage.delete(key) },
   })
+}
+
+/** Controllable capture registration for the late-service mount scenario. */
+function captureFixture(initial: string) {
+  let next: ((phase: string) => void) | undefined
+  const source: CapturePhaseSource = {
+    snapshot: () => ({ phase: initial }),
+    follow: async function* (signal: AbortSignal) {
+      while (!signal.aborted) {
+        const phase = await new Promise<string>((resolve) => {
+          next = resolve
+          signal.addEventListener('abort', () => { resolve(initial) }, { once: true })
+        })
+        if (signal.aborted) return
+        yield { phase }
+      }
+    },
+  }
+  return { source, emit: (phase: string): void => { next?.(phase) } }
 }

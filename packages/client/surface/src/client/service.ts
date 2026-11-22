@@ -1,5 +1,5 @@
 /** Surface state over one carrier adapter, exposed to Client plugins as `ctx.surface`. */
-import type { ModalSizeHint, SurfaceSnapshot } from '../protocol.ts'
+import type { ModalSizeHint, SurfaceMessage, SurfaceMessageRole, SurfaceSnapshot } from '../protocol.ts'
 import type { SurfaceAdapter } from './adapters.ts'
 
 /* jscpd:ignore-start -- the service restates the carrier commands so each layer owns its JSDoc and the adapter can add initial/read. */
@@ -53,6 +53,20 @@ export interface SurfaceService {
    * @param inside - whether the pointer is over the reporting window's content.
    */
   setPointerInside(inside: boolean): void
+  /**
+   * Send one bounded JSON message to another form renderer.
+   * @param target - role that receives the message.
+   * @param channel - consumer-owned channel.
+   * @param payload - JSON payload interpreted by the receiving consumer.
+   */
+  sendMessage(target: SurfaceMessageRole, channel: string, payload: unknown): Promise<void>
+  /**
+   * Observe one consumer-owned channel delivered to this renderer.
+   * @param channel - exact channel to observe.
+   * @param listener - handles each message; a throwing listener is reported without blocking others.
+   * @returns disposer removing the listener.
+   */
+  onMessage(channel: string, listener: (message: SurfaceMessage) => void): () => void
 }
 /* jscpd:ignore-end */
 
@@ -150,6 +164,23 @@ export class SurfaceRuntime implements SurfaceService {
   /** Report whether the pointer is over interactive content. */
   setPointerInside(inside: boolean): void {
     this.adapter.pointerInside(inside)
+  }
+
+  /** Send one message through the carrier without changing the presentation snapshot. */
+  async sendMessage(target: SurfaceMessageRole, channel: string, payload: unknown): Promise<void> {
+    await this.adapter.sendMessage(target, channel, payload)
+  }
+
+  /** Observe one channel until the consumer releases its registration. */
+  onMessage(channel: string, listener: (message: SurfaceMessage) => void): () => void {
+    return this.adapter.subscribeMessages(channel, (message) => {
+      if (message.channel !== channel) return
+      try {
+        listener(message)
+      } catch (error) {
+        console.error(`surface: message listener for ${channel} failed`, error)
+      }
+    })
   }
 
   /** Run one carrier command, then adopt the snapshot it settled into. */

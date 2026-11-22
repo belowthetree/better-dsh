@@ -3,7 +3,7 @@ import type { FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/typ
 
 import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
-import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
+import type { SurfaceMessage, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { SystemShortcutState } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { DESKTOP_IPC, FORM_WINDOW_ARGUMENT, SCHEME, type DesktopBootPayload, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
@@ -16,6 +16,7 @@ import { createDesktopBrowserBridge } from './preload-browser.ts'
 import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
 
 function createProductApi(): DshDesktopProductApi {
+  const messageChannels = new Map<string, number>()
   return {
     protocolVersion: 1,
     fileActions: {
@@ -91,6 +92,30 @@ function createProductApi(): DshDesktopProductApi {
       dragBy: (deltaX, deltaY) => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'dragBy', deltaX, deltaY }) as Promise<void>,
       snap: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'snap' }) as Promise<void>,
       pointerInside: (inside) => { ipcRenderer.send(DESKTOP_IPC.surfacePointer, inside) },
+      sendMessage: (target, channel, payload) => ipcRenderer.invoke(DESKTOP_IPC.surfaceMessage,
+        { target, channel, payload }) as Promise<void>,
+      subscribeMessages(channel, listener) {
+        const handle = (_event: Electron.IpcRendererEvent, message: SurfaceMessage): void => {
+          if (message.channel === channel) listener(message)
+        }
+        ipcRenderer.on(DESKTOP_IPC.surfaceMessageEvent, handle)
+        const count = messageChannels.get(channel) ?? 0
+        if (count === 0) ipcRenderer.send(DESKTOP_IPC.surfaceMessageReady, { channel, active: true })
+        messageChannels.set(channel, count + 1)
+        let active = true
+        return () => {
+          if (!active) return
+          active = false
+          ipcRenderer.off(DESKTOP_IPC.surfaceMessageEvent, handle)
+          const remaining = (messageChannels.get(channel) ?? 1) - 1
+          if (remaining > 0) {
+            messageChannels.set(channel, remaining)
+            return
+          }
+          messageChannels.delete(channel)
+          ipcRenderer.send(DESKTOP_IPC.surfaceMessageReady, { channel, active: false })
+        }
+      },
     },
     updates: {
       channels: {

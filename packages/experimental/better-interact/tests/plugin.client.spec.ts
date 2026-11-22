@@ -4,7 +4,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
-import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { SurfaceMessage, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   apply, inject, WORKBENCH_COMMAND_ID, WORKBENCH_NEW_WORKSPACE_COMMAND_ID, WORKBENCH_NEXT_COMMAND_ID,
@@ -83,9 +83,12 @@ function context(options: {
   const registrations: Registration[] = []
   const disposers: (() => void)[] = []
   const commands: ShortcutCommand[] = []
-  const dictionaries: { readonly namespace?: string; readonly languages: string[] } = { languages: [] }
+  const dictionaries: { readonly namespace?: string; readonly languages: string[]; readonly namespaces: string[] } = {
+    languages: [], namespaces: [],
+  }
   const record = (namespace: string, values: Record<string, unknown>): (() => void) => {
     (dictionaries as { namespace?: string }).namespace = namespace
+    dictionaries.namespaces.push(namespace)
     dictionaries.languages.push(...Object.keys(values))
     return () => {}
   }
@@ -103,12 +106,21 @@ function context(options: {
   const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])], options.archived)
   const catalog = createSnapshotStore(options.catalog ?? [])
   const pendingInteractions = createSnapshotStore(new Map())
+  const messageListeners = new Map<string, Set<(message: SurfaceMessage) => void>>()
+  const sendMessage = vi.fn(() => Promise.resolve())
+  const emitMessage = (channel: string, origin: SurfaceMessage['origin'], payload: unknown): void => {
+    for (const listener of [...(messageListeners.get(channel) ?? [])]) listener({ origin, channel, payload })
+  }
   const ctx = {
     effect: (factory: () => unknown) => {
       const value = factory()
       if (typeof value === 'function') disposers.push(value as () => void)
       return () => {}
     },
+    inject: vi.fn(),
+    get: vi.fn(() => undefined),
+    on: vi.fn(() => () => {}),
+    theme: { getTheme: () => ({ preference: 'system' }), setTheme: vi.fn() },
     locale: { register: record, bind: vi.fn(() => (key: string) => key) },
     resources: { register: vi.fn(() => () => {}) },
     sessions: { list: sessions, create: createSession },
@@ -127,6 +139,13 @@ function context(options: {
       presentBubbles,
       dismissBubbles,
       setPointerInside: vi.fn(),
+      sendMessage,
+      onMessage: (channel: string, listener: (message: SurfaceMessage) => void) => {
+        const entries = messageListeners.get(channel) ?? new Set()
+        entries.add(listener)
+        messageListeners.set(channel, entries)
+        return () => { entries.delete(listener) }
+      },
     },
     shortcuts: { register: vi.fn((command: ShortcutCommand) => { commands.push(command); return () => {} }), catalog },
     slots: {
@@ -137,6 +156,7 @@ function context(options: {
   return {
     ctx, registrations, commands, dictionaries, sessions, workspaces, catalog, presentModal, presentBubbles, dismissBubbles,
     openSession, openWorkspace, pickDirectory, createWorkspace, initializeDefault, createSession, disposers, pendingInteractions,
+    sendMessage, emitMessage,
   }
 }
 
@@ -149,7 +169,7 @@ function workbenchInjected(registrations: readonly Registration[]): WorkbenchInj
 
 it('declares the services it reads', () => {
   expect(inject).toEqual([
-    'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace', 'uiSession',
+    'surface', 'slots', 'locale', 'shortcuts', 'resources', 'sessions', 'workspaces', 'uiWorkspace', 'uiSession', 'theme',
   ])
 })
 
@@ -157,6 +177,7 @@ it('mounts the workbench dialog with its Workspace cards and conversation seat',
   const { ctx, registrations, dictionaries, openSession } = context({
     sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2 }],
     workspaces: [view('ws-1', 'Alpha', ['s1', 's2'])],
+    surface: WORKBENCH,
   })
   apply(ctx as never)
   const modal = registrations.find(entry => entry.name === 'shell.modal')
@@ -180,15 +201,16 @@ it('mounts the workbench dialog with its Workspace cards and conversation seat',
   expect(openSession).toHaveBeenLastCalledWith(sid('s1'))
   expect(registrations.find(entry => entry.name === 'better-interact.workbench.conversation')).toBeDefined()
   expect(ctx.resources.register).toHaveBeenCalledOnce()
-  expect(dictionaries.namespace).toBe('betterInteract')
-  expect([...dictionaries.languages].sort()).toEqual(['de', 'en', 'es', 'fr', 'ja', 'pt', 'ru', 'zh'])
+  expect(dictionaries.namespaces).toEqual(['betterInteract', 'orb'])
+  expect([...new Set(dictionaries.languages)].sort()).toEqual(['de', 'en', 'es', 'fr', 'ja', 'pt', 'ru', 'zh'])
 })
 
 it('labels every workbench command for the shortcut catalog', () => {
   const { ctx, commands } = context()
   apply(ctx as never)
   expect(commands.map(command => command.label()).sort()).toEqual([
-    'command.newWorkspace', 'command.next', 'command.open', 'command.previous', 'command.sessions',
+    'command.newWorkspace', 'command.next', 'command.open', 'command.open', 'command.previous', 'command.sessions',
+    'command.toggle', 'command.voice', 'orb.menu.workbench',
   ])
 })
 
@@ -215,6 +237,7 @@ it('drives the carrier and opens the bubble Session in its Workspace page', () =
   const { ctx, registrations, presentModal, presentBubbles, dismissBubbles, openSession } = context({
     sessions: [{ id: 's1', updatedAt: 1 }, { id: 's2', updatedAt: 2 }],
     workspaces: [view('ws-1', 'Alpha', ['s1', 's2']), view('ws-2', 'Beta', [])],
+    surface: WORKBENCH,
   })
   apply(ctx as never)
   const overlay = registrations.find(entry => entry.name === 'shell.overlay')
@@ -232,6 +255,29 @@ it('drives the carrier and opens the bubble Session in its Workspace page', () =
   })
   expect(openSession).toHaveBeenCalledWith(sid('s1'))
   expect(ctx.surface.setPointerInside).toHaveBeenCalledWith(true)
+})
+
+it('routes a bubble Session through the primary renderer without secondary navigation', () => {
+  const secondary = context({ sessions: [{ id: 's1' }], workspaces: [view('ws-1', 'Alpha', ['s1'])] })
+  apply(secondary.ctx as never)
+  const overlay = secondary.registrations.find(entry => entry.name === 'shell.overlay')
+  const bubbles = (overlay?.inject as () => BubblesInjected)()
+  bubbles.open(sid('s1'))
+  expect(secondary.sendMessage).toHaveBeenCalledWith('surface', 'better-interact/open-session', { kind: 'open', sessionId: 's1' })
+  expect(secondary.openSession).not.toHaveBeenCalled()
+  expect(secondary.presentModal).not.toHaveBeenCalled()
+
+  const primary = context({ surface: WORKBENCH, sessions: [{ id: 's1' }], workspaces: [view('ws-1', 'Alpha', ['s1'])] })
+  apply(primary.ctx as never)
+  primary.emitMessage('better-interact/open-session', 'bubbles', { kind: 'open', sessionId: 's1' })
+  expect(primary.openSession).toHaveBeenCalledWith(sid('s1'))
+  expect(primary.presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  primary.emitMessage('better-interact/open-session', 'bubbles', null)
+  primary.emitMessage('better-interact/open-session', 'surface', { kind: 'open', sessionId: 's2' })
+  primary.emitMessage('better-interact/open-session', 'orb', { kind: 'other', sessionId: 's2' })
+  expect(primary.openSession).toHaveBeenCalledTimes(1)
+  expect(errors).toHaveBeenCalledTimes(2)
 })
 
 it('opens the most recently used Workspace page from the launcher', () => {
@@ -341,16 +387,19 @@ it('starts a new managed conversation when its recorded Session is archived', as
   await vi.waitFor(() => { expect(createSession).toHaveBeenCalledOnce() })
 })
 
-it('starts the managed conversation in no Workspace when no default resolves', async () => {
+it('reports a visible failure instead of creating a management Session outside every Workspace', async () => {
   const { ctx, registrations, initializeDefault, createSession } = context({
     sessions: [{ id: 's1', updatedAt: 1 }],
     workspaces: [view('ws-1', 'Alpha', ['s1'])],
   })
   initializeDefault.mockResolvedValueOnce(undefined)
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   apply(ctx as never)
   const workbench = workbenchInjected(registrations)
   workbench.select(MANAGE_PAGE_ID)
-  await vi.waitFor(() => { expect(createSession).toHaveBeenCalledWith({ agentPreset: 'manage' }) })
+  await vi.waitFor(() => { expect(workbench.hooks.notice.getSnapshot()).toBe('workbench.manageFailed') })
+  expect(createSession).not.toHaveBeenCalled()
+  error.mockRestore()
 })
 
 it('reports a managed conversation that cannot start', async () => {

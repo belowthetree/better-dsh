@@ -33,7 +33,6 @@ export const EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS: Readonly<Record<string, strin
   'packages/experimental/client-voice-capture': '@deepseek-ai/dsh-client-voice-capture',
   'packages/experimental/text-to-speech': '@deepseek-ai/dsh-text-to-speech',
   'packages/experimental/api-text-to-speech': '@deepseek-ai/dsh-api-text-to-speech',
-  'packages/experimental/client-ui-orb': '@deepseek-ai/dsh-client-ui-orb',
   'packages/experimental/client-ui-voice-output': '@deepseek-ai/dsh-client-ui-voice-output',
   'packages/experimental/better-bundle': '@deepseek-ai/dsh-better-bundle',
   'packages/experimental/better-interact': '@deepseek-ai/dsh-better-interact',

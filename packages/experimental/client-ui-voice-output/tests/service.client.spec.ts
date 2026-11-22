@@ -41,6 +41,7 @@ function fixture(options: { speech?: SpeechFixture; audio?: AudioFixture; captur
   const audio = options.audio ?? audioFixture()
   const service = new VoiceOutputService(ctx, { audio: audio.factory })
   services.push(service)
+  if (options.capture !== undefined) service.observeCapture(options.capture)
   return { ctx, service, speech, audio }
 }
 

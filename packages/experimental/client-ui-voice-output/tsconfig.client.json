@@ -28,6 +28,12 @@
       "path": "../../client/store"
     },
     {
+      "path": "../client-voice-capture/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/surface/tsconfig.client.json"
+    },
+    {
       "path": "../../core/session"
     },
     {

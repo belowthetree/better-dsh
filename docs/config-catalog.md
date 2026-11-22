@@ -4756,6 +4756,26 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-ralph -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-session-list -->
+<a id="deepseek-aidsh-tool-session-list"></a>
+
+## `@deepseek-ai/dsh-tool-session-list`
+
+- `inject`: `tools` · `sessions` · `sessionQuery` · `workspaceRegistry` · `sessionProjections`
+- `source`: [`packages/session-query/tool-session-list/src/index.ts:19`](../packages/session-query/tool-session-list/src/index.ts)
+
+```ts config-catalog
+/** Deployment-owned Workspace metadata visibility. */
+export interface Config {
+  /** `all` preserves runtime-wide listing; `current` restricts both tools to the caller's registered Workspace. Defaults to `all`. */
+  readonly workspaceAccess?: WorkspaceAccess
+}
+
+/** Workspace metadata visibility selected by the composition. */
+export type WorkspaceAccess = 'all' | 'current'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-session-list -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-session-query -->
 <a id="deepseek-aidsh-tool-session-query"></a>
 
@@ -5389,7 +5409,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-message-feedback` | — | [`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-model-selection` | — | [`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-open-in-app` | — | [`packages/client/ui-open-in-app/src/index.ts`](../packages/client/ui-open-in-app/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-orb` | — | [`packages/experimental/client-ui-orb/src/index.ts`](../packages/experimental/client-ui-orb/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-permission-presets` | — | [`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plan` | — | [`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plugin-market` | — | [`packages/client/ui-plugin-market/src/index.ts`](../packages/client/ui-plugin-market/src/index.ts) |
@@ -5472,7 +5491,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |
 | `@deepseek-ai/dsh-tool-schedule` | `tools` · `systemPrompt` | [`packages/schedule/tool-schedule/src/index.ts`](../packages/schedule/tool-schedule/src/index.ts) |
-| `@deepseek-ai/dsh-tool-session-list` | `tools` · `sessions` · `sessionQuery` · `workspaceRegistry` · `sessionProjections` | [`packages/session-query/tool-session-list/src/index.ts`](../packages/session-query/tool-session-list/src/index.ts) |
 | `@deepseek-ai/dsh-tools` | `systemPrompt` | [`packages/core/tools/src/index.ts`](../packages/core/tools/src/index.ts) |
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |

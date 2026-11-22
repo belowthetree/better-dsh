@@ -4,7 +4,8 @@ import { cleanup, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
-import { FixedOrbWorkbenchView, OrbWorkbench, OrbWorkbenchConversation } from '../src/client/OrbWorkbench.tsx'
+import { OrbWorkbench, OrbWorkbenchConversation } from '../src/client/OrbWorkbench.tsx'
+import { FixedChatConversationView } from '../src/client/embedded-conversation.tsx'
 import type { OrbWorkbenchConversationProps, OrbWorkbenchProps } from '../src/client/OrbWorkbench.tsx'
 
 afterEach(cleanup)
@@ -48,7 +49,7 @@ it('renders the active Chat view for a started conversation', () => {
   expect(b.renderFactorySlot).toHaveBeenCalledWith(
     'conversation.content',
     { variant: 'embedded', phase: 'active', hero: false },
-    { slots: { views: FixedOrbWorkbenchView } },
+    { slots: { views: FixedChatConversationView } },
   )
 })
 
@@ -58,7 +59,7 @@ it('reports the hero phase while the bound Session is blank and open', () => {
   expect(b.renderFactorySlot).toHaveBeenCalledWith(
     'conversation.content',
     { variant: 'embedded', phase: 'hero', hero: true },
-    { slots: { views: FixedOrbWorkbenchView } },
+    { slots: { views: FixedChatConversationView } },
   )
 })
 

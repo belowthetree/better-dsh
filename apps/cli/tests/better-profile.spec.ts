@@ -49,7 +49,6 @@ describe('the better bundle form profile', () => {
       expect(warnings).toEqual([])
       const byId = new Map(rows.map(row => [row.id, row]))
       expect(byId.get('client-surface')).toMatchObject({ name: '@deepseek-ai/dsh-client-surface' })
-      expect(byId.get('client-ui-orb')).toMatchObject({ name: '@deepseek-ai/dsh-client-ui-orb' })
       expect(byId.get('client-voice-capture')).toMatchObject({ name: '@deepseek-ai/dsh-client-voice-capture' })
       expect(byId.get('speech-to-text')).toMatchObject({
         name: '@deepseek-ai/dsh-experimental-speech-to-text',

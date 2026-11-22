@@ -3,6 +3,7 @@
  * the earlier answers on hover, and the workbench behind a click.
  */
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
@@ -155,7 +156,33 @@ export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: Bubble
 }
 
 /**
- * Bind the bubble column to the Session the catalog reports as current.
+ * Select the Session whose activity the bubble column reports.
+ * A running current target stays bound through catalog reordering and newer
+ * activity elsewhere. Otherwise running work leads, followed by the latest
+ * completed output; ties prefer the current target and then catalog order.
+ * @param catalog - current Session catalog and local activity summaries.
+ * @param current - target retained by the previous render, if any.
+ * @returns the active or most recently output-producing Session, or undefined for an empty catalog.
+ */
+export function selectBubbleTarget(catalog: SessionListState, current: SessionId | undefined): SessionId | undefined {
+  const currentRow = current === undefined || !catalog.ids.includes(current) ? undefined : catalog.byId[current]
+  if (currentRow?.running === true) return currentRow.id
+  let running: SessionSummary | undefined
+  let latest: SessionSummary | undefined
+  const prefer = (candidate: SessionSummary, selected: SessionSummary | undefined): boolean =>
+    selected === undefined || candidate.updatedAt > selected.updatedAt
+    || (candidate.updatedAt === selected.updatedAt && candidate.id === current)
+  for (const id of catalog.ids) {
+    const row = catalog.byId[id]
+    if (row === undefined) continue
+    if (row.running && prefer(row, running)) running = row
+    if (prefer(row, latest)) latest = row
+  }
+  return (running ?? latest)?.id
+}
+
+/**
+ * Bind the bubble column to the Session whose activity the catalog reports.
  * The orb window keeps its stack mounted because it owns the entry triggers and
  * raises a streaming column; the column window mounts the stack only while the
  * column is up, and the surface window renders no column.
@@ -166,7 +193,10 @@ export function BubblesLayer(props: BubblesLayerProps) {
   const role = props.useSurface(snapshot => snapshot.role)
   const presentation = props.useSurface(snapshot => snapshot.presentation)
   const orbHovered = props.useSurface(snapshot => snapshot.orbHovered)
-  const target = props.useSessions(state => state.ids[0])
+  const catalog = props.useSessions(state => state)
+  const previousTarget = useRef<SessionId | undefined>(undefined)
+  const target = selectBubbleTarget(catalog, previousTarget.current)
+  previousTarget.current = target
   const resource = props.useResource<'betterinteract'>(workbenchAddress(target))
   const reference = resource.value?.reference
   const { show } = props

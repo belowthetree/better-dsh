@@ -8,7 +8,7 @@ export type {
   VoiceCapturePreview, VoiceCaptureResult, VoiceCaptureSnapshot,
 } from '../protocol.ts'
 
-export const inject = ['remote']
+export const inject = ['remote', 'surface']
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

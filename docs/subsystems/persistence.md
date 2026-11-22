@@ -455,6 +455,21 @@ abstract stat(id: SessionId, options?: SessionPersistenceStatOptions): Promise<S
  * @returns one snapshot per stored session.
  */
 abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+/**
+ * Permanently remove one stored session and every artifact this backend
+ * keeps for it. Unlike archive, the stored log is gone after resolution.
+ *
+ * The default refuses: a backend opts in by overriding this method. A
+ * backend that supports deletion must refuse a Session it still owns or
+ * has in flight, and must make the removal durable before resolving.
+ * @param _id - the stored session to remove.
+ * @param _options - optional cancellation observed before backend work starts.
+ * @throws {SessionPersistenceDeleteUnsupportedError} from the default implementation.
+ * @throws {SessionPersistenceNotFoundError} when the session does not exist.
+ * @throws {SessionAlreadyOwnedError} while this or another process owns the live Session.
+ */
+delete(_id: SessionId, _options?: SessionPersistenceDeleteOptions): Promise<void>
 ```
 
 Types: [SessionId](core.md)

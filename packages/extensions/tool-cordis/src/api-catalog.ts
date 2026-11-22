@@ -3221,6 +3221,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the new Session identity.',
       },
       {
+        signature: '@Remote(\'delete\') async delete(request: SessionDeleteRequest, signal: AbortSignal): Promise<SessionDeleteValue>',
+        description: 'Permanently remove one stored Session, its durable log, and its Workspace accounting. A running Session, a Session whose live Agent another consumer owns, or a parent of subagent Sessions is refused; an idle Agent this controller owns is stopped before its log is removed. A backend without deletion support refuses every call.',
+        parameters: [{ name: 'request', description: 'the stored Session to remove.' }, { name: 'signal', description: 'caller cancellation before removal starts.' }],
+        returns: 'acknowledgement that the stored Session is gone.',
+      },
+      {
         signature: '@Remote(\'prompt\') async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
         description: 'Admit one prompt after explicitly resuming its Session.',
         parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
@@ -3382,6 +3388,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'options', description: 'optional cancellation.' }],
         returns: 'one snapshot per stored session.',
       },
+      {
+        signature: 'delete(_id: SessionId, _options?: SessionPersistenceDeleteOptions): Promise<void>',
+        description: 'Permanently remove one stored session and every artifact this backend keeps for it. Unlike archive, the stored log is gone after resolution.\n\nThe default refuses: a backend opts in by overriding this method. A backend that supports deletion must refuse a Session it still owns or has in flight, and must make the removal durable before resolving.',
+        parameters: [{ name: '_id', description: 'the stored session to remove.' }, { name: '_options', description: 'optional cancellation observed before backend work starts.' }],
+        throws: ['{SessionPersistenceDeleteUnsupportedError} from the default implementation.', '{SessionPersistenceNotFoundError} when the session does not exist.', '{SessionAlreadyOwnedError} while this or another process owns the live Session.'],
+      },
     ],
   },
   {
@@ -3389,6 +3401,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'The persisted projection cache service.',
     description: 'The persisted projection cache service. Opens the `session_projcache` domain at init, checkpoints live sessions on a throttled write-behind (count/interval triggers from Config) plus three mandatory points — session creation, `turn/end`, and session disposal (the live-to-cold moment) — and serves the cached rows for a session header. Every durable write is fail-soft: failures log a warning and the cache self-heals on the next write.',
     methods: [
+      {
+        signature: 'async evict(sessionId: SessionId): Promise<void>',
+        description: 'Remove one Session\'s durable checkpoint after its log is permanently deleted. The checkpoint is derived data, so this is best-effort and does not refuse an absent record.',
+        parameters: [{ name: 'sessionId', description: 'the removed Session whose checkpoint must not outlive it.' }],
+      },
       {
         signature: 'cachedSnapshot( meta: SessionHeader, keys?: ProjectionKeySelection, ): ProjectionSnapshot | undefined',
         description: 'The zero-I/O listing read: whole values viewed straight from the stored rows (version-matching keys only) of the record bound to the caller\'s lifecycle. The header is the only identity witness a listing holds, so this face matches the lifecycle identity (`formatVersion`, `createdAt`, `cwd`, `isSeeded`) and not the inherited cut: within one format generation the cut is fixed at fork time, so it distinguishes no lifecycle the other fields do not, and a viewed value never seeds a fold. The view is as stale as the last durable checkpoint but never wrong and never from an unrelated log. Its `asOfSeq` is the lowest watermark among the served rows: the stored record\'s own position, which the header cannot relate to the log the caller later opens. The Session list therefore labels the block as cached, and the client lets every value the connected Session produces supersede it whatever this number says.',
@@ -9584,6 +9601,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionCreateValue {\n    readonly sessionId: SessionId;\n    readonly agentPreset?: string;\n}',
   },
   {
+    name: 'SessionDeleteRequest',
+    declaration: 'export interface SessionDeleteRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'SessionDeleteValue',
+    declaration: 'export interface SessionDeleteValue {\n    readonly deleted: true;\n}',
+  },
+  {
     name: 'SessionEndInput',
     declaration: 'export interface SessionEndInput {\n    reason: \'clear\' | \'logout\' | \'prompt_input_exit\' | \'resume\' | \'other\';\n    sessionId: string;\n}',
   },
@@ -9848,6 +9873,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionPersistenceCreateOptions {\n    readonly signal?: AbortSignal;\n    readonly inheritedEventCount?: SessionLogOffset;\n    readonly parentSource?: {\n        readonly sessionId: SessionId;\n        readonly endSeq: SessionLogOffset;\n        readonly events: readonly SessionEvent[];\n    };\n}',
   },
   {
+    name: 'SessionPersistenceDeleteOptions',
+    declaration: 'export interface SessionPersistenceDeleteOptions {\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
     name: 'SessionPersistenceListOptions',
     declaration: 'export interface SessionPersistenceListOptions {\n    readonly signal?: AbortSignal;\n}',
   },
@@ -10057,7 +10086,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionSummary',
-    declaration: 'export interface SessionSummary {\n    readonly agentAvailable: boolean;\n    readonly formatStatus?: \'current\' | \'migration-required\';\n    readonly sessionId: SessionId;\n    readonly updatedAt: number;\n    readonly running: boolean;\n    readonly blank: boolean;\n    readonly parentSessionId?: SessionId;\n    readonly origin?: \'subagent\';\n    readonly cwd?: string;\n    readonly projections?: SessionProjectionHints;\n}',
+    declaration: 'export interface SessionSummary {\n    readonly agentAvailable: boolean;\n    readonly formatStatus?: \'current\' | \'migration-required\';\n    readonly sessionId: SessionId;\n    readonly updatedAt: number;\n    readonly running: boolean;\n    readonly blank: boolean;\n    readonly parentSessionId?: SessionId;\n    readonly origin?: \'subagent\';\n    readonly cwd?: string;\n    readonly agentPreset?: string;\n    readonly projections?: SessionProjectionHints;\n}',
   },
   {
     name: 'SessionSurface',

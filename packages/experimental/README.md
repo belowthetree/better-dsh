@@ -67,7 +67,6 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`speech-to-text-sensevoice`](speech-to-text-sensevoice/README.md) | Managed local SenseVoice inference | — |
 | [`api-speech-to-text`](api-speech-to-text/README.md) | Authenticated transient transcription Remote | `ctx.speechController` |
 | [`client-ui-voice-input`](client-ui-voice-input/README.md) | Composer control over the shared capture service, with guarded draft insertion | — |
-| [`client-ui-orb`](client-ui-orb/README.md) | Orb and panel chrome for the form, the system toggle command, and form-owned modal content | — |
 | [`client-ui-voice-output`](client-ui-voice-output/README.md) | Playback, auto-speak policy, voice selection, and mute over the speech output Remote | `ctx.voiceOutput` |
 | [`client-voice-capture`](client-voice-capture/README.md) | Shared microphone capture, device preference, and speech Remote ownership | `ctx.voiceCapture` |
 | [`text-to-speech`](text-to-speech/README.md) | Named speech synthesis providers | `ctx.textToSpeech` |

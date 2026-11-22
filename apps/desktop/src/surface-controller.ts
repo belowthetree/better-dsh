@@ -1,5 +1,5 @@
 /** Presentation state machine and validated command surface for a form profile's orb, surface, and bubble column windows. */
-import type { ModalSizeHint, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
+import type { ModalSizeHint, SurfaceMessageRole, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { DesktopFormLayout, DesktopWorkArea } from './form-layout.ts'
 import { clampFormLayout } from './form-layout.ts'
 import type { DesktopFormRole, FormPresentationBounds } from './form-window.ts'
@@ -10,6 +10,19 @@ type SurfacePresentation = 'orb' | 'panel' | 'modal'
 
 /** Longest accepted `shell.modal` entry id. */
 export const MAX_MODAL_ID_CHARS = 128
+
+/** Longest consumer-owned message channel accepted by the carrier. */
+export const MAX_SURFACE_MESSAGE_CHANNEL_CHARS = 96
+
+/** Largest serialized JSON payload accepted for one renderer message. */
+export const MAX_SURFACE_MESSAGE_JSON_BYTES = 16 * 1024
+
+/** Validated request to deliver one message to another form renderer. */
+export interface SurfaceMessageRequest {
+  readonly target: SurfaceMessageRole
+  readonly channel: string
+  readonly payload: unknown
+}
 
 /** One validated command from a form renderer. */
 export type SurfaceCommand =
@@ -118,6 +131,71 @@ function parseModalSizeHint(raw: unknown): ModalSizeHint | null | undefined {
 function sameModalSize(left: ModalSizeHint | undefined, right: ModalSizeHint | undefined): boolean {
   return (left?.heightRatio ?? null) === (right?.heightRatio ?? null)
     && (left?.width ?? null) === (right?.width ?? null)
+}
+
+/** Maximum nesting accepted before JSON validation can consume a malicious stack. */
+const MAX_SURFACE_JSON_DEPTH = 64
+
+/** Whether one value is strict JSON without invoking its serialization hooks. */
+function isSurfaceJson(value: unknown, depth: number, seen: WeakSet<object>): boolean {
+  if (depth > MAX_SURFACE_JSON_DEPTH) return false
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value !== 'object') return false
+  if (seen.has(value)) return false
+  seen.add(value)
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!isSurfaceJson(item, depth + 1, seen)) return false
+    }
+  } else {
+    const prototype: unknown = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) return false
+    for (const entry of Object.values(value)) {
+      if (!isSurfaceJson(entry, depth + 1, seen)) return false
+    }
+  }
+  seen.delete(value)
+  return true
+}
+
+/** Serialize one validated JSON value, retaining its canonical content and byte bound. */
+function serializeSurfacePayload(payload: unknown): string | undefined {
+  if (!isSurfaceJson(payload, 0, new WeakSet())) return undefined
+  try {
+    return JSON.stringify(payload)
+  } catch (_serializationFailed) {
+    return undefined
+  }
+}
+
+/**
+ * Validate a role-addressed renderer message. The carrier bounds the channel and JSON payload
+ * but never interprets the consumer's fields.
+ * @param raw - untrusted IPC payload.
+ * @returns the accepted target and message, or undefined for an invalid or oversized request.
+ */
+/**
+ * Validate one consumer-owned message channel.
+ * @param raw - untrusted channel field.
+ * @returns the canonical channel, or undefined when it is malformed or too long.
+ */
+export function parseSurfaceMessageChannel(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_SURFACE_MESSAGE_CHANNEL_CHARS) return undefined
+  return /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/u.test(raw) ? raw : undefined
+}
+
+export function parseSurfaceMessage(raw: unknown): SurfaceMessageRequest | undefined {
+  if (!isRecord(raw)) return undefined
+  if (raw.target !== 'orb' && raw.target !== 'surface' && raw.target !== 'bubbles') return undefined
+  const channel = parseSurfaceMessageChannel(raw.channel)
+  if (channel === undefined) return undefined
+  const serialized = serializeSurfacePayload(raw.payload)
+  if (serialized === undefined || Buffer.byteLength(serialized, 'utf8') > MAX_SURFACE_MESSAGE_JSON_BYTES) {
+    return undefined
+  }
+  const payload: unknown = JSON.parse(serialized)
+  return { target: raw.target, channel, payload }
 }
 
 /**
@@ -260,14 +338,15 @@ export class DesktopSurfaceController {
         this.#effects.persist(this.#layout)
         this.#publish()
         return
-      case 'dragBy':
+      case 'dragBy': {
         if (origin !== 'orb') return
+        const area = this.#effects.workArea()
         this.#layout = clampFormLayout({ ...this.#layout,
-          orb: { x: this.#layout.orb.x + command.deltaX, y: this.#layout.orb.y + command.deltaY } }, this.#effects.workArea())
-        this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
-        if (this.#bubblesVisible) this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, this.#effects.workArea()))
+          orb: { x: this.#layout.orb.x + command.deltaX, y: this.#layout.orb.y + command.deltaY } }, area)
+        this.#placeLayout(area, 'visible')
         this.#effects.persist(this.#layout)
         return
+      }
       case 'snap': {
         if (origin !== 'orb') return
         const area = this.#effects.workArea()
@@ -282,8 +361,7 @@ export class DesktopSurfaceController {
         if (nearest === top) y = area.y
         else if (nearest === bottom) y = area.y + area.height - current.height
         this.#layout = clampFormLayout({ ...this.#layout, orb: { x, y } }, area)
-        this.#effects.setBounds('orb', orbBounds(this.#layout, area))
-        if (this.#bubblesVisible) this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, area))
+        this.#placeLayout(area, 'visible')
         this.#effects.persist(this.#layout)
         return
       }
@@ -330,50 +408,52 @@ export class DesktopSurfaceController {
 
   /** Re-clamp the orb position and all three windows' bounds after a display change. */
   reflow(): void {
-    this.#layout = clampFormLayout(this.#layout, this.#effects.workArea())
+    const area = this.#effects.workArea()
+    this.#layout = clampFormLayout(this.#layout, area)
     this.#effects.persist(this.#layout)
-    this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
-    if (this.#presentation !== 'orb') this.#effects.setBounds('surface', this.#bounds())
-    this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, this.#effects.workArea()))
+    this.#placeLayout(area, 'all', true)
     this.#publish()
   }
 
   /** Re-apply bounds, resizing, visibility, and click-through after a window is created or shown. */
   restore(): void {
-    const workArea = this.#effects.workArea()
-    this.#effects.setBounds('orb', orbBounds(this.#layout, workArea))
-    this.#effects.setResizable('orb', false)
-    this.#effects.setIgnoreMouseEvents('orb', this.#ignoreMouse('orb'))
-    if (this.#presentation === 'orb') {
-      this.#effects.hideSurface()
-    } else {
-      this.#effects.setBounds('surface', this.#bounds())
-      this.#effects.setResizable('surface', presentationResizable(this.#presentation))
-      this.#effects.setIgnoreMouseEvents('surface', this.#ignoreMouse('surface'))
-      if (focusable(this.#presentation)) this.#effects.focusSurface()
-      else this.#effects.revealSurface()
-    }
+    this.#reconcileWindows(true)
     this.#placeBubbles()
     if (this.#bubblesVisible && this.#presentation !== 'modal') this.#effects.revealBubbles()
     else this.#effects.hideBubbles()
     this.#publish()
   }
 
-  #show(presentation: SurfacePresentation, focus = true): void {
-    const wasModal = this.#presentation === 'modal'
-    this.#presentation = presentation
+  /** Apply the orb and surface effects shared by restoration and presentation transitions. */
+  #reconcileWindows(focus: boolean): void {
+    this.#placeOrb()
+    this.#reconcileSurface(focus)
+  }
+
+  /** Apply the resident orb's geometry and fixed interaction policy. */
+  #placeOrb(): void {
     this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
     this.#effects.setResizable('orb', false)
     this.#effects.setIgnoreMouseEvents('orb', this.#ignoreMouse('orb'))
-    if (presentation === 'orb') {
+  }
+
+  /** Reveal, focus, or hide the surface for the current presentation. */
+  #reconcileSurface(focus: boolean): void {
+    if (this.#presentation === 'orb') {
       this.#effects.hideSurface()
-    } else {
-      this.#effects.setBounds('surface', this.#bounds())
-      this.#effects.setResizable('surface', presentationResizable(presentation))
-      this.#effects.setIgnoreMouseEvents('surface', this.#ignoreMouse('surface'))
-      if (focus && focusable(presentation)) this.#effects.focusSurface()
-      else this.#effects.revealSurface()
+      return
     }
+    this.#effects.setBounds('surface', this.#bounds())
+    this.#effects.setResizable('surface', presentationResizable(this.#presentation))
+    this.#effects.setIgnoreMouseEvents('surface', this.#ignoreMouse('surface'))
+    if (focus && focusable(this.#presentation)) this.#effects.focusSurface()
+    else this.#effects.revealSurface()
+  }
+
+  #show(presentation: SurfacePresentation, focus = true): void {
+    const wasModal = this.#presentation === 'modal'
+    this.#presentation = presentation
+    this.#reconcileWindows(focus)
     // The surface presentation never owns the column; a column held through the
     // workbench returns when the modal leaves.
     if (wasModal && presentation !== 'modal') this.#revealHeldBubbles()
@@ -387,6 +467,13 @@ export class DesktopSurfaceController {
       case 'panel': return panelBounds(this.#layout, workArea)
       case 'modal': return modalBounds(workArea, this.#modalSize)
     }
+  }
+
+  /** Apply orb-led bounds after movement or reflow without changing visibility. */
+  #placeLayout(area: DesktopWorkArea, bubbles: 'visible' | 'all', includeSurface = false): void {
+    this.#effects.setBounds('orb', orbBounds(this.#layout, area))
+    if (includeSurface && this.#presentation !== 'orb') this.#effects.setBounds('surface', this.#bounds())
+    if (bubbles === 'all' || this.#bubblesVisible) this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, area))
   }
 
   /** Whether the orb square rests within the snap gap of a work-area edge. */
@@ -403,10 +490,10 @@ export class DesktopSurfaceController {
   #presentBubbles(): void {
     if (this.#bubblesVisible) return
     this.#bubblesVisible = true
-    this.#placeBubbles()
     // A column raised over the workbench would cover the dialog it opened; the
     // modal's dismissal reveals the held column instead.
-    if (this.#presentation !== 'modal') this.#effects.revealBubbles()
+    if (this.#presentation === 'modal') this.#placeBubbles()
+    else this.#revealHeldBubbles()
     this.#publish()
   }
 

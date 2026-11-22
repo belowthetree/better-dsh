@@ -56,6 +56,15 @@ it('provides the capture service and withdraws both the service and the speech R
   expect(b.unmount).toHaveBeenCalledOnce()
 })
 
+it('does not mount a real recorder in a secondary orb renderer', async () => {
+  const b = fixture()
+  b.ctx.provide('surface', { snapshot: () => ({ form: 'orb', role: 'orb' }) } as never)
+  const dispose = await mountVoiceCapture(b.ctx, CONTRIBUTION)
+  expect(b.ctx.get('voiceCapture')).toBeUndefined()
+  expect(b.unmount).not.toHaveBeenCalled()
+  await dispose()
+})
+
 it('keeps an active capture when a mounted consumer fiber is disposed', async () => {
   const audio = captureFixture()
   stubFrames()

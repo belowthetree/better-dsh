@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import type { DesktopSurfaceApi, SurfaceSnapshot } from '../src/protocol.ts'
+import type { DesktopSurfaceApi, SurfaceMessage, SurfaceSnapshot } from '../src/protocol.ts'
 import {
   createSurfaceAdapter, desktopSurfaceApi, electronSurfaceAdapter, inertSurfaceAdapter,
 } from '../src/client/adapters.ts'
@@ -16,6 +16,8 @@ interface FakeBridge {
   readonly calls: { readonly name: string; readonly args: readonly unknown[] }[]
   /** Publish one snapshot to every current follower. */
   push(snapshot: SurfaceSnapshot): void
+  /** Deliver one message to every current message follower. */
+  emitMessage(message: SurfaceMessage): void
   /** Whether any follower still holds a subscription. */
   readonly followers: number
 }
@@ -24,6 +26,7 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
   let current = initial
   const calls: { name: string; args: readonly unknown[] }[] = []
   const listeners = new Set<(snapshot: SurfaceSnapshot) => void>()
+  const messageListeners = new Set<(message: SurfaceMessage) => void>()
   const command = (name: string, args: readonly unknown[]): Promise<void> => {
     calls.push({ name, args })
     return Promise.resolve()
@@ -44,6 +47,11 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     dragBy: (deltaX, deltaY) => command('dragBy', [deltaX, deltaY]),
     snap: () => command('snap', []),
     pointerInside: (inside) => { calls.push({ name: 'pointerInside', args: [inside] }) },
+    sendMessage: (target, channel, payload) => command('sendMessage', [target, channel, payload]),
+    subscribeMessages: (_channel, listener) => {
+      messageListeners.add(listener)
+      return () => { messageListeners.delete(listener) }
+    },
   }
   return {
     api, calls,
@@ -51,6 +59,9 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     push: (snapshot) => {
       current = snapshot
       for (const listener of [...listeners]) listener(snapshot)
+    },
+    emitMessage: (message) => {
+      for (const listener of [...messageListeners]) listener(message)
     },
   }
 }
@@ -82,6 +93,9 @@ describe('inert carrier', () => {
     await adapter.dragBy(12, -4)
     await adapter.snap()
     adapter.pointerInside(true)
+    await adapter.sendMessage('surface', 'better/intent', { kind: 'open' })
+    const offMessage = adapter.subscribeMessages('better/intent', () => { throw new Error('the inert carrier never publishes messages') })
+    offMessage()
   })
 
   it('keeps the classic presentation when window.dshDesktop exists without a surface block', () => {
@@ -126,6 +140,20 @@ describe('desktop carrier', () => {
     expect(bridge.followers).toBe(0)
     bridge.push(ORB)
     expect(seen).toEqual([panel])
+  })
+
+  it('forwards consumer messages and releases their subscription', async () => {
+    const bridge = fakeBridge(ORB)
+    const adapter = electronSurfaceAdapter(bridge.api, ORB)
+    const seen: SurfaceMessage[] = []
+    const off = adapter.subscribeMessages('voice/state', (message) => { seen.push(message) })
+    bridge.emitMessage({ origin: 'surface', channel: 'voice/state', payload: { phase: 'idle' } })
+    await adapter.sendMessage('surface', 'better/intent', { kind: 'open' })
+    expect(seen).toEqual([{ origin: 'surface', channel: 'voice/state', payload: { phase: 'idle' } }])
+    expect(bridge.calls).toContainEqual({ name: 'sendMessage', args: ['surface', 'better/intent', { kind: 'open' }] })
+    off()
+    bridge.emitMessage({ origin: 'surface', channel: 'voice/state', payload: null })
+    expect(seen).toHaveLength(1)
   })
 
   it('forwards every command and the pointer report', async () => {

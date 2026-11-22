@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os'
 import type { MenuItemConstructorOptions, MessageBoxOptions } from 'electron'
 import { DESKTOP_IPC, type DesktopUpdateState } from '../src/ipc.ts'
+import { resolveDesktopPaths } from '../src/paths.ts'
 import { MANDATORY_IPC } from '../src/mandatory-update-ipc.ts'
 import { DesktopHostFatalError, DesktopHostUncleanExitError } from '../src/host-process.ts'
 import { en, zh } from '../src/locale.ts'
@@ -21,6 +22,20 @@ type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
 
 const fileDrag = vi.hoisted(() => ({ dispose: vi.fn<() => Promise<void>>(), install: vi.fn() }))
 vi.mock('../src/file-drag.ts', () => ({ installDesktopFileDrag: () => { fileDrag.install(); return fileDrag.dispose } }))
+
+const launchProfile = vi.hoisted(() => ({
+  defaultProfile: 'desktop',
+  form: 'classic' as 'classic' | 'orb',
+  globalCallbacks: new Map<string, () => void>(),
+  globalRegistered: new Set<string>(),
+}))
+vi.mock('../src/bundled-profile.ts', () => ({
+  readBundledProfileDefaults: () => ({ defaultProfile: launchProfile.defaultProfile, template: undefined }),
+  materializeBundledProfile: vi.fn(),
+}))
+vi.mock('../src/desktop-profile.ts', () => ({
+  readDesktopFormProfile: (dir: string, name: string) => ({ name, dir, form: { kind: launchProfile.form } }),
+}))
 
 vi.mock('../src/web-document.ts', () => ({
   serveWebDocument: vi.fn(), forwardWebRequest: vi.fn(),
@@ -100,10 +115,15 @@ const harness = await vi.hoisted(async () => {
     })
     readonly shown = deferred()
     readonly show = vi.fn(() => { this.shown.resolve() })
+    readonly showInactive = vi.fn()
     readonly hide = vi.fn()
     readonly focus = vi.fn()
     readonly moveTop = vi.fn()
     readonly setAlwaysOnTop = vi.fn()
+    readonly setIgnoreMouseEvents = vi.fn()
+    resizable = false
+    isResizable() { return this.resizable }
+    readonly setResizable = vi.fn((value: boolean) => { this.resizable = value })
     readonly restore = vi.fn()
     readonly setSize = vi.fn()
     readonly getBounds = vi.fn(() => ({ x: 0, y: 0, width: 800, height: 700 }))
@@ -270,6 +290,11 @@ const harness = await vi.hoisted(async () => {
     set closeWindowsOnQuit(value: boolean) { closeWindowsOnQuit = value },
     reset() {
       accountListener = undefined
+      vi.mocked(resolveDesktopPaths).mockImplementation(() => ({ name: 'desktop', profile: 'desktop-test-profile', lock: 'desktop-test-profile/lock' }))
+      launchProfile.defaultProfile = 'desktop'
+      launchProfile.form = 'classic'
+      launchProfile.globalRegistered.clear()
+      launchProfile.globalCallbacks.clear()
       windows.length = 0
       views.length = 0; hosts.length = 0; handlers.clear(); app.removeAllListeners()
       trays.length = 0
@@ -331,7 +356,20 @@ vi.mock('electron', () => ({
     setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeSendHeaders: harness.socketHeaders },
   } },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: harness.protocolHandle },
-  globalShortcut: { register: vi.fn(() => true), unregister: vi.fn(), unregisterAll: vi.fn(), isRegistered: vi.fn(() => false) },
+  globalShortcut: {
+    register: vi.fn((accelerator: string, callback: () => void) => {
+      if (launchProfile.globalRegistered.has(accelerator)) return false
+      launchProfile.globalRegistered.add(accelerator)
+      launchProfile.globalCallbacks.set(accelerator, callback)
+      return true
+    }),
+    unregister: vi.fn((accelerator: string) => {
+      launchProfile.globalRegistered.delete(accelerator)
+      launchProfile.globalCallbacks.delete(accelerator)
+    }),
+    unregisterAll: vi.fn(() => { launchProfile.globalRegistered.clear(); launchProfile.globalCallbacks.clear() }),
+    isRegistered: vi.fn((accelerator: string) => launchProfile.globalRegistered.has(accelerator)),
+  },
   screen: {
     getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }),
     getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }),
@@ -361,7 +399,7 @@ vi.mock('../src/login-shell-environment.ts', async importOriginal => ({
   readDesktopLoginShellEnvironment: harness.loginShell,
 }))
 vi.mock('../src/runtime-tree.ts', () => ({ readDesktopRuntime: () => ({ release: { version: '1.0.0' } }) }))
-vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ name: 'desktop', profile: 'desktop-test-profile', lock: 'desktop-test-profile/lock' }) }))
+vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: vi.fn(() => ({ name: 'desktop', profile: 'desktop-test-profile', lock: 'desktop-test-profile/lock' })) }))
 vi.mock('../src/project-manager.ts', () => ({
   DesktopProjectManager: class {
     readonly applyRelease = harness.applyRelease
@@ -1686,6 +1724,69 @@ describe('desktop main startup', () => {
     await Promise.resolve(invoke(DESKTOP_IPC.boot))
     return host
   }
+
+  it('routes orb global commands and renderer messages through surface across focus, navigation, and secondary closure', async () => {
+    launchProfile.defaultProfile = 'better'
+    launchProfile.form = 'orb'
+    const home = mkdtempSync(join(tmpdir(), 'dsh-main-orb-home-'))
+    onTestFinished(() => { rmSync(home, { recursive: true, force: true }) })
+    vi.stubEnv('DSH_HOME', home)
+    const profileDir = join(home, 'profiles', 'better')
+    mkdirSync(profileDir, { recursive: true })
+    writeFileSync(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-better', private: true, dependencies: {},
+      dsh: { profile: { bundles: [], owner: 'desktop', form: { kind: 'orb' } } },
+    }))
+    vi.mocked(resolveDesktopPaths).mockImplementation((dshHome, name = 'desktop') => {
+      const profile = join(dshHome ?? home, 'profiles', name)
+      return { name, profile, lock: join(profile, 'lock') }
+    })
+    await import('../src/main.ts')
+    // Profile preparation starts after shortcut installation and form-window creation.
+    await harness.preparing.promise
+    expect(harness.handlers.has(DESKTOP_IPC.shortcutsGet)).toBe(true)
+    expect(harness.windows).toHaveLength(3)
+    const orb = harness.windows[0]!
+    const surface = harness.windows[1]!
+    const get = harness.handlers.get(DESKTOP_IPC.shortcutsGet)!
+    const definitions = [{ id: 'orb.toggle', scope: 'system', defaults: {
+      'desktop:windows': { code: 'KeyD', modifiers: ['control', 'alt'] },
+      'desktop:macos': { code: 'KeyD', modifiers: ['control', 'alt'] },
+    } }]
+    const secondaryEvent = { sender: orb.webContents, senderFrame: orb.webContents.mainFrame }
+    await get(secondaryEvent, definitions)
+    expect(launchProfile.globalRegistered.size).toBe(0)
+
+    const primaryEvent = { sender: surface.webContents, senderFrame: surface.webContents.mainFrame }
+    const snapshot = await get(primaryEvent, definitions) as { revision: string }
+    expect(launchProfile.globalRegistered).toEqual(new Set(['Control+Alt+D']))
+    surface.isFocused = vi.fn(() => false)
+    orb.isFocused = vi.fn(() => true)
+    surface.webContents.send.mockClear()
+    orb.webContents.send.mockClear()
+
+    launchProfile.globalCallbacks.get('Control+Alt+D')!()
+    expect(surface.webContents.send).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.shortcutsInput,
+      { kind: 'global', commandId: 'orb.toggle', revision: snapshot.revision })
+    expect(orb.webContents.send).not.toHaveBeenCalled()
+
+    const sendMessage = harness.handlers.get(DESKTOP_IPC.surfaceMessage)!
+    const ready = harness.ipcOn.mock.calls.find(call => call[0] === DESKTOP_IPC.surfaceMessageReady)![1]
+    ready(primaryEvent, { channel: 'better/intent', active: true })
+    await sendMessage(secondaryEvent, { target: 'surface', channel: 'better/intent', payload: { id: 'one' } })
+    expect(surface.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.surfaceMessageEvent, {
+      origin: 'orb', channel: 'better/intent', payload: { id: 'one' },
+    })
+    await expect(Promise.resolve().then(() => sendMessage(secondaryEvent,
+      { target: 'surface', channel: 'invalid', payload: null }))).rejects.toThrow('invalid surface message')
+
+    orb.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false })
+    expect(launchProfile.globalRegistered).toEqual(new Set(['Control+Alt+D']))
+    orb.destroy()
+    expect(launchProfile.globalRegistered).toEqual(new Set(['Control+Alt+D']))
+    launchProfile.globalCallbacks.get('Control+Alt+D')!()
+    expect(surface.webContents.send.mock.calls.filter(call => call[0] === DESKTOP_IPC.shortcutsInput)).toHaveLength(2)
+  })
 
   it('hides the workspace before intentional Host shutdown can look like reconnection', async () => {
     const host = await readyWorkspace()

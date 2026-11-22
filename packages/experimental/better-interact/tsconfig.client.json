@@ -58,10 +58,22 @@
       "path": "../../client/ui-session"
     },
     {
+      "path": "../../client/ui-settings/tsconfig.client.json"
+    },
+    {
       "path": "../../client/ui-slots"
     },
     {
+      "path": "../../client/ui-theme/tsconfig.client.json"
+    },
+    {
       "path": "../../client/ui-workspace/tsconfig.client.json"
+    },
+    {
+      "path": "../client-ui-voice-output/tsconfig.client.json"
+    },
+    {
+      "path": "../client-voice-capture/tsconfig.client.json"
     }
   ]
 }

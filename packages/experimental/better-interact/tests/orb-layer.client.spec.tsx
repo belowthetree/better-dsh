@@ -13,7 +13,7 @@ import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-outpu
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import { OrbLayer } from '../src/client/OrbLayer.tsx'
 import type { OrbLayerProps } from '../src/client/OrbLayer.tsx'
-import { zh } from '../src/client/locales.ts'
+import { zh } from '../src/client/orb-locales.ts'
 
 afterEach(cleanup)
 

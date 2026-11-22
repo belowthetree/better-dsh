@@ -25,7 +25,7 @@ This experimental browser plugin speaks the active Session's completed assistant
 <a id="use-this-package"></a>
 ## Use this package
 
-A profile needs the `text-to-speech` and `api-text-to-speech` rows plus this package; the better bundle already composes all three. The plugin injects `remote` and observes the Session object layer when `sessions` is available, so the frame, the orb, and the classic composer never own playback. The orb reads `ctx.voiceOutput` for its speaking state, calls `setMuted`, `setPolicy`, and `setVoice`, and lists `snapshot().voices` by name.
+A profile needs the `text-to-speech` and `api-text-to-speech` rows plus this package; the better bundle already composes all three. The plugin injects `remote` and `surface`, which the web-app composition supplies for both voice bundles, and observes the Session object layer when `sessions` is available, so the frame, the orb, and the classic composer never own playback. An orb form mounts playback only in the surface renderer; Better projects its speaking state to the resident orb. Settings and playback commands call `setMuted`, `setPolicy`, and `setVoice` through the primary `ctx.voiceOutput`, whose snapshot lists catalog voices by name.
 
 The policy decides automatic playback. `off` speaks no reply, while an explicit `speak(text)` still plays; `all` speaks every completed assistant reply of the active Session; `voice` speaks only a reply whose turn a voice transcript initiated. A voice-initiated turn is a heuristic: a capture snapshot returning from `transcribing` to `idle` opens a 60-second window, the first submitted user message inside the window marks the turn it is claimed in, and the mark clears after that one submission.
 
@@ -80,9 +80,8 @@ No direct effect; the spoken text is an existing assistant message whose content
 - The voice-initiated marker is heuristic. It depends on a 60-second window, consumes one submission, and assigns the turn the durable user message is claimed in, so queued or steering submissions can attribute the mark imprecisely.
 - No per-message read-aloud action ships; explicit `speak(text)` exists for a later control.
 - Browser system voices are not used; selectable voices come only from the speech Remote's providers.
-- Playback, the queue, and speaking state are process-local, so a page reload drops them, while policy, voice, and mute survive.
+- Playback, the queue, and speaking state are process-local to the owning renderer (surface in the orb form), so its reload drops them, while policy, voice, and mute survive.
 - The `text-to-speech` and `api-text-to-speech` rows are required; without them the plugin is inert and only reports the `unavailable` failure.
-- The voice-turn marker reads `ctx.get('voiceCapture')` when the service starts following a Session, so a profile must provide `client-voice-capture` before this package (the better bundle does). Reordering the rows ends the marker without an error.
 
 -----
 

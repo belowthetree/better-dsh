@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 /** Plugin-level spec: seat registrations, the system command, optional services, and disposal. */
 import { act, cleanup, fireEvent } from '@testing-library/react'
-import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
-import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { SurfaceMessage, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
+import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture/client'
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
@@ -18,9 +19,20 @@ import { ORB_CHAT_MODAL_ID } from '../src/client/modals.ts'
 import {
   ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE, OrbWorkbench, OrbWorkbenchConversation,
 } from '../src/client/OrbWorkbench.tsx'
-import { zh } from '../src/client/locales.ts'
+import { zh } from '../src/client/orb-locales.ts'
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+let activeRuntime: SlotTestRuntime | undefined
+
+afterEach(async () => {
+  try {
+    if (activeRuntime !== undefined) await activeRuntime.dispose()
+  } finally {
+    activeRuntime = undefined
+    cleanup()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  }
+})
 beforeEach(() => { window.localStorage.clear() })
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
@@ -58,15 +70,21 @@ function observable<T>(initial: T) {
       current = next
       for (const listener of [...listeners]) listener()
     },
+    get followers() { return listeners.size },
   }
 }
 
 /** Surface double recording every carrier command. */
 function surfaceDouble(initial: SurfaceSnapshot = ORB_SURFACE) {
   const snapshots = observable(initial)
+  const listeners = new Map<string, Set<(message: SurfaceMessage) => void>>()
   return {
+    get followers() { return snapshots.followers },
     publish(patch: Partial<SurfaceSnapshot>): void {
       snapshots.publish({ ...snapshots.service.snapshot(), ...patch })
+    },
+    emit(channel: string, origin: SurfaceMessage['origin'], payload: unknown): void {
+      for (const listener of [...(listeners.get(channel) ?? [])]) listener({ origin, channel, payload })
     },
     service: {
       ...snapshots.service,
@@ -76,7 +94,17 @@ function surfaceDouble(initial: SurfaceSnapshot = ORB_SURFACE) {
       dismissModal: vi.fn(() => Promise.resolve()),
       setPinned: vi.fn(() => Promise.resolve()),
       dragBy: vi.fn(() => Promise.resolve()),
+      snap: vi.fn(() => Promise.resolve()),
+      presentBubbles: vi.fn(() => Promise.resolve()),
+      dismissBubbles: vi.fn(() => Promise.resolve()),
       setPointerInside: vi.fn(),
+      sendMessage: vi.fn<(target: SurfaceMessage['origin'], channel: string, payload: unknown) => Promise<void>>(async () => {}),
+      onMessage: (channel: string, listener: (message: SurfaceMessage) => void) => {
+        const entries = listeners.get(channel) ?? new Set()
+        entries.add(listener)
+        listeners.set(channel, entries)
+        return () => { entries.delete(listener) }
+      },
     },
   }
 }
@@ -91,7 +119,7 @@ function captureDouble(initial: VoiceCaptureSnapshot) {
     takeTranscript: vi.fn((): string | null => null),
     cancel: vi.fn(async () => {}),
   }
-  return { publish: snapshots.publish, service: commands }
+  return { publish: snapshots.publish, service: commands, get followers() { return snapshots.followers } }
 }
 
 /** Playback double recording the commands the orb issues. */
@@ -105,7 +133,7 @@ function outputDouble(initial: VoiceOutputSnapshot) {
     stop: vi.fn(),
     speak: vi.fn(() => Promise.resolve()),
   }
-  return { publish: snapshots.publish, service: commands }
+  return { publish: snapshots.publish, service: commands, get followers() { return snapshots.followers } }
 }
 
 const CAPTURING: VoiceCaptureSnapshot = {
@@ -146,12 +174,17 @@ async function bench(options: BenchOptions = {}) {
   const surface = options.surface ?? surfaceDouble().service
   const commands = new Map<string, ShortcutCommand>()
   const runtime = await SlotTestRuntime.create()
-  onTestFinished(() => runtime.dispose())
+  activeRuntime = runtime
   const locale = new LocaleRuntime(runtime.ctx)
   locale.setLocale('zh')
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   runtime.ctx.provide('surface', surface as never)
+  runtime.ctx.provide('resources', { register: () => () => {} } as never)
+  const openSession = vi.fn()
+  runtime.ctx.provide('uiWorkspace', {
+    openSession, openWorkspace: vi.fn(async () => {}), pickDirectory: vi.fn(async () => null),
+  } as never)
   if (options.settingsUi !== undefined) runtime.ctx.provide('settingsUi', options.settingsUi)
   const theme = {
     getTheme: () => ({ preference: 'system' as const }),
@@ -165,13 +198,24 @@ async function bench(options: BenchOptions = {}) {
     },
     catalog: createSnapshotStore([]),
   } as never)
+  const conversation = createSnapshotStore<ConversationSnapshot>({
+    activeTargets: new Set(), views: { get: () => undefined, grouped: () => undefined },
+  })
+  const uiSession = runtime.ctx.get('uiSession')
+  if (uiSession === undefined) throw new Error('orb test: uiSession is unavailable')
+  uiSession.provide({ hooks: ['conversation'] as const, resolve: () => ({ hooks: { conversation } }) })
+  runtime.workspaces.stub('initializeDefault', async () => ({ workspaceId: 'default-workspace' } as never))
   const owner = await runtime.mount(plugin)
   await runtime.root.declare({
     'shell.overlay': { kind: 'list', scope: 'root' },
     'shell.modal': { kind: 'list', scope: 'root' },
-  }, ({ renderSlot }) => <>{renderSlot('shell.overlay', {})}{renderSlot('shell.modal', {})}</>)
+  }, ({ renderSlot }) => <>
+    {renderSlot('shell.overlay', {}, { only: 'orb' })}
+    {renderSlot('shell.modal', {}, { only: ORB_CHAT_MODAL_ID })}
+    {renderSlot('shell.modal', {}, { only: ORB_WORKBENCH_MODAL_ID })}
+  </>)
   runtime.renderRoot()
-  return { runtime, owner, commands, surface, locale, theme }
+  return { runtime, owner, commands, surface, locale, theme, openSession }
 }
 
 /** Let pending observation generators and React updates settle inside act. */
@@ -199,15 +243,17 @@ async function provideVoice(
 it('registers the overlay chrome, the chat dialog, and the system commands', async () => {
   const b = await bench()
   const overlay = b.runtime.slots.entries('shell.overlay')
-  expect(overlay.map(entry => entry.options.id)).toEqual(['orb'])
-  expect(overlay[0]?.locale).toBe('orb')
+  expect(overlay.map(entry => entry.options.id)).toEqual(['better-interact.bubbles', 'orb'])
+  expect(overlay.find(entry => entry.options.id === 'orb')?.locale).toBe('orb')
   const modal = b.runtime.slots.entries('shell.modal')
-  expect(modal.map(entry => entry.options.id)).toEqual([ORB_CHAT_MODAL_ID, ORB_WORKBENCH_MODAL_ID])
-  expect(modal[0]?.locale).toBe('orb')
-  expect(modal[0]?.component).toBe(QuickPrompt)
-  expect(modal[1]?.locale).toBe('orb')
-  expect(modal[1]?.component).toBe(OrbWorkbench)
-  expect(modal[1]?.children).toEqual({ 'orb.workbench.conversation': { kind: 'single', scope: 'session' } })
+  expect(modal.map(entry => entry.options.id)).toEqual(['better-interact.workbench', ORB_CHAT_MODAL_ID, ORB_WORKBENCH_MODAL_ID])
+  const chatEntry = modal.find(entry => entry.options.id === ORB_CHAT_MODAL_ID)
+  const workbenchEntry = modal.find(entry => entry.options.id === ORB_WORKBENCH_MODAL_ID)
+  expect(chatEntry?.locale).toBe('orb')
+  expect(chatEntry?.component).toBe(QuickPrompt)
+  expect(workbenchEntry?.locale).toBe('orb')
+  expect(workbenchEntry?.component).toBe(OrbWorkbench)
+  expect(workbenchEntry?.children).toEqual({ 'orb.workbench.conversation': { kind: 'single', scope: 'session' } })
   const conversation = b.runtime.slots.entries('orb.workbench.conversation')
   expect(conversation.map(entry => entry.component)).toEqual([OrbWorkbenchConversation])
 
@@ -259,18 +305,69 @@ it('registers the overlay chrome, the chat dialog, and the system commands', asy
 it('opens the settings panel from the orb menu action', async () => {
   const open = vi.fn()
   const b = await bench({ settingsUi: { open } })
-  const entry = b.runtime.slots.entries('shell.overlay')[0]
+  const entry = b.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'orb')
   const face = entry?.inject?.() as { actions: { openSettings(): void } }
   face.actions.openSettings()
   expect(open).toHaveBeenCalledOnce()
 })
 
-it('starts a collapsed-orb capture and finishes it into the chat dialog', async () => {
+it('forwards the collapsed-orb voice gesture to the primary renderer', async () => {
   const surface = surfaceDouble()
   const capture = captureDouble(IDLE_CAPTURE)
   const b = await bench({ surface: surface.service, capture })
+  const entry = b.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'orb')
+  const face = entry?.inject?.() as { actions: { toggleVoice(): void } }
+  face.actions.toggleVoice()
+  await flush()
+  expect(surface.service.sendMessage).toHaveBeenCalledWith('surface', 'better-interact/voice-intent', { kind: 'toggle' })
+  expect(capture.service.begin).not.toHaveBeenCalled()
+  expect(surface.service.presentModal).not.toHaveBeenCalled()
+})
+
+it('executes voice intents on the primary renderer and publishes its snapshots', async () => {
+  const surface = surfaceDouble({ ...ORB_SURFACE, role: 'surface' })
+  const capture = captureDouble(IDLE_CAPTURE)
+  const output = outputDouble(PLAYBACK)
+  const b = await bench({ surface: surface.service })
+  await provideVoice(b.runtime, capture, output)
+  surface.service.sendMessage.mockClear()
+  surface.emit('better-interact/voice-intent', 'orb', { kind: 'snapshot' })
+  await flush()
+  expect(surface.service.sendMessage).toHaveBeenCalledWith('orb', 'better-interact/capture-state', { phase: 'idle' })
+  expect(surface.service.sendMessage).toHaveBeenCalledWith('orb', 'better-interact/playback-state', { speaking: false })
+  surface.emit('better-interact/voice-intent', 'bubbles', { kind: 'toggle' })
+  surface.emit('better-interact/voice-intent', 'orb', null)
+  surface.emit('better-interact/voice-intent', 'orb', { kind: 'unknown' })
+  await flush()
+  expect(capture.service.begin).not.toHaveBeenCalled()
+  surface.emit('better-interact/voice-intent', 'orb', { kind: 'toggle' })
+  await flush()
+  expect(capture.service.begin).toHaveBeenCalledOnce()
+
+  capture.publish(CAPTURING)
+  capture.publish({ ...CAPTURING, level: 0.9 })
+  output.publish({ ...PLAYBACK, speaking: true })
+  output.publish({ ...PLAYBACK, speaking: true })
+  await flush()
+  expect(surface.service.sendMessage).toHaveBeenCalledWith('orb', 'better-interact/capture-state', { phase: 'capturing' })
+  expect(surface.service.sendMessage).toHaveBeenCalledWith('orb', 'better-interact/playback-state', { speaking: true })
+  expect(surface.service.sendMessage.mock.calls.filter(call => call[1] === 'better-interact/capture-state'
+    && (call[2] as { phase?: unknown })?.phase === 'capturing')).toHaveLength(1)
+  expect(surface.service.sendMessage.mock.calls.filter(call => call[1] === 'better-interact/playback-state'
+    && (call[2] as { speaking?: unknown })?.speaking === true)).toHaveLength(1)
+
+  surface.emit('better-interact/voice-intent', 'orb', { kind: 'toggle' })
+  await flush()
+  expect(capture.service.finish).toHaveBeenCalledWith({ hold: true })
+  expect(surface.service.presentModal).toHaveBeenCalledWith(ORB_CHAT_MODAL_ID)
+})
+
+it('starts a collapsed-orb capture and finishes it into the chat dialog', async () => {
+  const surface = surfaceDouble({ ...ORB_SURFACE, role: 'surface' })
+  const capture = captureDouble(IDLE_CAPTURE)
+  const b = await bench({ surface: surface.service, capture })
   await provideVoice(b.runtime, capture, outputDouble(PLAYBACK))
-  const entry = b.runtime.slots.entries('shell.overlay')[0]
+  const entry = b.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'orb')
   const face = entry?.inject?.() as { actions: { toggleVoice(): void } }
   face.actions.toggleVoice()
   await flush()
@@ -299,11 +396,11 @@ it('starts a collapsed-orb capture and finishes it into the chat dialog', async 
 
 it('reports rejected capture commands without interrupting the orb', async () => {
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
-  const surface = surfaceDouble()
+  const surface = surfaceDouble({ ...ORB_SURFACE, role: 'surface' })
   const capture = captureDouble(IDLE_CAPTURE)
   const b = await bench({ surface: surface.service, capture })
   await provideVoice(b.runtime, capture, outputDouble(PLAYBACK))
-  const entry = b.runtime.slots.entries('shell.overlay')[0]
+  const entry = b.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'orb')
   const face = entry?.inject?.() as { actions: { toggleVoice(): void } }
   capture.service.begin.mockRejectedValueOnce(new Error('microphone busy'))
   face.actions.toggleVoice()
@@ -353,7 +450,7 @@ it('issues every registered action through the entry faces', async () => {
   const capture = captureDouble(IDLE_CAPTURE)
   const benchResult = await bench({ surface: surface.service, capture })
   await provideVoice(benchResult.runtime, capture, outputDouble(PLAYBACK))
-  const overlayEntry = benchResult.runtime.slots.entries('shell.overlay')[0]
+  const overlayEntry = benchResult.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'orb')
   const face = overlayEntry?.inject?.() as { actions: {
     openChat(): void
     dragBy(deltaX: number, deltaY: number): void
@@ -368,7 +465,7 @@ it('issues every registered action through the entry faces', async () => {
   expect(surface.service.dragBy).toHaveBeenCalledExactlyOnceWith(6, -4)
   expect(surface.service.setPointerInside).toHaveBeenCalledExactlyOnceWith(true)
 
-  const chatEntry = benchResult.runtime.slots.entries('shell.modal')[0]
+  const chatEntry = benchResult.runtime.slots.entries('shell.modal').find(entry => entry.options.id === ORB_CHAT_MODAL_ID)
   const chat = chatEntry?.inject?.() as { actions: {
     takeTranscript(): string | null
     startDictation(): Promise<void>
@@ -387,10 +484,10 @@ it('issues every registered action through the entry faces', async () => {
 it('treats absent voice services as no-ops', async () => {
   const surface = surfaceDouble()
   const benchResult = await bench({ surface: surface.service })
-  const entry = benchResult.runtime.slots.entries('shell.overlay')[0]
+  const entry = benchResult.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'orb')
   const face = entry?.inject?.() as { actions: { toggleVoice(): void } }
   face.actions.toggleVoice()
-  const chatEntry = benchResult.runtime.slots.entries('shell.modal')[0]
+  const chatEntry = benchResult.runtime.slots.entries('shell.modal').find(entry => entry.options.id === ORB_CHAT_MODAL_ID)
   const chat = chatEntry?.inject?.() as { actions: {
     takeTranscript(): string | null
     startDictation(): Promise<void>
@@ -415,7 +512,7 @@ it('reports a failed surface observation', async () => {
   }
   await bench({ surface: failing })
   await flush()
-  expect(errors).toHaveBeenCalledWith('orb: surface observation failed', expect.any(Error))
+  expect(errors).toHaveBeenCalledWith('better-interact: observing the carrier failed', expect.any(Error))
 })
 
 it('follows the carrier presentation and reduced-motion preference', async () => {
@@ -449,9 +546,10 @@ it('creates the management Session with the manage preset and reuses it', async 
   const surface = surfaceDouble()
   const b = await bench({ surface: surface.service })
   const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
+  const managed = await b.runtime.sessions.add({ id: 'managed', session: { prompt } })
   const create = vi.fn(async (opts: Parameters<typeof b.runtime.sessions.create>[0]) => {
-    expect(opts).toEqual({ agentPreset: 'manage' })
-    return b.runtime.sessions.add({ id: 'managed', session: { prompt } })
+    expect(opts).toEqual({ agentPreset: 'manage', workspaceId: 'default-workspace' })
+    return managed
   })
   b.runtime.sessions.stubCreate(create)
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
@@ -479,12 +577,13 @@ it('creates the management Session in the Host default Workspace', async () => {
   const surface = surfaceDouble()
   const b = await bench({ surface: surface.service })
   b.runtime.workspaces.stub('initializeDefault', async () => ({ workspaceId: 'default-workspace' } as never))
+  const managed = await b.runtime.sessions.add({
+    id: 'managed-default',
+    session: { prompt: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })) },
+  })
   const create = vi.fn(async (opts: Parameters<typeof b.runtime.sessions.create>[0]) => {
     expect(opts).toEqual({ agentPreset: 'manage', workspaceId: 'default-workspace' })
-    return b.runtime.sessions.add({
-      id: 'managed-default',
-      session: { prompt: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })) },
-    })
+    return managed
   })
   b.runtime.sessions.stubCreate(create)
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
@@ -500,24 +599,72 @@ it('creates the management Session in the Host default Workspace', async () => {
 it('retains the management conversation while the workbench is presented', async () => {
   const surface = surfaceDouble()
   const b = await bench({ surface: surface.service })
-  b.runtime.sessions.stubCreate(async () => b.runtime.sessions.add({
-    id: 'managed',
-    session: { prompt: vi.fn() },
-  }))
+  const managed = await b.runtime.sessions.add({ id: 'managed', session: { prompt: vi.fn() } })
+  b.runtime.sessions.stubCreate(async () => managed)
   surface.publish({ presentation: 'modal', modal: ORB_WORKBENCH_MODAL_ID })
   await flush()
   await flush()
-  expect(b.runtime.sessions.retainInfo('managed' as never).getSnapshot().retainedBy.orbChat).toBe(1)
+  expect(b.runtime.sessions.retainInfo('managed' as never).getSnapshot().retainedBy).toMatchObject({ orbChat: 1 })
   surface.publish({ presentation: 'orb', modal: null })
   await flush()
-  expect(b.runtime.sessions.retainInfo('managed' as never).getSnapshot().retainedBy.orbChat).toBeUndefined()
+  expect(b.runtime.sessions.retainInfo('managed' as never).getSnapshot().retainedBy).not.toHaveProperty('orbChat')
+})
+
+it('invalidates a management workbench preparation that closes before creation settles', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  const managed = await b.runtime.sessions.add({ id: 'managed', session: { prompt: vi.fn() } })
+  const created = Promise.withResolvers<typeof managed>()
+  b.runtime.sessions.stubCreate(() => created.promise)
+  surface.publish({ presentation: 'modal', modal: ORB_WORKBENCH_MODAL_ID })
+  await flush()
+  surface.publish({ presentation: 'orb', modal: null })
+  await flush()
+  created.resolve(managed)
+  await flush()
+  expect(b.openSession).not.toHaveBeenCalled()
+  expect(b.runtime.sessions.retainInfo(managed).getSnapshot().retainedBy).not.toHaveProperty('orbChat')
+})
+
+it('restarts management workbench preparation after a close and reopen', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  const managed = await b.runtime.sessions.add({ id: 'managed', session: { prompt: vi.fn() } })
+  const created = Promise.withResolvers<typeof managed>()
+  b.runtime.sessions.stubCreate(() => created.promise)
+  surface.publish({ presentation: 'modal', modal: ORB_WORKBENCH_MODAL_ID })
+  await flush()
+  surface.publish({ presentation: 'orb', modal: null })
+  await flush()
+  surface.publish({ presentation: 'modal', modal: ORB_WORKBENCH_MODAL_ID })
+  await flush()
+  created.resolve(managed)
+  await flush()
+  expect(b.openSession).toHaveBeenCalledWith(managed)
+  expect(b.runtime.sessions.retainInfo(managed).getSnapshot().retainedBy).toMatchObject({ orbChat: 1 })
+})
+
+it('does not restart management workbench preparation after plugin disposal', async () => {
+  const surface = surfaceDouble()
+  const b = await bench({ surface: surface.service })
+  const managed = await b.runtime.sessions.add({ id: 'managed', session: { prompt: vi.fn() } })
+  const created = Promise.withResolvers<typeof managed>()
+  b.runtime.sessions.stubCreate(() => created.promise)
+  surface.publish({ presentation: 'modal', modal: ORB_WORKBENCH_MODAL_ID })
+  await flush()
+  await b.owner.dispose()
+  created.resolve(managed)
+  await flush()
+  expect(b.openSession).not.toHaveBeenCalled()
+  expect(b.runtime.sessions.retainInfo(managed).getSnapshot().retainedBy).not.toHaveProperty('orbChat')
 })
 
 it('reports a rejected prompt inside the chat box', async () => {
   const surface = surfaceDouble()
   const b = await bench({ surface: surface.service })
   const prompt = vi.fn(async () => ({ ok: false as const, error: new RemoteError('gateway/internal', 'offline', {}) }))
-  b.runtime.sessions.stubCreate(async () => b.runtime.sessions.add({ id: 'managed', session: { prompt } }))
+  const managed = await b.runtime.sessions.add({ id: 'managed', session: { prompt } })
+  b.runtime.sessions.stubCreate(async () => managed)
   surface.publish({ presentation: 'modal', modal: ORB_CHAT_MODAL_ID })
   await flush()
   const input = document.querySelector('[data-orb-prompt-input]') as HTMLTextAreaElement
@@ -530,53 +677,53 @@ it('reports a rejected prompt inside the chat box', async () => {
 
 it('reflects the optional voice services', async () => {
   const surface = surfaceDouble()
-  const capture = captureDouble(CAPTURING)
-  const output = outputDouble(PLAYBACK)
-  const b = await bench({ surface: surface.service })
+  await bench({ surface: surface.service })
   expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('idle')
-  const provider = await provideVoice(b.runtime, capture, output)
+  expect(surface.service.sendMessage).toHaveBeenCalledWith('surface', 'better-interact/voice-intent', { kind: 'snapshot' })
+
+  surface.emit('better-interact/capture-state', 'surface', { phase: 'capturing' })
+  await flush()
   expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('capturing')
 
-  capture.publish({ ...CAPTURING, phase: 'transcribing' })
-  output.publish({ ...PLAYBACK, speaking: true })
+  surface.emit('better-interact/capture-state', 'surface', { phase: 'transcribing' })
+  surface.emit('better-interact/playback-state', 'surface', { speaking: true })
   await flush()
   expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('transcribing')
 
-  await provider.dispose()
+  surface.emit('better-interact/capture-state', 'surface', { phase: 'idle' })
+  surface.emit('better-interact/playback-state', 'surface', { speaking: false })
+  await flush()
+  expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('idle')
+
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  surface.emit('better-interact/capture-state', 'surface', { phase: 'unknown' })
+  surface.emit('better-interact/playback-state', 'surface', { speaking: 'yes' })
+  await flush()
+  expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('idle')
+  expect(errors).toHaveBeenCalledTimes(2)
+})
+
+it('clears primary voice projections when the surface detaches them', async () => {
+  const surface = surfaceDouble()
+  await bench({ surface: surface.service })
+  surface.emit('better-interact/capture-state', 'surface', { phase: 'capturing' })
+  surface.emit('better-interact/playback-state', 'surface', { speaking: true })
+  await flush()
+  surface.emit('better-interact/capture-state', 'surface', null)
+  surface.emit('better-interact/playback-state', 'surface', null)
   await flush()
   expect(document.querySelector('[data-orb]')?.getAttribute('data-state')).toBe('idle')
 })
 
 it('removes every registration and observation when the plugin unloads', async () => {
   const surface = surfaceDouble()
-  const commands = new Map<string, ShortcutCommand>()
-  const runtime = await SlotTestRuntime.create()
-  onTestFinished(() => runtime.dispose())
-  const locale = new LocaleRuntime(runtime.ctx)
-  runtime.ctx.provide('locale', locale)
-  runtime.slots.installLocale(locale)
-  runtime.ctx.provide('surface', surface.service as never)
-  runtime.ctx.provide('theme', {
-    getTheme: () => ({ preference: 'system' as const }),
-    setTheme: vi.fn(),
-  } as never)
-  runtime.ctx.provide('shortcuts', {
-    register: (command: ShortcutCommand) => {
-      commands.set(command.id, command)
-      return () => { commands.delete(command.id) }
-    },
-    catalog: createSnapshotStore([]),
-  } as never)
-  await runtime.root.declare({
-    'shell.overlay': { kind: 'list', scope: 'root' },
-    'shell.modal': { kind: 'list', scope: 'root' },
-  }, ({ renderSlot }) => <>{renderSlot('shell.overlay', {})}{renderSlot('shell.modal', {})}</>)
-  const owner = await runtime.mount(plugin)
-  runtime.renderRoot()
-  expect(runtime.slots.entries('shell.overlay')).toHaveLength(1)
-  expect(commands.has('orb.toggle')).toBe(true)
-  await owner.dispose()
-  expect(runtime.slots.entries('shell.overlay')).toEqual([])
-  expect(runtime.slots.entries('shell.modal')).toEqual([])
-  expect(commands.size).toBe(0)
+  const b = await bench({ surface: surface.service })
+  expect(b.runtime.slots.entries('shell.overlay')).toHaveLength(2)
+  expect(b.commands.has('orb.toggle')).toBe(true)
+  expect(surface.followers).toBe(1)
+  await b.owner.dispose()
+  expect(surface.followers).toBe(0)
+  expect(b.runtime.slots.entries('shell.overlay')).toEqual([])
+  expect(b.runtime.slots.entries('shell.modal')).toEqual([])
+  expect(b.commands.size).toBe(0)
 })

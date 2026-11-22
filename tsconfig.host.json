@@ -319,7 +319,6 @@
     { "path": "./packages/experimental/text-to-speech" },
     { "path": "./packages/experimental/api-text-to-speech" },
     { "path": "./packages/experimental/client-voice-capture/tsconfig.host.json" },
-    { "path": "./packages/experimental/client-ui-orb/tsconfig.host.json" },
     { "path": "./packages/experimental/better-interact/tsconfig.host.json" },
     { "path": "./packages/experimental/client-ui-voice-output/tsconfig.host.json" },
     { "path": "./packages/experimental/better-bundle" },

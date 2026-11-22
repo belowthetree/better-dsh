@@ -5,8 +5,16 @@ import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import type {} from '@deepseek-ai/dsh-session-title'
-import { ToolArgsError } from '@deepseek-ai/dsh-tools'
-import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
+import { ToolArgsError, ToolContextUnavailableError, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { WorkspaceId, type Workspace } from '@deepseek-ai/dsh-workspace'
+
+/** Workspace metadata visibility selected by the composition. */
+export type WorkspaceAccess = 'all' | 'current'
+
+interface ListAccess {
+  readonly mode: WorkspaceAccess
+  readonly exec?: ToolRunContext
+}
 
 /** Optional model pagination arguments. */
 export interface PageInput {
@@ -57,17 +65,57 @@ export function resolvePage(input: PageInput): { limit: number; offset: number }
   return { limit, offset }
 }
 
+/** Resolve the registered Workspace that the current mode makes visible to this caller. */
+function callerWorkspace(ctx: Context, exec?: ToolRunContext): Workspace {
+  const cwd = exec?.agent?.session.header.cwd
+  if (cwd === undefined) {
+    throw new ToolContextUnavailableError('current workspace listing requires an agent session with a working directory')
+  }
+  const workspace = ctx.workspaceRegistry.list().find(item => item.path === cwd)
+  if (workspace === undefined) {
+    throw new ToolContextUnavailableError('current workspace listing requires the caller working directory to name a registered Workspace')
+  }
+  return workspace
+}
+
+/** Resolve explicit or configured Workspace selection without ever widening current mode to the corpus. */
+function selectedWorkspace(ctx: Context, input: SessionListInput, access: ListAccess): Workspace | undefined {
+  if (access.mode === 'current') {
+    const current = callerWorkspace(ctx, access.exec)
+    if (input.workspace_id !== undefined && input.workspace_id !== current.id) {
+      throw new ToolArgsError(['workspace_id must name the current workspace of the caller when workspaceAccess is "current"'])
+    }
+    return current
+  }
+  if (input.workspace_id === undefined) return undefined
+  const workspace = ctx.workspaceRegistry.get(WorkspaceId(input.workspace_id))
+  if (workspace === undefined) {
+    throw new ToolArgsError([`workspace_id ${JSON.stringify(input.workspace_id)} is not registered; use list_workspace to find a workspace`])
+  }
+  return workspace
+}
+
 /**
  * Read one page of the authoritative Workspace order, including empty records.
+ * Current mode instead reads only the caller's registered Workspace.
  * @param ctx - context providing the Workspace registry.
  * @param input - pagination arguments.
  * @param signal - caller cancellation.
+ * @param access - runtime-wide default, or current-workspace mode with the tool execution context.
  * @returns Workspace metadata with ISO timestamps.
  */
-export function listWorkspaces(ctx: Context, input: PageInput, signal: AbortSignal): WorkspaceListItem[] {
+export function listWorkspaces(
+  ctx: Context,
+  input: PageInput,
+  signal: AbortSignal,
+  access: ListAccess = { mode: 'all' },
+): WorkspaceListItem[] {
   const { limit, offset } = resolvePage(input)
   signal.throwIfAborted()
-  return ctx.workspaceRegistry.list().slice(offset, offset + limit).map(workspace => ({
+  const workspaces = access.mode === 'current'
+    ? [callerWorkspace(ctx, access.exec)]
+    : ctx.workspaceRegistry.list()
+  return workspaces.slice(offset, offset + limit).map(workspace => ({
     workspace_id: workspace.id,
     title: workspace.title,
     path: workspace.path,
@@ -79,30 +127,27 @@ export function listWorkspaces(ctx: Context, input: PageInput, signal: AbortSign
 /**
  * List live and persisted Session metadata without opening cold logs or activating Agents.
  * A Workspace selection reads only its members' indexed headers; an unscoped call enumerates
- * the corpus headers. Subagent Sessions are excluded.
+ * the corpus headers. Current mode always selects the caller's Workspace, even when the model
+ * supplies another workspace_id. Subagent Sessions are excluded.
  * @param ctx - context providing query, Workspace, and projection services.
  * @param input - filters and pagination arguments.
  * @param signal - caller cancellation, forwarded to the corpus listing.
+ * @param access - runtime-wide default, or current-workspace mode with the tool execution context.
  * @returns filtered Session metadata ordered by activity, then identity.
  */
 export async function listSessions(
   ctx: Context,
   input: SessionListInput,
   signal: AbortSignal,
+  access: ListAccess = { mode: 'all' },
 ): Promise<SessionListItem[]> {
   const { limit, offset } = resolvePage(input)
   signal.throwIfAborted()
-  let headers: readonly SessionHeader[]
-  if (input.workspace_id === undefined) {
-    headers = (await ctx.sessionQuery.listSessions(signal)).map(record => record.header)
-    signal.throwIfAborted()
-  } else {
-    const workspace = ctx.workspaceRegistry.get(WorkspaceId(input.workspace_id))
-    if (workspace === undefined) {
-      throw new ToolArgsError([`workspace_id ${JSON.stringify(input.workspace_id)} is not registered; use list_workspace to find a workspace`])
-    }
-    headers = workspace.getSessionHeaders()
-  }
+  const workspace = selectedWorkspace(ctx, input, access)
+  const headers = workspace === undefined
+    ? (await ctx.sessionQuery.listSessions(signal)).map(record => record.header)
+    : workspace.getSessionHeaders()
+  signal.throwIfAborted()
   const archived = new Set(ctx.workspaceRegistry.archivedSessionIds)
   const items: Array<Omit<SessionListItem, 'updated_at'> & { updatedAt: number }> = []
   for (const header of headers) {

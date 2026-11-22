@@ -65,6 +65,13 @@ describe('historical package references', () => {
       .toEqual([{ file: historicalPath, line: 2, ref: removedReference }])
   })
 
+  it('ignores package paths inside external blob links but still checks current-tree prose', () => {
+    const file = 'docs/upgrade-guide/v0.0.1/historical/guide.md'
+    const external = `https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.0.1/${removedReference}`
+    expect(scan(file, [`See [old package](${external}).`, `Local: ${removedReference}`].join('\n')))
+      .toEqual([{ file, line: 2, ref: removedReference }])
+  })
+
   it('retains existing-path and hypothetical-package handling outside historical content', () => {
     const file = 'docs/current.md'
     expect(scan(file, [currentReference, 'packages/hypothetical/unpublished/src/types.ts', removedReference].join('\n')))

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.4/better-orb-client-consolidation/guide.md
+/:
+  en: 6288c610227fa133
+  zh: 223a05f03b5e85b9
+/orb-client-entries-move-to-better-interact:
+  en: 4fdcaba5cd358acc
+  zh: d23e7ba837cc2e0a
+/orb-client-entries-move-to-better-interact/change:
+  en: 6c6f40c8ce9a85aa
+  zh: d937998b5faf74d8
+/orb-client-entries-move-to-better-interact/migration:
+  en: 57475dd696c3122f
+  zh: 3aad06908ad7bfe6

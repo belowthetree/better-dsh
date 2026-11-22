@@ -10,6 +10,7 @@ import { DESKTOP_IPC, assertDesktopSender } from './ipc.ts'
 /**
  * Install application-owned configuration handlers and attach each product window's input lifecycle.
  * @param getWindows - current product windows; a form profile runs the orb, surface, and bubble column windows.
+ * @param systemOwner - main renderer whose catalog and command state owns OS-global shortcuts.
  * @param userData - Electron-resolved device preference directory.
  * @param platform - local device platform.
  * @param updateMenu - rebuild the application menu when the close accelerator or availability changes.
@@ -17,7 +18,8 @@ import { DESKTOP_IPC, assertDesktopSender } from './ipc.ts'
  * @returns menu construction, editor key delivery, window attachment, and teardown operations.
  */
 export function installDesktopShortcuts(
-  getWindows: () => readonly BrowserWindow[], userData: string, platform: ShortcutPlatform, updateMenu: () => void,
+  getWindows: () => readonly BrowserWindow[], systemOwner: () => BrowserWindow | undefined,
+  userData: string, platform: ShortcutPlatform, updateMenu: () => void,
   overlayInput: (window: BrowserWindow) => { readonly revision: number; readonly blocked: boolean },
 ): {
   fileMenu(labels: { fileMenu: string; closePage: string }): MenuItemConstructorOptions
@@ -54,8 +56,8 @@ export function installDesktopShortcuts(
     revision: () => revision,
     recording: () => recording,
     send: (commandId, accepted) => {
-      const window = focusedWindow()
-      if (window === undefined) return
+      const window = systemOwner()
+      if (window === undefined || window.isDestroyed()) return
       window.webContents.send(DESKTOP_IPC.shortcutsInput, { kind: 'global', commandId, revision: accepted })
     },
     publish: (state) => {
@@ -102,8 +104,10 @@ export function installDesktopShortcuts(
     return window
   }
   ipcMain.handle(DESKTOP_IPC.shortcutsGet, async (event, input: unknown) => {
-    assertSender(event)
-    definitions = parseShortcutDefinitions(input)
+    const window = assertSender(event)
+    const nextDefinitions = parseShortcutDefinitions(input)
+    if (window === systemOwner()) definitions = nextDefinitions
+    // Secondary renderers read the owner's catalog without replacing it.
     persistence.setDefinitions(definitions)
     return persistence.readCurrent()
   })
@@ -130,6 +134,9 @@ export function installDesktopShortcuts(
     window.close()
   })
   function attachInput(window: BrowserWindow, contents: WebContents, guestName?: DesktopBrowserLeaseId): () => void {
+    // Window roles do not change during a native window's lifetime. Capture the
+    // owner before `closed` makes the registry drop the window.
+    const ownsSystemCommands = systemOwner() === window
     let deadKey = false
     const held = new Set<string>()
     const consumed = new Map<string, 'press' | 'repeat'>()
@@ -147,7 +154,7 @@ export function installDesktopShortcuts(
     }
     const clear = (): void => {
       resetInput()
-      if (guestName !== undefined) return
+      if (guestName !== undefined || !ownsSystemCommands) return
       definitions = []; keys.clear(); recording = false
       globals.reset()
       persistence.setDefinitions(null)

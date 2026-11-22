@@ -25,11 +25,13 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当 profile 挂载本包时，`ctx.surface` 提供 `snapshot()`、`follow(signal)`、`expand()`、`collapse()`、`presentModal(id, size?)`、`dismissModal()`、`presentBubbles()`、`dismissBubbles()`、`setPinned(pinned)`、`dragBy(deltaX, deltaY)`、`snap()` 与 `setPointerInside(inside)`。在某个呈现字段变化之前，`snapshot()` 返回同一个引用稳定的值；`follow(signal)` 依次产出当前快照与之后的每次变化，直到 signal 中止。命令方法仅在载体确认后 resolve；载体拒绝的命令会让调用方 reject，并保留上一份快照。该插件不要求任何注入服务，因此可挂载于任意 Client 组合。
+当 profile 挂载本包时，`ctx.surface` 提供 `snapshot()`、`follow(signal)`、`expand()`、`collapse()`、`presentModal(id, size?)`、`dismissModal()`、`presentBubbles()`、`dismissBubbles()`、`setPinned(pinned)`、`dragBy(deltaX, deltaY)`、`snap()`、`setPointerInside(inside)`、`sendMessage(target, channel, payload)` 与 `onMessage(channel, listener)`。在某个呈现字段变化之前，`snapshot()` 返回同一个引用稳定的值；`follow(signal)` 依次产出当前快照与之后的每次变化，直到 signal 中止。命令方法仅在载体确认后 resolve；载体拒绝的命令会让调用方 reject，并保留上一份快照。该插件不要求任何注入服务，因此可挂载于任意 Client 组合。
 
 `SurfaceSnapshot` 携带形态（`classic` 或 `orb`）、窗口 `role`（`classic`、常驻 `orb`、`surface` 窗口或 `bubbles` 气泡列窗口）、呈现（`classic`、`orb`、`panel`、`modal` 或 `bubbles`）、是否置顶、当前载体能否改变呈现、活动的 `shell.modal` 条目 id、`orbDocked`（悬浮球是否停在距工作区边缘不超过载体吸附距离的位置）、`orbHovered`（指针是否位于常驻悬浮球窗口上），以及 `modalOpen`（surface 窗口当前是否呈现模态条目）。形态 profile 把悬浮球窗口、surface 窗口与气泡列窗口作为三个渲染进程运行：悬浮球窗口始终报告 `orb` 呈现，surface 窗口报告自己的呈现（`orb`、`panel` 或 `modal`）与当前模态 id，气泡列窗口只在列升起时报告 `bubbles`。classic 框架报告 `classic`，使形态 profile 能收回到它；模态 id 让框架从共享 slot 注册表中选择模态内容，而不是拥有该内容。条目还可以传入 `ModalSizeHint`：`heightRatio` 要求对话框占工作区高度的该比例，省略则保持载体的对话框尺寸。`bubbles` 呈现是气泡列窗口的呈现，只承载 overlay 席位。
 
 桌面端通过 `dsh-desktop:boot` 载荷发布启动描述符；[apps/web](../../../apps/web/src/main.ts) 在 Client 注入运行前把它存为 `globalThis.__DSH_SURFACE__`。Electron 适配器读取 `window.dshDesktop.surface`，并以该描述符作为首份快照。没有该桥的页面获得惰性适配器：`available: false`、classic 呈现，命令无效果但正常 resolve。
+
+`sendMessage` 把有界 JSON 投递给 `orb`、`surface` 或 `bubbles` 渲染进程，`onMessage` 订阅一个精确频道。主进程认证来源角色并校验频道与载荷大小，但不解释消费者字段。消费者自行解析消息、处理取消并释放订阅；会话或音频状态不会被隐式复制。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
@@ -67,7 +69,7 @@ kind: "package-reference"
 
 - **没有 Web 呈现**——Web 页面保持 classic 呈现；惰性适配器只报告可用性，从不改变呈现，页面级 orb 回退属于延期工作。
 - **窗口角色固定**——渲染进程的角色来自其启动描述符；把已有渲染进程切换到另一角色需要重新加载。
-- **三个渲染器，一份呈现**——形态 profile 在悬浮球窗口、surface 窗口与气泡列窗口中各加载一份完整 Web 客户端，只通过主进程共享呈现状态；在三个渲染器之间同步其他客户端状态不属于该服务。
+- **显式的跨渲染进程状态**——形态 profile 在悬浮球窗口、surface 窗口与气泡列窗口中各加载一份完整 Web 客户端。主进程共享呈现状态与有界的角色寻址消息；每个消费者必须发布自己的权威快照，不能假定其他 Client 存储已经一致。
 - **载体拥有几何**——该服务只把指针位移与置顶转发给主进程；屏幕坐标、工作区裁剪与布局持久化留在 Electron 进程内。
 
 <a id="dev-note"></a>
