@@ -49,6 +49,10 @@ interface SendMessageCallArgs {
   readonly session_id: string
 }
 
+interface CreateSessionCallArgs {
+  readonly message?: string
+}
+
 function formatSessionSearch(
   collected: SearchCollection<SessionSearchHit>,
   titles: CompleteTitleMap,
@@ -262,6 +266,15 @@ function presentSendMessageCall(args: SendMessageCallArgs): GenericCallView {
   }
 }
 
+function presentCreateSessionCall(args: CreateSessionCallArgs): GenericCallView {
+  return {
+    card: 'generic',
+    kind: 'other',
+    title: args.message === undefined ? 'Create session' : 'Create session with a first message',
+    rawInput: args.message === undefined ? {} : { message_length: args.message.length },
+  }
+}
+
 /** Text output and call-card presentation for every session-query tool. */
 export const presentation = {
   formatSessionSearch,
@@ -276,4 +289,5 @@ export const presentation = {
   presentEventTargetCall,
   presentLatestReplyCall,
   presentSendMessageCall,
+  presentCreateSessionCall,
 }

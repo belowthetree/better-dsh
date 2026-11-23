@@ -40,7 +40,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.workingDirectory`, `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-list` | `list_session`, `list_workspace` | `ctx.tools`, `ctx.sessions`, `ctx.sessionQuery`, `ctx.workspaceRegistry`, `ctx.sessionProjections` | `tool/call`, `tool/result` | - | Opt-in access to all Workspace and Session list metadata in the mounted runtime. Cold titles and activity use the optional projection cache; absent values become null titles and creation-time recency. No Agent is activated. |
-| `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_latest_reply`, `session_search`, `session_send_message`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `ctx.agents`, `a calling Agent for workspace authority`, `ctx.sessionController when messaging is enabled` | `tool/call`, `tool/result`, `target Session inbox and turn events through ctx.sessionController` | - | The six read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The opt-in message tool delivers a text prompt to another authorized Session through ctx.sessionController and returns acceptance without waiting. Compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
+| `@deepseek-ai/dsh-tool-session-query` | `session_create`, `session_event_read`, `session_event_search`, `session_event_trace`, `session_latest_reply`, `session_search`, `session_send_message`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `ctx.agents`, `a calling Agent for workspace authority`, `ctx.sessionController while a write tool is enabled` | `tool/call`, `tool/result`, `new Session, target Session inbox and turn events through ctx.sessionController` | - | The six read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The opt-in message tool delivers a text prompt to another authorized Session through ctx.sessionController and returns acceptance without waiting; the opt-in creation tool creates a new Session in the caller workspace through the same Controller and can deliver its first message. Compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-experimental-tool-subagent-oar` | `subagent_oar` | `ctx.tools`, `ctx.subagents` | `tool/call`, `tool/result`, `parent subagent catalog and completion notices` | - | The subagent_oar tool selects among configured aliases for external providers. This catalog shows Codex and Claude Code aliases; each deployment chooses its providers. Native model and permission settings belong to the selected provider configuration. |
 | `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`, `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt`, `ctx.sessionProjections`, `ctx.llm for model discovery and selected-route validation` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The load-time `toolName` selects the delegation name (default `subagent`); `modelSelection` adds optional route fields. `modelDiscovery` defaults off and registers shared discovery on one instance per scope. Web and Desktop presets enable spawn discovery and route fields and leave `subagent_fork` route fields disabled. The Host settings service records authorization for each new top-level Session; child Sessions inherit it. Without a recorded policy, discovery and explicit selection permit only the current parent route. Every delegation returns the child's name promptly; local children accept follow-ups, while external backends report their single execution automatically. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message`, `wait_agent` | `ctx.tools`, `ctx.subagents`, `ctx.agents` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The shared control tools discover and contact agents in the subagent tree, interrupt owned descendants, and wait for input in the caller’s inbox. Provider-bound `tool-subagent` instances supply delegation tools. |
@@ -1927,6 +1927,24 @@ Opt-in access to all Workspace and Session list metadata in the mounted runtime.
 
 ## `@deepseek-ai/dsh-tool-session-query`
 
+### `session_create`
+
+Create a new session in the caller workspace. The new session runs the composition's default preset; an optional first message is delivered as its user prompt. The call returns the new session id once the session exists and does not wait for a reply.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Optional first message, from 1 to 12000 characters. Omit to create an empty session."
+    }
+  }
+}
+```
+
+Source: [`packages/experimental/tool-session-query/src/index.ts`](../packages/experimental/tool-session-query/src/index.ts)
+
 ### `session_event_read`
 
 Read one full unabridged event and optional neighboring raw-event summaries from an authorized session.
@@ -2200,7 +2218,7 @@ Read the authorized session lineage around one session, including complete visib
 
 Source: [`packages/experimental/tool-session-query/src/index.ts`](../packages/experimental/tool-session-query/src/index.ts)
 
-The six read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The opt-in message tool delivers a text prompt to another authorized Session through ctx.sessionController and returns acceptance without waiting. Compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies.
+The six read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The opt-in message tool delivers a text prompt to another authorized Session through ctx.sessionController and returns acceptance without waiting; the opt-in creation tool creates a new Session in the caller workspace through the same Controller and can deliver its first message. Compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies.
 
 <a id="deepseek-aidsh-experimental-tool-subagent-oar"></a>
 

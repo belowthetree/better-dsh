@@ -583,17 +583,17 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-session-query',
     dir: 'tool-session-query',
     source: 'packages/experimental/tool-session-query/src/index.ts',
-    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.sessionQuery', 'ctx.agents', 'a calling Agent for workspace authority', 'ctx.sessionController when messaging is enabled'],
-    writes: ['tool/call', 'tool/result', 'target Session inbox and turn events through ctx.sessionController'],
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.sessionQuery', 'ctx.agents', 'a calling Agent for workspace authority', 'ctx.sessionController while a write tool is enabled'],
+    writes: ['tool/call', 'tool/result', 'new Session, target Session inbox and turn events through ctx.sessionController'],
     async mount(ctx) {
       await ctx.plugin(SessionStore)
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(SqliteSessionQueryEngine, { path: ':memory:' })
       ctx.provide('sessionController', {} as never)
-      await ctx.plugin(ToolSessionQuery, { allowSessionMessages: true })
+      await ctx.plugin(ToolSessionQuery, { allowSessionMessages: true, allowSessionCreate: true })
     },
     note:
-      'The six read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The opt-in message tool delivers a text prompt to another authorized Session through ctx.sessionController and returns acceptance without waiting. Compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies.',
+      'The six read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The opt-in message tool delivers a text prompt to another authorized Session through ctx.sessionController and returns acceptance without waiting; the opt-in creation tool creates a new Session in the caller workspace through the same Controller and can deliver its first message. Compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies.',
   },
   {
     pkg: '@deepseek-ai/dsh-experimental-tool-subagent-oar',

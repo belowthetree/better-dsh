@@ -47,8 +47,12 @@ export function VoiceSection(props: VoiceSectionProps) {
   const id = useId()
   const voices = voice?.voices ?? []
   // A profile without the playback bundle still shows the toggle: the choice is
-  // remembered, and the narration starts as soon as playback is mounted.
+  // remembered, and the narration starts as soon as playback is mounted. A
+  // recorded failure keeps the controls enabled and reports its own notice:
+  // the next successful playback clears it, so the picker and the preview are
+  // the recovery path.
   const unavailable = voice === null || voices.length === 0
+  const failure = voice?.failure ?? null
   const options = voices.map(item => ({ value: item.id, label: item.name }))
   return <section className={css.section} aria-label={t('voice.title')}>
     <h3 className={css.title}>{t('voice.title')}</h3>
@@ -86,5 +90,8 @@ export function VoiceSection(props: VoiceSectionProps) {
       {voice?.speaking === true && <span className={css.status} role="status">{t('voice.speaking')}</span>}
     </div>
     {unavailable && <p className={css.notice} role="status">{t('voice.unavailable')}</p>}
+    {!unavailable && failure !== null && (
+      <p className={css.notice} role="status">{t(failure === 'voice' ? 'voice.failureVoice' : 'voice.failure')}</p>
+    )}
   </section>
 }

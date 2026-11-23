@@ -1066,7 +1066,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-deepseek-suite`
 
 - `inject`: `tools` · `credentials`
-- `source`: [`packages/experimental/deepseek-suite/src/index.ts:50`](../packages/experimental/deepseek-suite/src/index.ts)
+- `source`: [`packages/experimental/deepseek-suite/src/index.ts:40`](../packages/experimental/deepseek-suite/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration; every deployment-varying choice is a validated field. */
@@ -4807,7 +4807,7 @@ export type WorkspaceAccess = 'all' | 'current'
 ## `@deepseek-ai/dsh-tool-session-query`
 
 - `inject`: `tools` · `systemPrompt` · `sessionQuery` · `agents`
-- `source`: [`packages/experimental/tool-session-query/src/index.ts:31`](../packages/experimental/tool-session-query/src/index.ts)
+- `source`: [`packages/experimental/tool-session-query/src/index.ts:32`](../packages/experimental/tool-session-query/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-owned search count, timeout, and cross-session message bounds. */
@@ -4818,6 +4818,8 @@ export interface Config {
   searchTimeoutMs?: number
   /** Whether to register the cross-session message tool. Defaults to false. */
   allowSessionMessages?: boolean
+  /** Whether to register the session creation tool. Defaults to false. */
+  allowSessionCreate?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-session-query -->

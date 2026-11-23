@@ -12,6 +12,7 @@ import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NS } from './locales.ts'
+import { requestedSpeech } from './narration.ts'
 import type { OrbBalloonMeta } from '../tool.ts'
 import { ORB_BALLOON_TOOL } from '../tool.ts'
 import type { ReminderInteraction } from './reminders.ts'
@@ -233,13 +234,9 @@ export function spokenToolResult(chat: ChatSnapshot | undefined): SpokenResult |
   for (let index = chat.legacy.nodes.length - 1; index >= 0; index -= 1) {
     const node = chat.legacy.nodes[index]
     if (node === undefined || node.kind !== 'tool-result') continue
-    const meta: unknown = node.meta
-    if (typeof meta !== 'object' || meta === null) continue
-    const speak = (meta as { readonly speak?: unknown }).speak
-    if (typeof speak !== 'object' || speak === null) continue
-    const text = (speak as { readonly text?: unknown }).text
-    if (typeof text !== 'string' || text.trim() === '') continue
-    return { seq: node.seq, text: text.trim() }
+    const text = requestedSpeech(node.meta)
+    if (text === undefined) continue
+    return { seq: node.seq, text }
   }
   return undefined
 }

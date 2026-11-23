@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-tool-session-query",
-  "description": "Workspace-authorized model-facing session history search, trace, and event read tools",
+  "description": "Workspace-authorized model-facing session history search, trace, read, cross-session message, and session creation tools",
   "version": "0.2.2-rc.4",
   "publishConfig": {
     "access": "public"

@@ -92,6 +92,22 @@ describe('VoiceSection', () => {
     expect(screen.getByRole('status').textContent).toBe('voice.unavailable')
   })
 
+  it('reports a recorded playback failure and keeps the preview as the retry path', () => {
+    const { props } = section(playback({ failure: 'remote' }))
+    render(createElement(VoiceSection, props))
+    expect(screen.getByRole('status').textContent).toBe('voice.failure')
+    expect(screen.getByRole('button', { name: 'voice.preview' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('tablist', { name: 'voice.voice' })).toBeTruthy()
+  })
+
+  it('points at the voice choice when the saved voice left the catalog', () => {
+    const { props, selectVoice } = section(playback({ failure: 'voice' }))
+    render(createElement(VoiceSection, props))
+    expect(screen.getByRole('status').textContent).toBe('voice.failureVoice')
+    fireEvent.click(screen.getByRole('tab', { name: 'Tide' }))
+    expect(selectVoice).toHaveBeenCalledWith('tide')
+  })
+
   it('falls back to the first catalog voice before a selection exists', () => {
     const { props } = section(playback({ voiceId: null }))
     render(createElement(VoiceSection, props))

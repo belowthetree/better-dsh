@@ -2,7 +2,7 @@
 /** The narration preference and the cross-renderer speak request. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  NARRATION_STORAGE, createNarrationStore, parseSpeakRequest, validateNarration,
+  NARRATION_STORAGE, createNarrationStore, parseSpeakRequest, requestedSpeech, validateNarration,
 } from '../src/client/narration.ts'
 
 afterEach(() => { localStorage.clear() })
@@ -45,6 +45,17 @@ describe('parseSpeakRequest', () => {
     expect(parseSpeakRequest({})).toBeUndefined()
     expect(parseSpeakRequest({ text: 1 })).toBeUndefined()
     expect(parseSpeakRequest({ text: '   ' })).toBeUndefined()
+  })
+})
+
+describe('requestedSpeech', () => {
+  it('reads the trimmed text of a speak payload', () => {
+    expect(requestedSpeech({ speak: { text: '  你好  ' } })).toBe('你好')
+    expect(requestedSpeech({ speak: { text: '' } })).toBeUndefined()
+    expect(requestedSpeech({ speak: { text: 7 } })).toBeUndefined()
+    expect(requestedSpeech({ speak: null })).toBeUndefined()
+    expect(requestedSpeech({ other: {} })).toBeUndefined()
+    expect(requestedSpeech(null)).toBeUndefined()
   })
 })
 

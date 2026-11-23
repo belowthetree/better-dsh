@@ -10,6 +10,7 @@ import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { toolInput } from './input.ts'
+import { executeCreateSession, MAX_SESSION_CREATE_MESSAGE_CHARS } from './create.ts'
 import { executeSendMessage, MAX_SESSION_MESSAGE_CHARS } from './message.ts'
 import { operations } from './operations.ts'
 import { presentation } from './presentation.ts'
@@ -35,6 +36,8 @@ export interface Config {
   searchTimeoutMs?: number
   /** Whether to register the cross-session message tool. Defaults to false. */
   allowSessionMessages?: boolean
+  /** Whether to register the session creation tool. Defaults to false. */
+  allowSessionCreate?: boolean
 }
 
 /** Schemastery config for Loader defaults and generated configuration docs. */
@@ -42,12 +45,14 @@ export const Config: z<Config> = z.object({
   maxSearchResults: z.number().step(1).min(1).default(DEFAULT_MAX_SEARCH_RESULTS),
   searchTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_SEARCH_TIMEOUT_MS),
   allowSessionMessages: z.boolean().default(false),
+  allowSessionCreate: z.boolean().default(false),
 })
 
 interface ResolvedConfig {
   readonly maxSearchResults: number
   readonly searchTimeoutMs: number
   readonly allowSessionMessages: boolean
+  readonly allowSessionCreate: boolean
 }
 
 const TEXT_OUTPUT = {
@@ -65,13 +70,22 @@ const MESSAGE_PROMPT_TEXT =
   'Use session_send_message to deliver a text message to another authorized session; it returns once accepted '
   + 'and does not wait for the reply. Read the answer with session_latest_reply.'
 
-/** Register the read tools plus the optional cross-session message tool. */
+const CREATE_PROMPT_TEXT =
+  'Use session_create to start a new session in the caller workspace, optionally with its first message; it returns '
+  + 'the new session id once the session is created and does not wait for a reply.'
+
+/** Register the read tools plus the optional cross-session message and creation tools. */
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
+  const promptText = [
+    PROMPT_TEXT,
+    ...resolved.allowSessionMessages ? [MESSAGE_PROMPT_TEXT] : [],
+    ...resolved.allowSessionCreate ? [CREATE_PROMPT_TEXT] : [],
+  ].join(' ')
   ctx.systemPrompt.section({
     name: 'tool:session-query',
     order: ctx.systemPrompt.getSectionOrder('TOOL_SESSION_QUERY'),
-    text: resolved.allowSessionMessages ? `${PROMPT_TEXT} ${MESSAGE_PROMPT_TEXT}` : PROMPT_TEXT,
+    text: promptText,
   })
 
   ctx.tools.register(defineTool({
@@ -147,28 +161,46 @@ export function apply(ctx: Context, config: Config): void {
     presentCall: args => presentation.presentLatestReplyCall(args),
   }))
 
-  if (resolved.allowSessionMessages) {
+  if (resolved.allowSessionMessages || resolved.allowSessionCreate) {
     ctx.inject(['sessionController'], (scope) => {
-      scope.tools.register(defineTool({
-        name: 'session_send_message',
-        description: 'Send a text message to another authorized session in the caller workspace. The target receives it as a user prompt; the call returns once accepted and does not wait for the reply.',
-        parameters: {
-          session_id: {
-            type: 'string',
-            required: true,
-            description: 'Target Session ID. It must share the caller\'s workspace and cannot be the caller.',
+      if (resolved.allowSessionMessages) {
+        scope.tools.register(defineTool({
+          name: 'session_send_message',
+          description: 'Send a text message to another authorized session in the caller workspace. The target receives it as a user prompt; the call returns once accepted and does not wait for the reply.',
+          parameters: {
+            session_id: {
+              type: 'string',
+              required: true,
+              description: 'Target Session ID. It must share the caller\'s workspace and cannot be the caller.',
+            },
+            message: {
+              type: 'string',
+              required: true,
+              description: `Message text, from 1 to ${String(MAX_SESSION_MESSAGE_CHARS)} characters.`,
+            },
           },
-          message: {
-            type: 'string',
-            required: true,
-            description: `Message text, from 1 to ${String(MAX_SESSION_MESSAGE_CHARS)} characters.`,
+          output: TEXT_OUTPUT,
+          isConcurrencySafe: () => false,
+          execute: (args, exec) => executeSendMessage(scope, args, exec),
+          presentCall: args => presentation.presentSendMessageCall(args),
+        }))
+      }
+      if (resolved.allowSessionCreate) {
+        scope.tools.register(defineTool({
+          name: 'session_create',
+          description: 'Create a new session in the caller workspace. The new session runs the composition\'s default preset; an optional first message is delivered as its user prompt. The call returns the new session id once the session exists and does not wait for a reply.',
+          parameters: {
+            message: {
+              type: 'string',
+              description: `Optional first message, from 1 to ${String(MAX_SESSION_CREATE_MESSAGE_CHARS)} characters. Omit to create an empty session.`,
+            },
           },
-        },
-        output: TEXT_OUTPUT,
-        isConcurrencySafe: () => false,
-        execute: (args, exec) => executeSendMessage(scope, args, exec),
-        presentCall: args => presentation.presentSendMessageCall(args),
-      }))
+          output: TEXT_OUTPUT,
+          isConcurrencySafe: () => false,
+          execute: (args, exec) => executeCreateSession(scope, args, exec),
+          presentCall: args => presentation.presentCreateSessionCall(args),
+        }))
+      }
     })
   }
 }
@@ -184,5 +216,10 @@ function resolveConfig(config: Config): ResolvedConfig {
       `tool-session-query: searchTimeoutMs must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}`,
     )
   }
-  return { maxSearchResults, searchTimeoutMs, allowSessionMessages: config.allowSessionMessages ?? false }
+  return {
+    maxSearchResults,
+    searchTimeoutMs,
+    allowSessionMessages: config.allowSessionMessages ?? false,
+    allowSessionCreate: config.allowSessionCreate ?? false,
+  }
 }

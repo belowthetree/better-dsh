@@ -112,6 +112,10 @@ function context(options: {
   const createSession = vi.fn(async () => sid('created'))
   const snapshot = options.surface ?? ORB
   const sessions = sessionList(options.sessions ?? [{ id: 's1' }])
+  const narrationEvents = createSnapshotStore({
+    entries: [], hasMore: false, revision: 0, change: { kind: 'append' },
+  } as never)
+  const retainNarration = vi.fn(() => ({ binding: { eventSource: narrationEvents }, release: vi.fn() }))
   const workspaces = workspaceList(options.workspaces ?? [view('ws-1', 'Alpha', ['s1'])], options.archived)
   const catalog = createSnapshotStore(options.catalog ?? [])
   const pendingInteractions = createSnapshotStore(new Map())
@@ -167,7 +171,7 @@ function context(options: {
     theme: { getTheme: () => ({ preference: 'system' }), setTheme: vi.fn() },
     locale: { register: record, bind: vi.fn(() => (key: string) => key) },
     resources: { register: vi.fn(() => () => {}) },
-    sessions: { list: sessions, create: createSession },
+    sessions: { list: sessions, create: createSession, retain: retainNarration },
     workspaces: { list: workspaces, create: createWorkspace, initializeDefault },
     uiWorkspace: {
       openSession, openWorkspace, pickDirectory, startSession: vi.fn(), connectWorkspace: vi.fn(),
@@ -200,7 +204,7 @@ function context(options: {
   return {
     ctx, registrations, commands, dictionaries, sessions, workspaces, catalog, presentModal, presentBubbles, dismissBubbles,
     openSession, openWorkspace, pickDirectory, createWorkspace, initializeDefault, createSession, disposers, pendingInteractions,
-    sendMessage, emitMessage, speak, setVoice, voiceOutput,
+    sendMessage, emitMessage, speak, setVoice, voiceOutput, narrationEvents, retainNarration,
   }
 }
 
@@ -774,4 +778,25 @@ it('stays silent without a playback service', () => {
   bubblesInjected(registrations).speak('你好', 'balloon:1')
   expect(speak).not.toHaveBeenCalled()
   expect(voiceSectionInjected(registrations).hooks.voice.getSnapshot()).toBeNull()
+})
+
+it('narrates a requested speech tool result even while the bubble column is closed', () => {
+  const { ctx, speak, narrationEvents, retainNarration } = context({
+    surface: CLASSIC,
+    sessions: [{ id: 's1', mainView: true }],
+  })
+  apply(ctx as never)
+  expect(retainNarration).toHaveBeenCalledOnce()
+  const result = (seq: number, text: string) => ({
+    type: 'event', event: { type: 'tool/result', seq, time: 0, data: { meta: { speak: { text } } } },
+  })
+  narrationEvents.set({
+    entries: [result(3, '你好')], hasMore: false, revision: 1, change: { kind: 'append' },
+  } as never)
+  expect(speak).toHaveBeenCalledWith('你好')
+  narrationEvents.set({
+    entries: [result(3, '你好'), result(4, '再说一次')], hasMore: false, revision: 2, change: { kind: 'append' },
+  } as never)
+  expect(speak).toHaveBeenLastCalledWith('再说一次')
+  expect(speak).toHaveBeenCalledTimes(2)
 })

@@ -18,32 +18,32 @@
   en: b34d26bba662f412
   zh: 65db7a98cdaf44f4
 /deepseek-ai-dsh-tool-session-query/use-this-package/when-to-choose-it:
-  en: 2c9a7f66618afa4f
-  zh: bf792de93040b9b8
+  en: b8f4776813dd5934
+  zh: 1c1af64a3393c227
 /deepseek-ai-dsh-tool-session-query/use-this-package/configuration:
-  en: 9561c0bed1743525
-  zh: b1bd8b48b6f44d82
+  en: a4ffda6b798908ed
+  zh: 23208cf20217a3ca
 /deepseek-ai-dsh-tool-session-query/use-this-package/what-the-model-can-do:
-  en: 7d019118bc547443
-  zh: 292cbb33bf631255
+  en: 8224be37f1f56e70
+  zh: f504fe9cc2ef4c19
 /deepseek-ai-dsh-tool-session-query/use-this-package/failures-and-recovery:
-  en: 0bcc35630c10c4ae
-  zh: 37a620a3336a16a7
+  en: 657ff7ff67bb50f3
+  zh: 2f251e19942d0358
 /deepseek-ai-dsh-tool-session-query/understand-the-implementation:
   en: 32a36a3fe388e2c1
   zh: f48f8d2c85370481
 /deepseek-ai-dsh-tool-session-query/understand-the-implementation/design-philosophy:
-  en: d972cdc431cd7e24
-  zh: 8fe145749f6712e3
+  en: aaeabd7f9e8ac0fa
+  zh: 22f1379968c0d8b9
 /deepseek-ai-dsh-tool-session-query/understand-the-implementation/source-map:
-  en: 12f5ebcae4970818
-  zh: 40293ae9baa74af7
+  en: 38ffa49c04496331
+  zh: dd4245aa6772e7c9
 /deepseek-ai-dsh-tool-session-query/understand-the-implementation/operation-flow:
-  en: ca4331432a30b9e6
-  zh: f0314a2a2bbc4760
+  en: a76a46f45d16bbf9
+  zh: d99690e0d77b98c7
 /deepseek-ai-dsh-tool-session-query/further-exploration:
-  en: b07b1676cea00da5
-  zh: 0da4f04397cf462e
+  en: e2a8739d5bf5a7e8
+  zh: cd65d8b3616fe107
 /deepseek-ai-dsh-tool-session-query/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -51,29 +51,32 @@
   en: cf78b9dd5596495f
   zh: 24ba47a0c5e02586
 /deepseek-ai-dsh-tool-session-query/model-experience/system-prompt/what-the-model-sees:
-  en: 2771c9caee314ef0
-  zh: b03b953c19f37746
+  en: de76829971183d21
+  zh: 8ec5204f68bddb29
 /deepseek-ai-dsh-tool-session-query/model-experience/system-prompt/what-the-model-sees/prior-history-guidance:
   en: aaefd28412255851
   zh: ed0f2d46e1cba4e3
 /deepseek-ai-dsh-tool-session-query/model-experience/system-prompt/what-the-model-sees/delivery-guidance:
   en: 6dbc7c22b44e9bc9
   zh: e0185171fa31bb35
+/deepseek-ai-dsh-tool-session-query/model-experience/system-prompt/what-the-model-sees/creation-guidance:
+  en: be9c2313b351e12b
+  zh: b7ffa33e2c96eed9
 /deepseek-ai-dsh-tool-session-query/model-experience/system-prompt/token-effect:
-  en: 6eaf0081ae4d9ad7
-  zh: 1fc8abed1df66ccb
+  en: 8c723c2649ffdb35
+  zh: ebdae2e2242cf2f0
 /deepseek-ai-dsh-tool-session-query/model-experience/system-prompt/kv-cache-effect:
-  en: facc253d95440690
-  zh: 67fefe8da4dbde35
+  en: d6aed98ef81812d2
+  zh: 6db6264ea4e92dd3
 /deepseek-ai-dsh-tool-session-query/model-experience/tool-schemas:
   en: 3039bc5e7a796b21
   zh: 6b7a9eaf69c9ea53
 /deepseek-ai-dsh-tool-session-query/model-experience/tool-schemas/what-the-model-sees:
-  en: 1e4c66e3b2274b91
-  zh: 0cc60748db36cdc8
+  en: fcee59790216f712
+  zh: 371d7fc95564222f
 /deepseek-ai-dsh-tool-session-query/model-experience/tool-schemas/token-effect:
-  en: eaa8265232991305
-  zh: 1806777f7770ea71
+  en: 2634ea84f848f3e5
+  zh: 9f35b1da265021b2
 /deepseek-ai-dsh-tool-session-query/model-experience/tool-schemas/kv-cache-effect:
   en: c8cbbef533bdb90f
   zh: 8a91836fd8a39ac0
@@ -81,8 +84,8 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-tool-session-query/model-experience/tool-results/what-the-model-sees:
-  en: 1276ce6613ef7f49
-  zh: 6b4a9aa7ec597aca
+  en: 72c2023927948793
+  zh: bd9abc38e9ba9400
 /deepseek-ai-dsh-tool-session-query/model-experience/tool-results/token-effect:
   en: 5b778ecd90dd852f
   zh: e07094f64f68e8eb
@@ -90,8 +93,8 @@
   en: 9dbeb5d10d26d110
   zh: 8263e4d5fac11c1b
 /deepseek-ai-dsh-tool-session-query/known-limitations-and-deferred-work:
-  en: 4d6cbf6a919f0ad1
-  zh: 59842c3cb2ce40c6
+  en: 18764a2e69f02578
+  zh: 1f10cd761a03872c
 /deepseek-ai-dsh-tool-session-query/known-limitations-and-deferred-work/dev-note:
   en: d2f0d68fe29fb750
   zh: 900659d6e20ef891

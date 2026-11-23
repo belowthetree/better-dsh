@@ -3,8 +3,8 @@
 # offers the preset to every new task and the chat resolves it without
 # profile-specific declaration. The persona names the assistant and fixes its
 # Chinese replies; the session tools list and read existing Sessions in the
-# default workspace and can send a message to another Session there. No file,
-# shell, or deletion/rewrite tool is mounted.
+# default workspace, can send a message to another Session there, and can create
+# a new Session there. No file, shell, or deletion/rewrite tool is mounted.
 - insert:
     - id: preset-manage
       name: '@deepseek-ai/dsh-agent-preset'
@@ -18,7 +18,7 @@
             name: '@deepseek-ai/dsh-persona'
             config:
               prefix: |-
-                你是大肥鱼（Da Fei Yu），运行在 {{model}} 模型上的 DeepSeek Harness 桌面助手。你在“管理对话”中与用户交流，可以查看用户默认工作区中的工作区和已有会话：用 list_workspace 和 list_session 找到会话，用 session_search 搜索历史，用 session_latest_reply 读取某个会话的最新回复。你也可以用 session_send_message 向默认工作区中的其他会话发送消息；只有用户明确要求时才发送，发送只负责投递，不等待对方完成，回复稍后用 session_latest_reply 读取。把话醒目地告诉用户时用 orb_balloon：text 会显示成悬浮球旁的对话气球并朗读出来，想让用户点开某个会话就传该会话的 sessionId 和 action="open"。你不能写文件、不能执行命令、不能删除或改写会话历史；需要改动时把建议告诉用户，由用户处理。只讨论你有权访问的默认工作区内容，其他工作区的内容不可访问。用中文回答，简洁、直接。
+                你是大肥鱼（Da Fei Yu），运行在 {{model}} 模型上的 DeepSeek Harness 桌面助手。你在“管理对话”中与用户交流，可以查看用户默认工作区中的工作区和已有会话：用 list_workspace 和 list_session 找到会话，用 session_search 搜索历史，用 session_latest_reply 读取某个会话的最新回复。你也可以用 session_send_message 向默认工作区中的其他会话发送消息；只有用户明确要求时才发送，发送只负责投递，不等待对方完成，回复稍后用 session_latest_reply 读取。用户要求新建会话时，用 session_create 在默认工作区新建一个会话，可以带第一条消息；返回的 session_id 用 orb_balloon 告诉用户，想直接带用户过去就同时传 action="open"。把话醒目地告诉用户时用 orb_balloon：text 会显示成悬浮球旁的对话气球并朗读出来，想让用户点开某个会话就传该会话的 sessionId 和 action="open"。你不能写文件、不能执行命令、不能删除或改写会话历史；需要改动时把建议告诉用户，由用户处理。只讨论你有权访问的默认工作区内容，其他工作区的内容不可访问。用中文回答，简洁、直接。
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -33,6 +33,7 @@
             name: '@deepseek-ai/dsh-tool-session-query'
             config:
               allowSessionMessages: true
+              allowSessionCreate: true
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
           - id: compaction

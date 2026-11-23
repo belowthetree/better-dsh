@@ -286,6 +286,21 @@ async function mountMessages(): Promise<{ mounted: Mounted; prompt: ReturnType<t
   return { mounted, prompt }
 }
 
+async function mountCreate(): Promise<{
+  mounted: Mounted
+  create: ReturnType<typeof vi.fn>
+  prompt: ReturnType<typeof vi.fn>
+}> {
+  const mounted = await mount({ allowSessionCreate: true })
+  const create = vi.fn(async () => ({ sessionId: brandString<SessionId>('created-session') }))
+  const prompt = vi.fn(async () => ({ accepted: true as const }))
+  mounted.ctx.provide('sessionController', { create, prompt } as never)
+  await vi.waitFor(() => {
+    expect(mounted.ctx.tools.get('session_create')).toBeDefined()
+  })
+  return { mounted, create, prompt }
+}
+
 describe('registration and schemas', () => {
   it('registers the six cursor-free tools, prompt, timeouts, and pure generic presenters, then disposes them', async () => {
     const mounted = await mount({ maxSearchResults: 7, searchTimeoutMs: 1234 })
@@ -386,9 +401,16 @@ describe('registration and schemas', () => {
 
   it('expresses the complete Node timer range in the Loader config schema', () => {
     expect(new ToolSessionQuery.Config({ searchTimeoutMs: MAX_TIMER_DELAY_MS }))
-      .toEqual({ maxSearchResults: 100, searchTimeoutMs: MAX_TIMER_DELAY_MS, allowSessionMessages: false })
+      .toEqual({
+        maxSearchResults: 100,
+        searchTimeoutMs: MAX_TIMER_DELAY_MS,
+        allowSessionMessages: false,
+        allowSessionCreate: false,
+      })
     expect(new ToolSessionQuery.Config({ allowSessionMessages: true }))
       .toMatchObject({ allowSessionMessages: true })
+    expect(new ToolSessionQuery.Config({ allowSessionCreate: true }))
+      .toMatchObject({ allowSessionCreate: true })
     expect(() => new ToolSessionQuery.Config({ searchTimeoutMs: 1.5 })).toThrow()
     expect(() => new ToolSessionQuery.Config({ searchTimeoutMs: MAX_TIMER_DELAY_MS + 1 })).toThrow()
   })
@@ -2312,5 +2334,107 @@ describe('latest reply and cross-session messages', () => {
     })
     expect(errorCode(result)).toBe('SESSION_MESSAGE_TOOL_REFUSED')
     expect(text(result)).toContain('session is archived')
+  })
+})
+
+describe('session creation', () => {
+  it('registers the creation tool only when enabled and its controller is present', async () => {
+    const disabled = await mount()
+    expect(disabled.ctx.tools.get('session_create')).toBeUndefined()
+    const pending = await mount({ allowSessionCreate: true })
+    expect(pending.ctx.tools.get('session_create')).toBeUndefined()
+
+    const { mounted } = await mountCreate()
+    const tool = mounted.ctx.tools.get('session_create')
+    expect(tool).toBeDefined()
+    expect(tool?.isConcurrencySafe?.({})).toBe(false)
+    expect(tool?.presentCall?.({})).toEqual({
+      card: 'generic',
+      kind: 'other',
+      title: 'Create session',
+      rawInput: {},
+    })
+    expect(tool?.presentCall?.({ message: 'start here' })).toEqual({
+      card: 'generic',
+      kind: 'other',
+      title: 'Create session with a first message',
+      rawInput: { message_length: 10 },
+    })
+    const assembly = await mounted.ctx.systemPrompt.assemble()
+    expect(assembly.sections.find(section => section.name === 'tool:session-query')?.text)
+      .toContain('session_create')
+    expect(tool?.parameters).toMatchObject({
+      properties: {
+        message: { type: 'string' },
+      },
+    })
+  })
+
+  it('creates a session in the caller workspace and returns its id', async () => {
+    const { mounted, create, prompt } = await mountCreate()
+
+    const result = await mounted.call('session_create', {})
+    expect(result.isError).toBe(false)
+    expect(JSON.parse(text(result))).toEqual({ session_id: 'created-session', prompted: false })
+    expect(create).toHaveBeenCalledOnce()
+    expect(create).toHaveBeenCalledWith({ cwd: '/work' })
+    expect(prompt).not.toHaveBeenCalled()
+  })
+
+  it('delivers the optional first message to the new session', async () => {
+    const { mounted, create, prompt } = await mountCreate()
+
+    const result = await mounted.call('session_create', { message: '  start here  ' })
+    expect(result.isError).toBe(false)
+    expect(JSON.parse(text(result))).toEqual({ session_id: 'created-session', prompted: true })
+    expect(create).toHaveBeenCalledOnce()
+    const request = prompt.mock.calls[0]?.[0] as {
+      readonly requestId: string
+      readonly sessionId: string
+      readonly mode: string
+      readonly content: readonly unknown[]
+    }
+    expect(request.sessionId).toBe('created-session')
+    expect(request.mode).toBe('queue')
+    expect(request.requestId.length).toBeGreaterThan(0)
+    expect(request.content).toEqual([{ type: 'text', text: 'start here' }])
+  })
+
+  it('treats a blank first message as empty and rejects an oversized one before creating', async () => {
+    const { mounted, create, prompt } = await mountCreate()
+
+    const blank = await mounted.call('session_create', { message: '   ' })
+    expect(JSON.parse(text(blank))).toEqual({ session_id: 'created-session', prompted: false })
+    expect(prompt).not.toHaveBeenCalled()
+
+    const oversized = await mounted.call('session_create', { message: 'x'.repeat(12_001) })
+    expect(errorCode(oversized)).toBe('INVALID_ARGS')
+    expect(create).toHaveBeenCalledOnce()
+  })
+
+  it('reports creation and first-message refusals', async () => {
+    const { mounted, create, prompt } = await mountCreate()
+    create.mockRejectedValueOnce(new Error('no provider'))
+    const refused = await mounted.call('session_create', {})
+    expect(errorCode(refused)).toBe('SESSION_CREATE_TOOL_REFUSED')
+    expect(text(refused)).toContain('no provider')
+
+    prompt.mockRejectedValueOnce(new Error('target archived'))
+    const undelivered = await mounted.call('session_create', { message: 'hello' })
+    expect(errorCode(undelivered)).toBe('SESSION_CREATE_TOOL_REFUSED')
+    expect(text(undelivered)).toContain('created-session')
+    expect(text(undelivered)).toContain('target archived')
+  })
+
+  it('requires a caller that owns a workspace directory', async () => {
+    const mounted = await mount({ allowSessionCreate: true }, null)
+    const create = vi.fn()
+    mounted.ctx.provide('sessionController', { create, prompt: vi.fn() } as never)
+    await vi.waitFor(() => {
+      expect(mounted.ctx.tools.get('session_create')).toBeDefined()
+    })
+
+    expect(errorCode(await mounted.call('session_create', {}))).toBe('SESSION_CREATE_TOOL_NO_WORKSPACE')
+    expect(create).not.toHaveBeenCalled()
   })
 })

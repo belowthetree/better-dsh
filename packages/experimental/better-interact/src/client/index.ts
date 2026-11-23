@@ -22,6 +22,7 @@ import type { VoiceOutput, VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-u
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { SPEAK_CHANNEL, createNarrationStore, parseSpeakRequest } from './narration.ts'
+import { watchSpeechRequests } from './speech.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
 import { VoiceSection, type VoiceSectionInjected } from './VoiceSection.tsx'
 import { workbenchGroups, MANAGE_PAGE_ID, type WorkbenchPageGroup } from './workbench-groups.ts'
@@ -424,7 +425,18 @@ export function apply(ctx: Context): void {
   const voiceOutput = (): VoiceOutput | undefined => ctx.get('voiceOutput')
   /** Keys already spoken by this renderer, so a remount or a repeated intent stays silent. */
   const spoken = new Set<string>()
-  const speakNow = (text: string): void => { void voiceOutput()?.speak(text) }
+  const speakNow = (text: string): void => {
+    const output = voiceOutput()
+    if (output === undefined) {
+      console.error('better-interact: narration has no playback service in this renderer')
+      return
+    }
+    // A refused synthesis or blocked playback must not vanish: the settings
+    // section reports the recorded failure, and the console keeps the detail.
+    void output.speak(text).catch((error: unknown) => {
+      console.error('better-interact: narration failed', error)
+    })
+  }
   const firstSighting = (key: string): boolean => {
     if (spoken.has(key)) return false
     spoken.add(key)
@@ -457,6 +469,16 @@ export function apply(ctx: Context): void {
     if (!narration.getSnapshot().enabled) return
     speakNow(request.text)
   }), 'better-interact: speak requests')
+
+  // The playback renderer narrates requested speech on its own: the bubble
+  // column that raised a request is not mounted while the conversation runs in
+  // the workbench dialog, and a hidden column must not silence the tool.
+  if (primary()) {
+    ctx.effect(
+      () => watchSpeechRequests(ctx.sessions, speak),
+      'better-interact: requested speech narration',
+    )
+  }
 
   const voiceSection: VoiceSectionInjected = {
     hooks: { narration, voice: playback },

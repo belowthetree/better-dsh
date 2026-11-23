@@ -1,4 +1,7 @@
-/** Persisted narration preference for the character balloons and its cross-renderer speak request. */
+/**
+ * Persisted narration preference for the character balloons, its cross-renderer
+ * speak request, and the tool-result metadata that asks a renderer to speak.
+ */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 
@@ -65,4 +68,19 @@ export function parseSpeakRequest(payload: unknown): SpeakRequest | undefined {
   const trimmed = text.trim()
   if (trimmed === '') return undefined
   return typeof key === 'string' && key !== '' ? { text: trimmed, key } : { text: trimmed }
+}
+
+/**
+ * Read the text one tool result asked to speak.
+ * @param meta - persisted presentation metadata of one tool result.
+ * @returns the requested text, or undefined for another or malformed payload.
+ */
+export function requestedSpeech(meta: unknown): string | undefined {
+  if (typeof meta !== 'object' || meta === null) return undefined
+  const speak: unknown = (meta as { readonly speak?: unknown }).speak
+  if (typeof speak !== 'object' || speak === null) return undefined
+  const text: unknown = (speak as { readonly text?: unknown }).text
+  if (typeof text !== 'string') return undefined
+  const trimmed = text.trim()
+  return trimmed === '' ? undefined : trimmed
 }

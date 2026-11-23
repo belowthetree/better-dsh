@@ -54,7 +54,7 @@ kind: "package-bundle"
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 `manage` 预设：固定的中文 persona、工作区 Agent 指令、当前时间、仅限当前工作区的会话列表、会话查询、读取最新回复和发送消息的工具 schema，以及提问工具只在 Session 挂载它时进入请求，压缩也可能丢弃较早的工具结果。
+间接地，通过 `manage` 预设：固定的中文 persona、工作区 Agent 指令、当前时间、仅限当前工作区的会话列表、会话查询、读取最新回复、发送消息和新建会话的工具 schema，以及提问工具只在 Session 挂载它时进入请求，压缩也可能丢弃较早的工具结果。
 
 #### KV Cache effect
 

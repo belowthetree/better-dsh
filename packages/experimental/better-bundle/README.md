@@ -54,7 +54,7 @@ The static `cordis.patch.yml` builds on the Web app's surface row and inserts th
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the `manage` preset, whose fixed Chinese persona, workspace agent instructions, current time, current-workspace-only session list, session-query, latest-reply, and message tool schemas, and user-question tool enter a request only while a Session mounts it, and compaction may drop older tool results.
+Indirectly, through the `manage` preset, whose fixed Chinese persona, workspace agent instructions, current time, current-workspace-only session list, session-query, latest-reply, message, and session-creation tool schemas, and user-question tool enter a request only while a Session mounts it, and compaction may drop older tool results.
 
 #### KV Cache effect
 
