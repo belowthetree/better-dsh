@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/deepseek-suite/README.md
+/:
+  en: d6c31e0a064898b2
+  zh: d6c31e0a064898b2
+/deepseek-ai-dsh-deepseek-suite:
+  en: 6e2ad985ffcc219a
+  zh: 5053d618856d21a4
+/deepseek-ai-dsh-deepseek-suite/overview:
+  en: 0e8000338151c237
+  zh: 9c85b46a648e01b7
+/deepseek-ai-dsh-deepseek-suite/summary:
+  en: 56f33ce48bf9c5e1
+  zh: fe1fafdb56926466
+/deepseek-ai-dsh-deepseek-suite/use-this-package:
+  en: c65b9e35f54152ab
+  zh: 79501a0b08564587
+/deepseek-ai-dsh-deepseek-suite/understand-the-implementation:
+  en: d31774f7b4924599
+  zh: 40d8b48994ff7122
+/deepseek-ai-dsh-deepseek-suite/further-exploration:
+  en: 2822c06a88898e9f
+  zh: 699aebb36c8344f5
+/deepseek-ai-dsh-deepseek-suite/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-deepseek-suite/model-experience/the-four-tools:
+  en: 13e9f341b795e85c
+  zh: 2d0a09fe8008c19e
+/deepseek-ai-dsh-deepseek-suite/model-experience/the-four-tools/what-the-model-sees:
+  en: 38220e17e47f4105
+  zh: 272baf5c2131e403
+/deepseek-ai-dsh-deepseek-suite/model-experience/the-four-tools/token-effect:
+  en: f56486e37eee7110
+  zh: 74b30bc072594ff3
+/deepseek-ai-dsh-deepseek-suite/model-experience/the-four-tools/kv-cache-effect:
+  en: 225edf030cea80f8
+  zh: 77aa3c07c8a66f85
+/deepseek-ai-dsh-deepseek-suite/known-limitations-and-deferred-work:
+  en: 95289d1fe47211c3
+  zh: 10db1f0a99443d18

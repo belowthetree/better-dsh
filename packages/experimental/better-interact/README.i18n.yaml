@@ -15,8 +15,8 @@
   en: d152484eb41ac6b4
   zh: 87d6b45405bb805b
 /deepseek-ai-dsh-better-interact/use-this-package:
-  en: a15fb8777ac6b73e
-  zh: 5bdd5c05cc411ecc
+  en: cfe4389d4b6a7f3d
+  zh: e3586b9bd30f9ae9
 /deepseek-ai-dsh-better-interact/use-this-package/when-to-choose-it:
   en: 1e1152411836926b
   zh: 3509547ad3c43fb5
@@ -30,14 +30,23 @@
   en: a7c93a48b6c60684
   zh: f31cf83d04671525
 /deepseek-ai-dsh-better-interact/model-experience:
-  en: ff8ae84d7ae24fc0
-  zh: bf0a287e1a925702
-/deepseek-ai-dsh-better-interact/model-experience/kv-cache-effect:
-  en: 1dbffb7ed522d47b
-  zh: c1701ed6dc5da3bb
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-better-interact/model-experience/orb-balloon-tool:
+  en: 89ef736b7debc153
+  zh: 8f38f64c2dcec1c9
+/deepseek-ai-dsh-better-interact/model-experience/orb-balloon-tool/what-the-model-sees:
+  en: 6fffb6c6a0c47bdb
+  zh: 211c5656ab3d49d9
+/deepseek-ai-dsh-better-interact/model-experience/orb-balloon-tool/token-effect:
+  en: 92e3b01b32763234
+  zh: 6b40fa85459502ea
+/deepseek-ai-dsh-better-interact/model-experience/orb-balloon-tool/kv-cache-effect:
+  en: bb8cf4f2fae1c012
+  zh: b6efa9b1a9af23af
 /deepseek-ai-dsh-better-interact/known-limitations-and-deferred-work:
-  en: 79e7e91d348a43be
-  zh: 62659cf766904873
+  en: 7db17606cf6d76f4
+  zh: 0149c66dc8e9ab42
 /deepseek-ai-dsh-better-interact/known-limitations-and-deferred-work/dev-note:
   en: e3c5225c522387b4
   zh: 8f01dcda2323a07e

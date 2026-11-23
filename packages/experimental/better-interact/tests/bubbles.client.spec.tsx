@@ -10,7 +10,8 @@ import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/c
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   BUBBLE_HOVER_LEAVE_MS, BUBBLE_MOTION_MS, BUBBLE_PREVIEW_CHARS, BUBBLE_PREVIEW_LINES, BUBBLE_STAGGER_MS,
-  assistantText, bubbleKind, bubbleOutputs, bubblePreview, BubblesLayer, BubbleStack, selectBubbleTarget,
+  assistantText, balloonMeta, bubbleKind, bubbleOutputs, bubblePreview, characterBalloon, spokenToolResult,
+  BubblesLayer, BubbleStack, selectBubbleTarget,
 } from '../src/client/bubbles.tsx'
 import { parseWorkbenchAddress, workbenchAddress } from '../src/client/resource.ts'
 import type { ReminderInteraction } from '../src/client/reminders.ts'
@@ -25,14 +26,18 @@ function chat(input: {
   readonly answers?: readonly { readonly turn: number; readonly response: string }[]
   readonly partial?: readonly AssistantBlock[]
   readonly turnsOnly?: boolean
+  readonly tools?: readonly object[]
 } = {}): ChatSnapshot {
-  const nodes = (input.answers ?? []).map(answer => ({
-    kind: 'assistant',
-    seq: answer.turn,
-    turn: 1,
-    step: 1,
-    blocks: [{ kind: 'text', text: answer.response }],
-  }))
+  const nodes = [
+    ...(input.answers ?? []).map(answer => ({
+      kind: 'assistant',
+      seq: answer.turn,
+      turn: 1,
+      step: 1,
+      blocks: [{ kind: 'text', text: answer.response }],
+    })),
+    ...(input.tools ?? []),
+  ]
   return {
     legacy: {
       nodes: input.turnsOnly === true ? [] : nodes,
@@ -75,8 +80,9 @@ function stack(options: {
   const show = vi.fn()
   const hide = vi.fn()
   const open = vi.fn()
+  const speak = vi.fn()
   const pointerInside = vi.fn()
-  const state = { pending: options.pending ?? new Map<SessionId, ReminderInteraction>() }
+  const state = { pending: options.pending ?? new Map<SessionId, ReminderInteraction>(), chat: options.chat }
   const byId = Object.fromEntries(Object.entries(options.summaries ?? {}).map(([id, summary]) => [id, { id, ...summary }]))
   const props = {
     sessionId: 'session-1' as SessionId,
@@ -89,16 +95,66 @@ function stack(options: {
     }),
     useSession: (select: (value: { readonly running: boolean }) => unknown) => select({ running: options.running === true }),
     useConversation: (select: (value: { readonly views: { get: () => ChatSnapshot | undefined } }) => unknown) =>
-      select({ views: { get: () => options.chat } }),
+      select({ views: { get: () => state.chat } }),
     usePending: (select: (value: ReadonlyMap<SessionId, ReminderInteraction>) => unknown) => select(state.pending),
     useSessions: (select: (value: { readonly byId: object }) => unknown) => select({ byId }),
-    show, hide, open, pointerInside,
+    show, hide, open, speak, pointerInside,
     t: (key: string, params?: Record<string, unknown>) =>
       params === undefined ? key : `${key}|${Object.values(params).join('|')}`,
   }
   /** Replace the pending map before the caller rerenders. */
   const setPending = (next: ReadonlyMap<SessionId, ReminderInteraction>): void => { state.pending = next }
-  return { props, show, hide, open, pointerInside, setPending }
+  /** Replace the Chat target before the caller rerenders. */
+  const setChat = (next: ChatSnapshot): void => { state.chat = next }
+  return { props, show, hide, open, speak, pointerInside, setPending, setChat }
+}
+
+/** Chat snapshot holding one tool result that asked the client to speak. */
+function speakChat(seq: number, text: string): ChatSnapshot {
+  return chat({
+    answers: [],
+    tools: [{
+      kind: 'tool-result',
+      seq,
+      time: 0,
+      callId: `call-${String(seq)}`,
+      name: 'deepseek_speak',
+      args: {},
+      call: null,
+      callTime: null,
+      content: [],
+      isError: false,
+      subCalls: [],
+      meta: { speak: { text } },
+    }],
+  })
+}
+
+/** Chat snapshot holding one `orb_balloon` tool result. */
+function balloonChat(
+  seq: number,
+  text: string,
+  sessionId?: string,
+  action: 'none' | 'open' = 'none',
+  name = 'orb_balloon',
+): ChatSnapshot {
+  return chat({
+    answers: [],
+    tools: [{
+      kind: 'tool-result',
+      seq,
+      time: 0,
+      callId: `call-${String(seq)}`,
+      name,
+      args: {},
+      call: null,
+      callTime: null,
+      content: [],
+      isError: false,
+      subCalls: [],
+      meta: { balloon: sessionId === undefined ? { text, action } : { text, sessionId, action } },
+    }],
+  })
 }
 
 function column(): HTMLElement | null {
@@ -709,5 +765,115 @@ describe('BubbleStack', () => {
     view.rerender(createElement(BubbleStack, props as never))
     act(() => { vi.advanceTimersByTime(BUBBLE_HOVER_LEAVE_MS + BUBBLE_MOTION_MS) })
     expect(hide).toHaveBeenCalledOnce()
+  })
+
+  it('speaks each waiting request once and does not repeat it on rerender', () => {
+    const approval: ReminderInteraction = {
+      key: 'approval:1', kind: 'approval', sessionId: 'session-2' as SessionId, toolName: 'bash',
+    }
+    const { props, speak } = stack({
+      pending: new Map([[approval.sessionId, approval]]), summaries: { 'session-2': { title: 'Alpha' } },
+    })
+    const view = render(createElement(BubbleStack, props as never))
+    expect(speak).toHaveBeenCalledWith('reminder.approval|Alpha|bash', 'reminder:session-2|approval|bash|0')
+    expect(speak).toHaveBeenCalledOnce()
+    view.rerender(createElement(BubbleStack, props as never))
+    expect(speak).toHaveBeenCalledOnce()
+  })
+
+  it('speaks a waiting request without a detail sentence', () => {
+    const plan: ReminderInteraction = { key: 'plan:1', kind: 'plan-review', sessionId: 'session-2' as SessionId }
+    const { props, speak } = stack({ pending: new Map([[plan.sessionId, plan]]) })
+    render(createElement(BubbleStack, props as never))
+    expect(speak).toHaveBeenCalledWith('reminder.planReview|session-2', 'reminder:session-2|plan-review||0')
+  })
+
+  it('raises the column when the character speaks', () => {
+    const { props, show, setChat } = stack({ chat: chat({}), orbHovered: false, presentation: 'orb' })
+    const view = render(createElement(BubbleStack, props as never))
+    expect(show).not.toHaveBeenCalled()
+    act(() => { setChat(balloonChat(9, '会话 B 有新回复')) })
+    view.rerender(createElement(BubbleStack, props as never))
+    expect(show).toHaveBeenCalled()
+  })
+
+  it('renders a fresh character balloon and speaks it once', () => {
+    const { props, speak, setChat } = stack({ chat: chat({}) })
+    const view = render(createElement(BubbleStack, props as never))
+    expect(document.querySelector('[data-better-interact-balloon]')).toBeNull()
+    act(() => { setChat(balloonChat(9, '会话 B 有新回复')) })
+    view.rerender(createElement(BubbleStack, props as never))
+    expect(document.querySelector('[data-better-interact-balloon]')?.textContent).toBe('会话 B 有新回复')
+    expect(speak).toHaveBeenCalledExactlyOnceWith('会话 B 有新回复', 'balloon:9')
+    speak.mockClear()
+    view.rerender(createElement(BubbleStack, props as never))
+    expect(speak).not.toHaveBeenCalled()
+  })
+
+  it('keeps remarks already in the transcript at mount out of the column', () => {
+    const { props, speak } = stack({ chat: balloonChat(9, '旧的提醒') })
+    render(createElement(BubbleStack, props as never))
+    expect(document.querySelector('[data-better-interact-balloon]')).toBeNull()
+    expect(speak).not.toHaveBeenCalled()
+  })
+
+  it('opens the session a click action names and leaves a plain remark unclickable', () => {
+    const clock = stack({ chat: balloonChat(4, '继续这个会话', 'session-b', 'open') })
+    const first = render(createElement(BubbleStack, clock.props as never))
+    expect(document.querySelector('[data-better-interact-balloon]')).toBeNull()
+    act(() => { clock.setChat(balloonChat(5, '继续这个会话', 'session-b', 'open')) })
+    first.rerender(createElement(BubbleStack, clock.props as never))
+    const actionable = document.querySelector<HTMLButtonElement>('[data-better-interact-balloon]')!
+    expect(actionable.getAttribute('title')).toBe('balloon.open')
+    fireEvent.click(actionable)
+    expect(clock.open).toHaveBeenCalledWith('session-b')
+    first.unmount()
+
+    const plain = stack({ chat: balloonChat(1, '只是说一句') })
+    const second = render(createElement(BubbleStack, plain.props as never))
+    act(() => { plain.setChat(balloonChat(2, '只是说一句')) })
+    second.rerender(createElement(BubbleStack, plain.props as never))
+    expect(document.querySelector('[data-better-interact-balloon]')?.tagName).toBe('DIV')
+  })
+
+  it('ignores other tool results and malformed balloon payloads', () => {
+    const other = balloonChat(3, '不属于气球', undefined, 'none', 'write')
+    const malformed = chat({ tools: [{ kind: 'tool-result', seq: 4, name: 'orb_balloon', meta: { balloon: { text: '' } } }] })
+    expect(characterBalloon(other)).toBeUndefined()
+    expect(characterBalloon(malformed)).toBeUndefined()
+    expect(balloonMeta({ balloon: 1 })).toBeUndefined()
+    expect(balloonMeta(null)).toBeUndefined()
+    expect(balloonMeta({ balloon: { text: 'hi', sessionId: 'x', action: 'none' } }))
+      .toEqual({ text: 'hi', action: 'none' })
+    expect(characterBalloon(undefined)).toBeUndefined()
+    expect(characterBalloon(chat({ answers: [{ turn: 1, response: 'answer' }] })))
+      .toBeUndefined()
+  })
+
+  it('speaks an explicit speech tool result once when it lands', () => {
+    const { props, speak, setChat } = stack({ chat: chat({}) })
+    const view = render(createElement(BubbleStack, props as never))
+    act(() => { setChat(speakChat(9, ' 抱歉，我迟到了。 ')) })
+    view.rerender(createElement(BubbleStack, props as never))
+    expect(speak).toHaveBeenCalledWith('抱歉，我迟到了。', 'tool-speak:9')
+    speak.mockClear()
+    view.rerender(createElement(BubbleStack, props as never))
+    expect(speak).not.toHaveBeenCalled()
+  })
+
+  it('reads only well-formed speech payloads', () => {
+    expect(spokenToolResult(speakChat(3, '你好'))).toEqual({ seq: 3, text: '你好' })
+    expect(spokenToolResult(chat({}))).toBeUndefined()
+    expect(spokenToolResult(undefined)).toBeUndefined()
+    const malformed = chat({
+      tools: [
+        { kind: 'tool-result', seq: 1, name: 'x', meta: null },
+        { kind: 'tool-result', seq: 2, name: 'x', meta: { speak: null } },
+        { kind: 'tool-result', seq: 3, name: 'x', meta: { speak: { text: '' } } },
+      ],
+    })
+    expect(spokenToolResult(malformed)).toBeUndefined()
+    expect(spokenToolResult(chat({ tools: [{ kind: 'tool-result', seq: 4, name: 'x', meta: { speak: { text: 7 } } }] })))
+      .toBeUndefined()
   })
 })

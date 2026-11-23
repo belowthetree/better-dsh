@@ -35,9 +35,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Read one finite safe integer, or undefined for every other value. */
-function safeInteger(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
+/**
+ * Read one finite position coordinate as a whole logical pixel.
+ * Renderer drag deltas may be fractional on scaled displays, so a persisted
+ * layout carrying such a position still restores instead of falling back to the default.
+ * @param value - raw coordinate read from untrusted file content.
+ * @returns the coordinate rounded to the nearest whole logical pixel, or undefined for every other value.
+ */
+function positionCoordinate(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER
+    ? Math.round(value)
+    : undefined
 }
 
 /**
@@ -59,6 +67,7 @@ export function defaultFormLayout(workArea: DesktopWorkArea): DesktopFormLayout 
 /**
  * Parse one persisted layout without trusting its content.
  * Absent, unparseable, wrong-version, wrong-type, and out-of-range content yields undefined; the file is untrusted user data.
+ * Fractional coordinates are rounded to whole logical pixels.
  * @param raw - file content, or null when the file is absent.
  * @returns the parsed layout, or undefined when the content is not a supported layout.
  */
@@ -73,8 +82,8 @@ export function parseFormLayout(raw: string | null): DesktopFormLayout | undefin
   if (!isRecord(parsed)) return undefined
   if (parsed.version !== 1) return undefined
   if (!isRecord(parsed.orb)) return undefined
-  const x = safeInteger(parsed.orb.x)
-  const y = safeInteger(parsed.orb.y)
+  const x = positionCoordinate(parsed.orb.x)
+  const y = positionCoordinate(parsed.orb.y)
   if (x === undefined || y === undefined) return undefined
   const pinned = parsed.pinned
   if (typeof pinned !== 'boolean') return undefined
@@ -85,14 +94,14 @@ export function parseFormLayout(raw: string | null): DesktopFormLayout | undefin
  * Clamp the orb's top-left so the full orb square stays inside the work area.
  * @param layout - persisted or candidate layout.
  * @param workArea - target work area; it must be at least ORB_SIZE wide and tall.
- * @returns the layout with the orb moved inside the work area and its pinned flag preserved.
+ * @returns the layout with the orb moved inside the work area, its coordinates on whole logical pixels, and its pinned flag preserved.
  */
 export function clampFormLayout(layout: DesktopFormLayout, workArea: DesktopWorkArea): DesktopFormLayout {
   return {
     version: 1,
     orb: {
-      x: Math.min(Math.max(layout.orb.x, workArea.x), workArea.x + workArea.width - ORB_SIZE),
-      y: Math.min(Math.max(layout.orb.y, workArea.y), workArea.y + workArea.height - ORB_SIZE),
+      x: Math.min(Math.max(Math.round(layout.orb.x), workArea.x), workArea.x + workArea.width - ORB_SIZE),
+      y: Math.min(Math.max(Math.round(layout.orb.y), workArea.y), workArea.y + workArea.height - ORB_SIZE),
     },
     pinned: layout.pinned,
   }

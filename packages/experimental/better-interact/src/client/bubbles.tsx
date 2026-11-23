@@ -9,9 +9,11 @@ import type {
   HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NS } from './locales.ts'
+import type { OrbBalloonMeta } from '../tool.ts'
+import { ORB_BALLOON_TOOL } from '../tool.ts'
 import type { ReminderInteraction } from './reminders.ts'
 import { orbReminder, reminderMessage } from './reminders.ts'
 import { workbenchAddress } from './resource.ts'
@@ -52,10 +54,16 @@ export interface BubblesInjected {
   /** Ask the carrier to hide the bubble column window. */
   hide(): void
   /**
-   * Raise the workbench of one Session, adding its card when the strip has none.
+   * Ask the workbench of one Session to rise, adding its card when the strip has none.
    * @param sessionId - Session whose conversation the dialog should show.
    */
   open(sessionId: SessionId): void
+  /**
+   * Ask the playback renderer to speak one balloon text.
+   * @param text - text the balloon shows.
+   * @param key - stable identity of the balloon; a repeated key is never spoken twice.
+   */
+  speak(text: string, key: string): void
   /** Report whether the pointer is over the bubble column, so the carrier can pass clicks through elsewhere. */
   pointerInside(inside: boolean): void
 }
@@ -153,6 +161,87 @@ export function bubbleOutputs(chat: ChatSnapshot | undefined): { entries: Bubble
   const live = partial === null ? '' : assistantText(partial.blocks)
   if (live !== '') entries.push({ key: 'live', text: live, live: true })
   return { entries, live }
+}
+
+/** Balloon the character raises through the `orb_balloon` tool. */
+export interface CharacterBalloon {
+  /** Seq of the tool result that raised it. */
+  readonly seq: number
+  /** Text the balloon shows. */
+  readonly text: string
+  /** Session the balloon opens on click; absent for a plain remark. */
+  readonly sessionId?: SessionId
+  /** Click behaviour. */
+  readonly action: 'none' | 'open'
+}
+
+/**
+ * Narrow one persisted balloon payload.
+ * @param meta - persisted `presentationMeta` of one tool result.
+ * @returns the balloon payload, or undefined for another or malformed result.
+ */
+export function balloonMeta(meta: unknown): OrbBalloonMeta['balloon'] | undefined {
+  if (typeof meta !== 'object' || meta === null) return undefined
+  const balloon = (meta as { readonly balloon?: unknown }).balloon
+  if (typeof balloon !== 'object' || balloon === null) return undefined
+  const { text, sessionId, action } = balloon as {
+    readonly text?: unknown
+    readonly sessionId?: unknown
+    readonly action?: unknown
+  }
+  if (typeof text !== 'string' || text.trim() === '') return undefined
+  const opened = action === 'open' && typeof sessionId === 'string' && sessionId !== ''
+  return opened
+    ? { text: text.trim(), sessionId, action: 'open' }
+    : { text: text.trim(), action: 'none' }
+}
+
+/**
+ * Latest character balloon in one Chat transcript.
+ * @param chat - current Chat snapshot, or undefined before the target publishes.
+ * @returns the newest `orb_balloon` result, or undefined while the transcript holds none.
+ */
+export function characterBalloon(chat: ChatSnapshot | undefined): CharacterBalloon | undefined {
+  if (chat === undefined) return undefined
+  for (let index = chat.legacy.nodes.length - 1; index >= 0; index -= 1) {
+    const node = chat.legacy.nodes[index]
+    if (node === undefined || node.kind !== 'tool-result' || node.name !== ORB_BALLOON_TOOL) continue
+    const balloon = balloonMeta(node.meta)
+    if (balloon === undefined) continue
+    return balloon.sessionId === undefined
+      ? { seq: node.seq, text: balloon.text, action: balloon.action }
+      : { seq: node.seq, text: balloon.text, sessionId: SessionId(balloon.sessionId), action: balloon.action }
+  }
+  return undefined
+}
+
+/** One tool result that asked the client to speak a text. */
+export interface SpokenResult {
+  /** Seq of the tool result that asked. */
+  readonly seq: number
+  /** Text to speak. */
+  readonly text: string
+}
+
+/**
+ * Latest explicit speech request in one Chat transcript.
+ * @param chat - current Chat snapshot, or undefined before the target publishes.
+ * @returns the newest `speak` presentation payload, or undefined while the transcript holds none.
+ */
+export function spokenToolResult(chat: ChatSnapshot | undefined): SpokenResult | undefined {
+  if (chat === undefined) return undefined
+  for (let index = chat.legacy.nodes.length - 1; index >= 0; index -= 1) {
+    const node = chat.legacy.nodes[index]
+    if (node === undefined || node.kind !== 'tool-result') continue
+    const meta: unknown = node.meta
+    if (typeof meta !== 'object' || meta === null) continue
+    const speak = (meta as { readonly speak?: unknown }).speak
+    if (typeof speak !== 'object' || speak === null) continue
+    const text = (speak as { readonly text?: unknown }).text
+    if (typeof text !== 'string' || text.trim() === '') continue
+    return { seq: node.seq, text: text.trim() }
+  }
+  return undefined
 }
 
 /**
@@ -257,6 +346,56 @@ export function BubbleStack(props: BubbleStackProps) {
   const reminderTitle = reminder === undefined
     ? ''
     : (summary?.title?.trim() || summary?.displayTitle || String(reminder.sessionId))
+  const reminderSentence = reminder === undefined ? '' : reminderMessage(reminder, reminderTitle, t)
+  const reminderKey = reminder === undefined
+    ? undefined
+    : `${String(reminder.sessionId)}|${reminder.kind}|${reminder.detail ?? ''}|${String(reminder.others)}`
+  const { speak } = props
+  const candidate = characterBalloon(chat)
+  const spoken = spokenToolResult(chat)
+  /** Remark of the character on screen, promoted when a new one lands. */
+  const [balloon, setBalloon] = useState<CharacterBalloon | undefined>(undefined)
+  const seenBalloon = useRef<number | undefined>(undefined)
+  const observingBalloons = useRef(false)
+  const seenSpoken = useRef<number | undefined>(undefined)
+  const observingSpeech = useRef(false)
+
+  // A new remark replaces the previous one and is spoken once. A transcript
+  // that already holds remarks when the column mounts stays silent: balloons
+  // report what happens now, not history.
+  useEffect(() => {
+    if (!observingBalloons.current) {
+      observingBalloons.current = true
+      seenBalloon.current = candidate?.seq
+      return
+    }
+    if (candidate === undefined) return
+    if (seenBalloon.current !== undefined && candidate.seq <= seenBalloon.current) return
+    seenBalloon.current = candidate.seq
+    setBalloon(candidate)
+    speak(candidate.text, `balloon:${String(candidate.seq)}`)
+  }, [candidate, speak])
+
+  // Each waiting request is spoken once; the playback renderer keeps the key
+  // across column dismissals, so a hovering pointer never repeats the sentence.
+  useEffect(() => {
+    if (reminderKey === undefined || reminderSentence === '') return
+    speak(reminderSentence, `reminder:${reminderKey}`)
+  }, [reminderKey, reminderSentence, speak])
+
+  // A tool that asked the client to speak one text (`deepseek_speak`) is read
+  // once, when its result lands; results already in the transcript stay silent.
+  useEffect(() => {
+    if (!observingSpeech.current) {
+      observingSpeech.current = true
+      seenSpoken.current = spoken?.seq
+      return
+    }
+    if (spoken === undefined) return
+    if (seenSpoken.current !== undefined && spoken.seq <= seenSpoken.current) return
+    seenSpoken.current = spoken.seq
+    speak(spoken.text, `tool-speak:${String(spoken.seq)}`)
+  }, [spoken, speak])
 
   /** Stop a running exit, if any, and keep every bubble on screen. */
   const cancelExit = useCallback((): void => {
@@ -295,11 +434,11 @@ export function BubbleStack(props: BubbleStackProps) {
 
   // A streaming answer raises the column on its own; the streaming bubble must
   // stay visible until the agent stops, whether or not the pointer is nearby.
-  // A pending request raises it too, so the character's reminder is not missed.
+  // A pending request or a fresh remark raises it too, so neither is missed.
   useEffect(() => {
-    if (visible || (!streaming && !reminding)) return
+    if (visible || (!streaming && !reminding && balloon === undefined)) return
     show()
-  }, [visible, streaming, reminding, show])
+  }, [visible, streaming, reminding, balloon, show])
 
   // Asking for the history keeps it expanded while the pointer leaves and the
   // bubbles finish their exit; a fresh streaming-only column starts collapsed.
@@ -318,17 +457,17 @@ export function BubbleStack(props: BubbleStackProps) {
       cancelExit()
       return
     }
-    // The orb, the column, an active output, the workbench, or a pending request
-    // keeps the bubbles. Otherwise the column leaves half a second after the
-    // pointer left both.
-    if (orbHovered || inside || busy || modalOpen || reminding) {
+    // The orb, the column, an active output, the workbench, a pending request,
+    // or a fresh remark keeps the bubbles. Otherwise the column leaves half a
+    // second after the pointer left both.
+    if (orbHovered || inside || busy || modalOpen || reminding || balloon !== undefined) {
       cancelExit()
       return
     }
     if (exiting) return
     const timer = setTimeout(startExit, BUBBLE_HOVER_LEAVE_MS)
     return () => { clearTimeout(timer) }
-  }, [visible, orbHovered, inside, busy, modalOpen, reminding, exiting, startExit, cancelExit])
+  }, [visible, orbHovered, inside, busy, modalOpen, reminding, balloon, exiting, startExit, cancelExit])
 
   /** Expand the history and keep the column while the pointer rests on it. */
   const enter = (): void => {
@@ -343,12 +482,16 @@ export function BubbleStack(props: BubbleStackProps) {
     pointerInside(false)
   }
 
-  if (!visible || (entries.length === 0 && reminder === undefined)) return null
+  if (!visible || (entries.length === 0 && reminder === undefined && balloon === undefined)) return null
+  const balloonSession = balloon?.action === 'open' && balloon.sessionId !== undefined
+    ? SessionId(balloon.sessionId)
+    : undefined
   return <div className={css.layer} data-better-interact-bubbles="" data-exiting={exiting ? 'true' : 'false'}>
     <div
       className={css.stack}
       role="log"
       aria-label={t('bubbles.label')}
+      data-character={balloon === undefined ? 'false' : 'true'}
       onPointerEnter={enter}
       onPointerLeave={leave}
     >
@@ -370,9 +513,23 @@ export function BubbleStack(props: BubbleStackProps) {
         title={t('reminder.open')}
         onClick={() => { open(reminder.sessionId) }}
       >
-        <span className={css.reminderText}>{reminderMessage(reminder, reminderTitle, t)}</span>
+        <span className={css.reminderText}>{reminderSentence}</span>
         {reminder.others > 0 && <span className={css.reminderMore}>{t('reminder.more', { count: reminder.others })}</span>}
       </button>}
+      {balloon !== undefined && (balloonSession === undefined
+        ? <div className={css.character} data-better-interact-balloon="" data-action="none">
+          <span className={css.reminderText}>{balloon.text}</span>
+        </div>
+        : <button
+          type="button"
+          className={css.character}
+          data-better-interact-balloon=""
+          data-action="open"
+          title={t('balloon.open')}
+          onClick={() => { open(balloonSession) }}
+        >
+          <span className={css.reminderText}>{balloon.text}</span>
+        </button>)}
     </div>
   </div>
 }

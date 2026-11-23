@@ -51,6 +51,11 @@ describe('form layout clamping', () => {
       .toEqual({ version: 1, orb: { x: 0, y: 0 }, pinned: false })
   })
 
+  it('puts fractional coordinates on whole logical pixels', () => {
+    expect(clampFormLayout({ version: 1, orb: { x: 1.6, y: -0.4 }, pinned: false }, WORK_AREA))
+      .toEqual({ version: 1, orb: { x: 2, y: 0 }, pinned: false })
+  })
+
   it('clamps against a work area that starts at a negative screen origin', () => {
     expect(clampFormLayout({ version: 1, orb: { x: -5000, y: -5000 }, pinned: false }, { x: -1920, y: -200, width: 1920, height: 1080 }))
       .toEqual({ version: 1, orb: { x: -1920, y: -200 }, pinned: false })
@@ -87,9 +92,16 @@ describe('form layout parsing', () => {
     expect(parseFormLayout(JSON.stringify({ version: 1, orb: 'orb', pinned: false }))).toBeUndefined()
     expect(parseFormLayout(JSON.stringify({ version: 1, orb: { x: 0 }, pinned: false }))).toBeUndefined()
     expect(parseFormLayout(JSON.stringify({ version: 1, orb: { x: '0', y: 0 }, pinned: false }))).toBeUndefined()
-    expect(parseFormLayout(JSON.stringify({ version: 1, orb: { x: 0, y: 1.5 }, pinned: false }))).toBeUndefined()
+    expect(parseFormLayout(JSON.stringify({ version: 1, orb: { x: 0, y: Number.NaN }, pinned: false }))).toBeUndefined()
+    expect(parseFormLayout(JSON.stringify({ version: 1, orb: { x: 0, y: Number.POSITIVE_INFINITY }, pinned: false })))
+      .toBeUndefined()
     expect(parseFormLayout(JSON.stringify({ version: 1, orb: { x: 0, y: Number.MAX_SAFE_INTEGER + 1 }, pinned: false })))
       .toBeUndefined()
+  })
+
+  it('restores a scaled-display position as whole logical pixels', () => {
+    expect(parseFormLayout('{"version":1,"orb":{"x":2400,"y":622.6666259765625},"pinned":false}'))
+      .toEqual({ version: 1, orb: { x: 2400, y: 623 }, pinned: false })
   })
 
   it('falls back to defaults for a non-boolean pinned flag', () => {

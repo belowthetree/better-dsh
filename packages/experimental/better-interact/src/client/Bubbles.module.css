@@ -138,6 +138,80 @@
     box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 
+/* The character's own remark sits closest to the orb; when it is on screen the
+   reminder above it drops its tail, so exactly one balloon points at the artwork. */
+.character {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 12px 14px 15px;
+  border: 0;
+  border-inline-start: 3px solid var(--dsw-alias-state-business-primary);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-prominent), inset 0 1px 0 var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  line-height: 1.45;
+  text-align: start;
+  cursor: default;
+  animation: bubble-in 200ms cubic-bezier(0.1, 0.9, 0.2, 1) backwards;
+  transition:
+    background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+.character[data-action='open'] {
+  cursor: pointer;
+}
+
+/* The character's balloon carries the same tail as the reminder, toward the orb. */
+.character::after {
+  position: absolute;
+  right: 64px;
+  bottom: -7px;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background: inherit;
+  content: '';
+  transform: rotate(45deg);
+}
+
+.stack[data-character='true'] .reminder {
+  margin-bottom: 0;
+}
+
+.stack[data-character='true'] .reminder::after {
+  display: none;
+}
+
+.layer[data-exiting='true'] .character {
+  animation-name: bubble-out;
+  animation-duration: 150ms;
+  animation-timing-function: cubic-bezier(0.7, 0, 1, 0.5);
+  animation-fill-mode: forwards;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .character[data-action='open']:hover {
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+    box-shadow: var(--dsw-elevation-prominent), inset 0 1px 0 var(--dsw-alias-border-l1);
+  }
+}
+
+.character:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .character {
+    animation: none;
+    transition: none;
+  }
+}
+
 /* The tail hangs under the balloon toward the orb; its upper half hides behind
    the balloon's own fill. */
 .reminder::after {

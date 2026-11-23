@@ -11,6 +11,7 @@ import {
   WORKBENCH_PREVIOUS_COMMAND_ID, WORKBENCH_SESSIONS_COMMAND_ID,
 } from '../src/client/index.ts'
 import type { BubblesInjected } from '../src/client/bubbles.tsx'
+import type { VoiceSectionInjected } from '../src/client/VoiceSection.tsx'
 import { MANAGE_PAGE_ID } from '../src/client/workbench-groups.ts'
 import { WORKBENCH_MODAL_ID } from '../src/client/resource.ts'
 import type { WorkbenchInjected } from '../src/client/workbench.tsx'
@@ -28,6 +29,12 @@ const ORB: SurfaceSnapshot = {
 const WORKBENCH: SurfaceSnapshot = {
   form: 'orb', role: 'surface', presentation: 'modal', pinned: false, available: true,
   modal: WORKBENCH_MODAL_ID, orbDocked: false, orbHovered: false, modalOpen: true,
+}
+
+/** Classic shell presentation: the page itself owns playback and navigation. */
+const CLASSIC: SurfaceSnapshot = {
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true,
+  modal: null, orbDocked: false, orbHovered: false, modalOpen: false,
 }
 
 const sid = (value: string) => value as SessionId
@@ -79,6 +86,8 @@ function context(options: {
   readonly workspaces?: readonly WorkspaceView[]
   readonly archived?: readonly string[]
   readonly catalog?: readonly { readonly id: string; readonly keys: readonly string[] }[]
+  readonly voice?: boolean
+  readonly voiceFollowFails?: boolean
 } = {}) {
   const registrations: Registration[] = []
   const disposers: (() => void)[] = []
@@ -111,14 +120,49 @@ function context(options: {
   const emitMessage = (channel: string, origin: SurfaceMessage['origin'], payload: unknown): void => {
     for (const listener of [...(messageListeners.get(channel) ?? [])]) listener({ origin, channel, payload })
   }
+  const speak = vi.fn(() => Promise.resolve())
+  const setVoice = vi.fn()
+  const playbackSnapshot = {
+    policy: 'off' as const, voiceId: 'stella', voices: [{ id: 'stella', name: 'Stella' }, { id: 'tide', name: 'Tide' }],
+    muted: false, speaking: false, queued: 0, failure: null, limit: 4000,
+  }
+  const voiceOutput = {
+    snapshot: () => playbackSnapshot,
+    async *follow(signal: AbortSignal) {
+      if (options.voiceFollowFails === true) throw new Error('stream closed')
+      yield playbackSnapshot
+      await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }) })
+    },
+    setPolicy: vi.fn(),
+    setVoice,
+    setMuted: vi.fn(),
+    stop: vi.fn(),
+    speak,
+  }
+  const withVoice = options.voice !== false
   const ctx = {
     effect: (factory: () => unknown) => {
       const value = factory()
       if (typeof value === 'function') disposers.push(value as () => void)
       return () => {}
     },
-    inject: vi.fn(),
-    get: vi.fn(() => undefined),
+    inject: vi.fn((names: string[], factory: (scope: unknown) => unknown) => {
+      if (!withVoice || !names.includes('voiceOutput')) return () => {}
+      // The real `ctx.inject` waits for the service, so the callback runs after
+      // the plugin body finished; a microtask keeps that ordering here.
+      queueMicrotask(() => {
+        factory({
+          voiceOutput,
+          effect: (register: () => unknown) => {
+            const value = register()
+            if (typeof value === 'function') disposers.push(value as () => void)
+            return () => {}
+          },
+        })
+      })
+      return () => {}
+    }),
+    get: vi.fn((name: string) => (withVoice && name === 'voiceOutput' ? voiceOutput : undefined)),
     on: vi.fn(() => () => {}),
     theme: { getTheme: () => ({ preference: 'system' }), setTheme: vi.fn() },
     locale: { register: record, bind: vi.fn(() => (key: string) => key) },
@@ -156,7 +200,7 @@ function context(options: {
   return {
     ctx, registrations, commands, dictionaries, sessions, workspaces, catalog, presentModal, presentBubbles, dismissBubbles,
     openSession, openWorkspace, pickDirectory, createWorkspace, initializeDefault, createSession, disposers, pendingInteractions,
-    sendMessage, emitMessage,
+    sendMessage, emitMessage, speak, setVoice, voiceOutput,
   }
 }
 
@@ -633,4 +677,101 @@ it('opens an empty catalog dialog on the managed page', () => {
   if (resolution.status === 'handled') resolution.run()
   expect(presentModal).toHaveBeenCalledWith(WORKBENCH_MODAL_ID, WORKBENCH_MODAL_SIZE)
   expect(workbench.hooks.pages.getSnapshot()).toEqual({ active: MANAGE_PAGE_ID, sessions: {} })
+})
+
+/** The injected face of the `settings.section` entry this plugin contributes. */
+function voiceSectionInjected(registrations: readonly Registration[]): VoiceSectionInjected {
+  const section = registrations.find(entry => entry.name === 'settings.section')
+  return (section?.inject as () => VoiceSectionInjected)()
+}
+
+/** The injected face of the bubble column overlay. */
+function bubblesInjected(registrations: readonly Registration[]): BubblesInjected {
+  const overlay = registrations.find(entry => entry.name === 'shell.overlay')
+  return (overlay?.inject as () => BubblesInjected)()
+}
+
+it('contributes the voice narration settings section', async () => {
+  const { ctx, registrations, speak, setVoice, voiceOutput } = context()
+  apply(ctx as never)
+  await Promise.resolve()
+  const section = registrations.find(entry => entry.name === 'settings.section')
+  expect(section).toMatchObject({ name: 'settings.section', id: 'voice-narration', order: 40, locale: 'betterInteract' })
+  expect((section?.label as () => string)()).toBe('voice.title')
+  const face = voiceSectionInjected(registrations)
+  expect(face.hooks.narration.getSnapshot()).toEqual({ enabled: true })
+  expect(face.hooks.voice.getSnapshot()).toEqual(voiceOutput.snapshot())
+  face.setNarration(false)
+  expect(face.hooks.narration.getSnapshot()).toEqual({ enabled: false })
+  face.selectVoice('tide')
+  expect(setVoice).toHaveBeenCalledWith('tide')
+  face.preview()
+  expect(speak).toHaveBeenCalledWith('voice.previewText')
+})
+
+it('reports a failing playback observation without breaking the plugin', async () => {
+  const { ctx } = context({ voiceFollowFails: true })
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  apply(ctx as never)
+  await vi.waitFor(() => {
+    expect(errors).toHaveBeenCalledWith('better-interact: playback observation failed', new Error('stream closed'))
+  })
+  errors.mockRestore()
+})
+
+it('stops speaking while narration is off and forgets the oldest key past the cap', () => {
+  const { ctx, registrations, speak } = context({ surface: CLASSIC })
+  apply(ctx as never)
+  const bubbles = bubblesInjected(registrations)
+  for (let index = 0; index < 65; index += 1) bubbles.speak(`第 ${String(index)} 句`, `balloon:${String(index)}`)
+  expect(speak).toHaveBeenCalledTimes(65)
+  bubbles.speak('第 0 句再来一次', 'balloon:0')
+  expect(speak).toHaveBeenCalledTimes(66)
+  voiceSectionInjected(registrations).setNarration(false)
+  bubbles.speak('这句话不该念', 'balloon:new')
+  expect(speak).toHaveBeenCalledTimes(66)
+})
+
+it('speaks each balloon once in the renderer that owns playback', () => {
+  const { ctx, registrations, speak } = context({ surface: CLASSIC })
+  apply(ctx as never)
+  const bubbles = bubblesInjected(registrations)
+  bubbles.speak('你好', 'balloon:1')
+  bubbles.speak('你好', 'balloon:1')
+  bubbles.speak('再见', 'balloon:2')
+  expect(speak.mock.calls).toEqual([['你好'], ['再见']])
+})
+
+it('forwards a balloon to the playback renderer from the orb window', () => {
+  const { ctx, registrations, sendMessage, speak } = context({ surface: ORB })
+  apply(ctx as never)
+  bubblesInjected(registrations).speak('提醒你喝水', 'reminder:s1')
+  expect(sendMessage).toHaveBeenCalledWith('surface', 'better-interact/speak', { text: '提醒你喝水', key: 'reminder:s1' })
+  expect(speak).not.toHaveBeenCalled()
+})
+
+it('speaks forwarded requests once, only while narration is enabled', () => {
+  const { ctx, registrations, speak, emitMessage } = context({ surface: WORKBENCH })
+  apply(ctx as never)
+  emitMessage('better-interact/speak', 'bubbles', { text: '你好', key: 'balloon:2' })
+  emitMessage('better-interact/speak', 'bubbles', { text: '你好', key: 'balloon:2' })
+  emitMessage('better-interact/speak', 'bubbles', { text: '没有 key' })
+  emitMessage('better-interact/speak', 'bubbles', { text: '没有 key' })
+  expect(speak.mock.calls).toEqual([['你好'], ['没有 key'], ['没有 key']])
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  emitMessage('better-interact/speak', 'bubbles', null)
+  emitMessage('better-interact/speak', 'bubbles', { text: '   ' })
+  expect(errors).toHaveBeenCalledWith('better-interact: rejected an invalid speak request')
+  errors.mockRestore()
+  voiceSectionInjected(registrations).setNarration(false)
+  emitMessage('better-interact/speak', 'bubbles', { text: '别再念了', key: 'balloon:3' })
+  expect(speak).toHaveBeenCalledTimes(3)
+})
+
+it('stays silent without a playback service', () => {
+  const { ctx, registrations, speak } = context({ surface: CLASSIC, voice: false })
+  apply(ctx as never)
+  bubblesInjected(registrations).speak('你好', 'balloon:1')
+  expect(speak).not.toHaveBeenCalled()
+  expect(voiceSectionInjected(registrations).hooks.voice.getSnapshot()).toBeNull()
 })

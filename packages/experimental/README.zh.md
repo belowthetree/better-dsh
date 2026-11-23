@@ -76,6 +76,7 @@ kind: "package-group"
 | [`liveshare-protocol`](liveshare-protocol/README.zh.md) | owner bundle 与 Relay 共用的线路帧与身份契约 | 库与协议，不使用 ctx key |
 | [`voice-input-bundle`](voice-input-bundle/README.zh.md) | 默认禁用的可选语音输入组合 | — |
 | [`better-bundle`](better-bundle/README.zh.md) | 默认禁用的可选 Desktop 球体形态，组合 Surface、语音与播放插件 | — |
+| [`deepseek-suite`](deepseek-suite/README.zh.md) | 内置的 DeepSeek OCR、识别、合成与内存播放工具，以及它们使用的语音 Provider | `deepseek_*`、`deepseek-cloud`、`deepseek-tts` |
 | [`client-ui-stats`](client-ui-stats/README.zh.md) | Web 端按轮次与步骤展示上下文、耗时、缓存与工具成本 | — |
 | [`auto-review`](auto-review/README.zh.md) | 显式 Web 层，在每个原生或 PTC inner 工具调用前使用同一模型审查 | — |
 | [`subagent-oar`](subagent-oar/README.zh.md) | 通过 OAR 执行外部编程智能体的独立任务 | `ctx.subagents` |

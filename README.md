@@ -22,6 +22,8 @@
 
 悬浮球常驻桌面。指针进入悬浮球时升起历史气泡列；流式回答出现时气泡列自动升起，并保持到 agent 停止。每个气泡预览有限行，点击任一气泡即可打开它所属会话的工作台。
 
+大肥鱼也可以主动说话：她调用 `orb_balloon` 工具时，一句话会变成最下面那张带尾巴的对话气球，可以让点击打开某个会话。气泡内容默认朗读，朗读开关、音色与试听在「设置 → 语音播报」。
+
 ### 工作台
 
 工作台是无边框、居中的 Fluent 悬浮面板：工作区卡片位于会话面板上方，当前页面的会话以书签卡片排列在面板左侧外部。当前会话带强调色条，键盘光标带独立的选中环，两者可以同时出现，分别表示「正在看的会话」与「准备切换的会话」。
@@ -41,6 +43,7 @@
 | 模块 | 职责 |
 |---|---|
 | [packages/experimental/better-interact](packages/experimental/better-interact/README.zh.md) | Better DSH 的悬浮球气泡与工作台插件：overlay 与 modal 条目、工作区页面存储、快捷键与提示 |
+| [packages/experimental/deepseek-suite](packages/experimental/deepseek-suite/README.zh.md) | 内置的 DeepSeek OCR、语音识别、语音合成与内存播放工具，以及球体形态使用的语音 Provider |
 | [packages/client/ui-conversation](packages/client/ui-conversation/README.zh.md) | 共享会话内容、Chat 视图与输入框 |
 | [packages/client/ui-workspace](packages/client/ui-workspace/README.zh.md) | 工作区目录、会话导航与 `uiWorkspace` 服务 |
 | [packages/client/surface](packages/client/surface/README.zh.md) / [ui-layout](packages/client/ui-layout/README.zh.md) | 呈现协议与载体服务、框架的 overlay 与模态层 |

@@ -1,6 +1,8 @@
 - insert:
     - id: client-better-interact
       name: '@deepseek-ai/dsh-better-interact'
+    - id: deepseek-suite
+      name: '@deepseek-ai/dsh-deepseek-suite'
     - id: client-voice-capture
       name: '@deepseek-ai/dsh-client-voice-capture'
     - id: speech-to-text

@@ -1062,6 +1062,31 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-deepseek-chat-import -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-deepseek-suite -->
+<a id="deepseek-aidsh-deepseek-suite"></a>
+
+## `@deepseek-ai/dsh-deepseek-suite`
+
+- `inject`: `tools` · `credentials`
+- `source`: [`packages/experimental/deepseek-suite/src/index.ts:50`](../packages/experimental/deepseek-suite/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration; every deployment-varying choice is a validated field. */
+export interface Config {
+  /** Credential or environment-variable name holding the DeepSeek API key. */
+  readonly apiKeyRef: string
+  /** DeepSeek API origin. */
+  readonly baseUrl: string
+  /** Per-request deadline in milliseconds. */
+  readonly timeoutMs: number
+  /** Character budget of one OCR or recognition result. */
+  readonly maxOutputChars: number
+  /** Default directory for saved synthesis files; empty means the Session workspace. */
+  readonly ttsOutputDir: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-deepseek-suite -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-api-speech-to-text -->
 <a id="deepseek-aidsh-experimental-api-speech-to-text"></a>
 
@@ -5375,7 +5400,7 @@ export interface Config {
 | `@deepseek-ai/dsh-api-remote-access` | — | [`packages/api/remote-access/src/index.ts`](../packages/api/remote-access/src/index.ts) |
 | `@deepseek-ai/dsh-api-remotes` | `typertGateway` | [`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts) |
 | `@deepseek-ai/dsh-authorization` | `credentials` | [`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts) |
-| `@deepseek-ai/dsh-better-interact` | — | [`packages/experimental/better-interact/src/index.ts`](../packages/experimental/better-interact/src/index.ts) |
+| `@deepseek-ai/dsh-better-interact` | `tools` | [`packages/experimental/better-interact/src/index.ts`](../packages/experimental/better-interact/src/index.ts) |
 | `@deepseek-ai/dsh-browser-use` | — | [`packages/browser-use/browser-use/src/index.ts`](../packages/browser-use/browser-use/src/index.ts) |
 | `@deepseek-ai/dsh-client-config` | — | [`packages/client/config/src/index.ts`](../packages/client/config/src/index.ts) |
 | `@deepseek-ai/dsh-client-file-upload` | `agents` · `attachments` · `commands` · `connection` | [`packages/client/file-upload/src/index.ts`](../packages/client/file-upload/src/index.ts) |

@@ -505,6 +505,7 @@
       "@deepseek-ai/dsh-deepseek-auth": ["./packages/account/deepseek-auth/src"],
       "@deepseek-ai/dsh-deepseek-chat-import": ["./packages/experimental/deepseek-chat-import/src"],
       "@deepseek-ai/dsh-deepseek-llm-api-extensions": ["./packages/llm/deepseek-llm-api-extensions/src"],
+      "@deepseek-ai/dsh-deepseek-suite": ["./packages/experimental/deepseek-suite/src"],
       "@deepseek-ai/dsh-deliverable-file-references": ["./packages/deliverables/deliverable-file-references/src"],
       "@deepseek-ai/dsh-deque": ["./packages/util/deque/src"],
       "@deepseek-ai/dsh-error": ["./packages/util/error/src"],

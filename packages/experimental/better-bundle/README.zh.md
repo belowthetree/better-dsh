@@ -25,7 +25,7 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用此包
 
-此 Bundle 仅适用于 Desktop。插件管理页将其显示为关闭状态；启用后相关包可用，但不会改变经典 profile。按 Desktop 外壳形态文档创建声明球体形态的 profile，然后用 `--profile <名称>` 启动 Desktop。窗口以收起的球体打开；点击升起居中快捷对话框，其中包含提问输入框、语音输入开关与发送按钮。Enter 或发送按钮把提问发送到球体专属的 `manage` 对话（首次使用时在 Host 默认工作区创建），并升起管理工作台——一张显示共享对话记录、流式回答与后续提问输入框的宽卡片；Shift+Enter 换行，被拒绝的提问保留在对话框内并显示失败提示，Escape 或点击背景可关闭任一张卡片。球体右键菜单与 `orb.workbench` 命令可在不发送内容的情况下重新升起工作台。对话框自绘卡片表面，使用共享的 elevation 材质。对话框的语音开关使用共享采集服务录音，并把识别出的文字追加到输入框末尾而不发送。Ctrl+Alt+D 在 Windows 与 macOS 上通过操作系统全局快捷键打开快捷对话框；球体开关没有默认键位，可在“设置 → 快捷键 → 全局”中分配。球体可拖动，其右键菜单用于选择合成音色、静音播放，并在自动朗读策略之间循环。球体上的麦克风按钮与 `voice.pushToTalk` 系统级命令可在对话框关闭时开始采集；结束后升起对话框并填入其输入框。语音识别与合成需要外部 DeepSeek 套件在同一 profile 中注册 `deepseek-cloud` 与 `deepseek-tts` Provider；两者都是计费的云请求。Bundle 声明球体对话框创建管理会话所用的 `manage` 预设（管理对话）：它挂载启用 `workspaceAccess: current` 的会话列表工具、会话查询、读取最新回复和发送消息的工具，不挂载文件、Shell 或删除/改写类工具。列表工具只暴露管理 Session 已注册的默认工作区，并在执行时拒绝其他工作区 ID。若要在没有安装包的情况下评审组装后的形态，按 [Desktop README](../../../apps/desktop/README.zh.md) 的本地形态评审步骤操作。
+此 Bundle 仅适用于 Desktop。插件管理页将其显示为关闭状态；启用后相关包可用，但不会改变经典 profile。按 Desktop 外壳形态文档创建声明球体形态的 profile，然后用 `--profile <名称>` 启动 Desktop。窗口以收起的球体打开；点击升起居中快捷对话框，其中包含提问输入框、语音输入开关与发送按钮。Enter 或发送按钮把提问发送到球体专属的 `manage` 对话（首次使用时在 Host 默认工作区创建），并升起管理工作台——一张显示共享对话记录、流式回答与后续提问输入框的宽卡片；Shift+Enter 换行，被拒绝的提问保留在对话框内并显示失败提示，Escape 或点击背景可关闭任一张卡片。球体右键菜单与 `orb.workbench` 命令可在不发送内容的情况下重新升起工作台。对话框自绘卡片表面，使用共享的 elevation 材质。对话框的语音开关使用共享采集服务录音，并把识别出的文字追加到输入框末尾而不发送。Ctrl+Alt+D 在 Windows 与 macOS 上通过操作系统全局快捷键打开快捷对话框；球体开关没有默认键位，可在“设置 → 快捷键 → 全局”中分配。球体可拖动，其右键菜单用于选择合成音色、静音播放，并在自动朗读策略之间循环。球体上的麦克风按钮与 `voice.pushToTalk` 系统级命令可在对话框关闭时开始采集；结束后升起对话框并填入其输入框。语音识别与合成由内置的 `deepseek-suite` 行提供 Provider（`deepseek-cloud` 与 `deepseek-tts`），不再需要外部套件；两者都是计费的云请求。Bundle 声明球体对话框创建管理会话所用的 `manage` 预设（管理对话）：它挂载启用 `workspaceAccess: current` 的会话列表工具、会话查询、读取最新回复和发送消息的工具，不挂载文件、Shell 或删除/改写类工具。根作用域注册的工具沿作用域链被预设内 Agent 继承，因此 better-interact 的 `orb_balloon`（把一句话显示成对话气球）与外部套件的 `deepseek_speak`（直接朗读）都可用于大肥鱼；气球内容默认朗读，开关、音色与试听在“设置 → 语音播报”。列表工具只暴露管理 Session 已注册的默认工作区，并在执行时拒绝其他工作区 ID。若要在没有安装包的情况下评审组装后的形态，按 [Desktop README](../../../apps/desktop/README.zh.md) 的本地形态评审步骤操作。
 
 -----
 
@@ -65,7 +65,7 @@ kind: "package-bundle"
 <a id="known-limitations-and-deferred-work"></a>
 
 - 仅适用于 Desktop。Web 保持经典呈现，没有页面级球体回退；形态 profile 需按文档配方创建，因为 Settings 尚未提供创建入口。
-- 两个语音 seam 都期望外部 `@dsh-external/dsh-deepseek-suite` 在同一 profile 中注册 `deepseek-cloud` 与 `deepseek-tts`。缺少 Provider 时在首次使用时失败，而不是在加载时失败。
+- 两个语音 seam 的 Provider 由内置的 `deepseek-suite` 行注册；禁用该行后，缺少 Provider 时在首次使用时失败，而不是在加载时失败。
 - 球体没有注意徽标，右键菜单不提供新建会话或退出，面板收起时不会自动聚焦输入区。
 - 按住式通话实为按一下开始、再按一下停止：Electron 全局快捷键不提供按键抬起事件，播放也不是流式的。
 - `manage` 预设发布自己的中文名称与描述，因此在预设列表中归入自定义预设，而不是已本地化的四个内置预设。

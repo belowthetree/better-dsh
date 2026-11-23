@@ -27,7 +27,9 @@ Better DSH makes the agent a presence on the desktop. Answers rise beside the re
 
 Better DSH is built on three ideas. **Presence over navigation**: an agent used all day should not sit behind a window, so the orb stays resident and the workbench opens over it. **Ambient output**: the answer being written rises beside the orb as a streaming bubble and completed answers join the history there, so progress never needs a window switch. **The Workspace as the unit of work**: the workbench gives the managed conversation a page ahead of every real Workspace, and each page's Sessions become bookmarks beside the conversation.
 
-The orb stays resident on the desktop. Pointer entry raises the history column; a streaming answer raises it on its own and keeps it up until the agent stops. A pending request raises the same column as a speech balloon and keeps it up until the request is settled; clicking the balloon opens that Session's workbench page. The history bubbles open the same workbench, which floats over the surface window and restores the previous presentation when dismissed.
+The orb stays resident on the desktop. Pointer entry raises the history column; a streaming answer raises it on its own and keeps it up until the agent stops. A pending request raises the same column as a speech balloon and keeps it up until the request is settled; clicking the balloon opens that Session's workbench page. The `orb_balloon` tool lets the management conversation speak for itself: its text appears in the bottom balloon, whose tail points at the orb, and an optional Session id makes a click open that Session. The history bubbles open the same workbench, which floats over the surface window and restores the previous presentation when dismissed.
+
+Balloon text is read aloud by default: the voice narration section in Settings offers a toggle (on by default), the voice choice, and a preview. Narration uses the shared `voiceOutput` synthesis and playback service, so the audio lives in browser memory only; each waiting-request balloon and each new remark is spoken once. A tool result carrying `speak` presentation metadata — the built-in `deepseek-suite`'s `deepseek_speak`, for example — is spoken once too. The voice is the same selection the orb context menu and the auto-speak policy use.
 
 Clicking the orb opens `orb.chat`, a focused prompt for the management conversation. An accepted prompt opens the single-Session `orb.workbench`; its composer, transcript, tools, approvals, and questions come from the shared Conversation packages. The quick prompt, dedicated workbench, and managed page resolve their Session through one controller and retain the existing `dsh.orb.management-session.v2` preference. Creation uses the Host default Workspace, then the registered Workspace that owns the main view's Session; when neither is available it fails through the existing prompt or workbench error instead of creating an unregistered Session. Voice input and playback appear when their sibling services are mounted. A microphone click reports why it cannot record while the recognition catalog has no selected recognizer, that recognizer is still preparing, or its service has not answered yet, instead of starting a recording that is bound to fail. A transcription rejection carrying the DeepSeek provider's sign-in code shows localized Settings > Account guidance instead of the generic retry notice.
 
@@ -78,11 +80,19 @@ The surface renderer owns page writes, Session navigation, and the real capture 
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as the package sends no model request, registers no tool, and adds no model-visible input.
+### Orb balloon tool
+
+#### What the model sees
+
+The generated `orb_balloon` schema: one required `text` string, an optional `sessionId`, and an optional `action` enum of `none` and `open`. The description tells the model that the text appears in the character's balloon and is read aloud to the user, and that `action: "open"` with a `sessionId` opens that Session when the balloon is clicked.
+
+#### Token effect
+
+Fixed schema cost on every request of every Agent in a profile that mounts this package. An accepted call returns one confirmation line; a rejected call returns one stable argument error.
 
 #### KV Cache effect
 
-No direct effect; the bubbles and the workbench only read Session events the transcript already renders.
+Prefix-stable while the composition is unchanged. Each accepted call appends its confirmation line to the suffix, and the persisted `balloon` presentation metadata stays out of model content.
 
 ## Known Limitations and Deferred Work
 
@@ -100,6 +110,8 @@ No direct effect; the bubbles and the workbench only read Session events the tra
 - Activating a Workspace that has no Session connects its blank, which may create a Session in it.
 - The speech balloon reports one request: the highest-priority pending interaction (permission, plan review, then question), and counts the rest. Its tail points toward the column's right edge, where the orb normally rests.
 - The balloon reports pending interactions only; an unread completed answer stays in the output bubbles.
+- The character balloon comes from an `orb_balloon` result in the transcript of the Session the column currently binds, so it appears only there; retargeting the column drops it.
+- Narration requires the mounted `voiceOutput` service (the better bundle composes it). A renderer without playback still shows the balloon but stays silent, and failures keep the playback service's closed failure enum without retrying.
 - Each page records one Session per Workspace. The main view's retained Session replaces that record, so a Session opened outside this dialog becomes the page's Session instead of staying a separate page.
 - Ctrl+Tab, Ctrl+Q, and Ctrl+Alt+N are bound on Windows and macOS Desktop only; Desktop main consumes the chords while the orb profile runs even when the dialog is closed.
 

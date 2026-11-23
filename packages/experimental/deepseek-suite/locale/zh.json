@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek 工具集",
+    "description": "内置的 DeepSeek OCR、语音识别、语音合成与内存播放工具，以及它们使用的语音 Provider。"
+  }
+}

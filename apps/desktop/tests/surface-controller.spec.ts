@@ -423,6 +423,13 @@ describe('DesktopSurfaceController', () => {
     expect(window.persisted.at(-1)?.orb).toEqual({ x: 1280, y: 740 })
   })
 
+  it('persists whole logical pixels after a drag with fractional deltas', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'dragBy', deltaX: 0.4, deltaY: -0.6 }, 'orb')
+    expect(window.persisted.at(-1)?.orb).toEqual({ x: 1280, y: 399 })
+  })
+
   it('snaps the orb flush to the nearest work-area edge after a nearby drop', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, orb: { x: 1272, y: 400 } }, effects: window })

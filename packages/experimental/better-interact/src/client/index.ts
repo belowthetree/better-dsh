@@ -16,9 +16,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
+// Type-only: the optional playback service and its observation.
+import type {} from '@deepseek-ai/dsh-client-ui-voice-output/client'
+import type { VoiceOutput, VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/protocol'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
+import { SPEAK_CHANNEL, createNarrationStore, parseSpeakRequest } from './narration.ts'
 import { WORKBENCH_MODAL_ID, workbenchResourceProvider } from './resource.ts'
+import { VoiceSection, type VoiceSectionInjected } from './VoiceSection.tsx'
 import { workbenchGroups, MANAGE_PAGE_ID, type WorkbenchPageGroup } from './workbench-groups.ts'
 import type { WorkbenchHints, WorkbenchInjected, WorkbenchNotice } from './workbench.tsx'
 import { WorkbenchConversation, WorkbenchDialog, WORKBENCH_MODAL_SIZE } from './workbench.tsx'
@@ -389,11 +394,91 @@ export function apply(ctx: Context): void {
     }
   }, 'better-interact: Workspace page follows the main view')
 
+  const narration = createNarrationStore()
+  const playback = createSnapshotStore<VoiceOutputSnapshot | null>(null)
+  ctx.inject(['voiceOutput'], (scope) => {
+    const service = scope.voiceOutput
+    playback.set(service.snapshot())
+    scope.effect(() => {
+      const lifetime = new AbortController()
+      const running = (async (): Promise<void> => {
+        try {
+          for await (const value of service.follow(lifetime.signal)) playback.set(value)
+        } catch (error) {
+          console.error('better-interact: playback observation failed', error)
+        }
+      })()
+      return async () => {
+        lifetime.abort()
+        await running
+        playback.set(null)
+      }
+    }, 'better-interact: playback observation')
+  })
+
+  /** Renderer roles that own speech playback; the orb and bubble windows forward to them. */
+  const primary = (): boolean => {
+    const role = surface.getSnapshot().role
+    return role === 'surface' || role === 'classic'
+  }
+  const voiceOutput = (): VoiceOutput | undefined => ctx.get('voiceOutput')
+  /** Keys already spoken by this renderer, so a remount or a repeated intent stays silent. */
+  const spoken = new Set<string>()
+  const speakNow = (text: string): void => { void voiceOutput()?.speak(text) }
+  const firstSighting = (key: string): boolean => {
+    if (spoken.has(key)) return false
+    spoken.add(key)
+    if (spoken.size > 64) {
+      // A Set iterates in insertion order, so the first key is the oldest one.
+      for (const oldest of spoken) {
+        spoken.delete(oldest)
+        break
+      }
+    }
+    return true
+  }
+  const speak = (text: string, key: string): void => {
+    if (!firstSighting(key)) return
+    if (!narration.getSnapshot().enabled) return
+    if (primary()) { speakNow(text); return }
+    void ctx.surface.sendMessage('surface', SPEAK_CHANNEL, { text, key }).catch(fail('speaking the balloon'))
+  }
+
+  // The playback renderer narrates what the bubble column raises; a malformed
+  // request is reported instead of speaking an unintended sentence, and a key
+  // already spoken here silences the copy another window forwarded.
+  ctx.effect(() => ctx.surface.onMessage(SPEAK_CHANNEL, (message) => {
+    const request = parseSpeakRequest(message.payload)
+    if (request === undefined) {
+      console.error('better-interact: rejected an invalid speak request')
+      return
+    }
+    if (request.key !== undefined && !firstSighting(request.key)) return
+    if (!narration.getSnapshot().enabled) return
+    speakNow(request.text)
+  }), 'better-interact: speak requests')
+
+  const voiceSection: VoiceSectionInjected = {
+    hooks: { narration, voice: playback },
+    setNarration: (enabled) => { narration.set({ enabled }) },
+    selectVoice: (voiceId) => { voiceOutput()?.setVoice(voiceId) },
+    preview: () => { speakNow(t('voice.previewText')) },
+  }
+  ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'voice-narration',
+    order: 40,
+    label: () => t('voice.title'),
+    locale: NS,
+    inject: () => voiceSection,
+  }, VoiceSection)), 'better-interact: voice narration settings')
+
   const bubbles: BubblesInjected = {
     hooks: { surface, pending: ctx.uiSession.pendingInteractions },
     show: () => { ctx.surface.presentBubbles().catch(fail('presenting the bubble column')) },
     hide: () => { ctx.surface.dismissBubbles().catch(fail('dismissing the bubble column')) },
     open: (sessionId) => { showSession(sessionId) },
+    speak,
     pointerInside: (inside) => { ctx.surface.setPointerInside(inside) },
   }
 

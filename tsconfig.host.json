@@ -322,6 +322,7 @@
     { "path": "./packages/experimental/better-interact/tsconfig.host.json" },
     { "path": "./packages/experimental/client-ui-voice-output/tsconfig.host.json" },
     { "path": "./packages/experimental/better-bundle" },
+    { "path": "./packages/experimental/deepseek-suite" },
     { "path": "./packages/experimental/voice-input-bundle" },
     { "path": "./packages/experimental/plugin-market-bundle" },
     { "path": "./packages/client/locale/tsconfig.host.json" },
