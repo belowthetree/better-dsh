@@ -8,7 +8,7 @@ import type { ReactNode, Ref } from 'react'
 import clsx from 'clsx'
 import {
   IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconCloseOutlineRegular, IconDataOutlineMedium,
-  IconPersonalizationOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
+  IconPersonalizationOutlineMedium, IconRemoteConnectionOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsSectionRow } from './shell-contract.ts'
 import css from './SettingsRoot.module.css'
@@ -24,6 +24,7 @@ export function navIcon(id: string): ReactNode {
   if (id === 'agent-presets') return <IconAgentPresetOutlineMedium size={16} />
   if (id === 'plugins') return <IconPersonalizationOutlineMedium size={16} />
   if (id === 'archived-sessions') return <IconArchiveOutlineMedium size={16} />
+  if (id === 'remote-connection') return <IconRemoteConnectionOutlineMedium size={16} />
   return <IconSettingsOutlineMedium size={16} />
 }
 

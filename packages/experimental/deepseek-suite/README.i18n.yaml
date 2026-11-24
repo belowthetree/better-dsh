@@ -8,21 +8,21 @@
 /deepseek-ai-dsh-deepseek-suite:
   en: 6e2ad985ffcc219a
   zh: 5053d618856d21a4
-/deepseek-ai-dsh-deepseek-suite/overview:
-  en: 0e8000338151c237
-  zh: 9c85b46a648e01b7
 /deepseek-ai-dsh-deepseek-suite/summary:
   en: 56f33ce48bf9c5e1
-  zh: fe1fafdb56926466
+  zh: 68116f2c35292661
+/deepseek-ai-dsh-deepseek-suite/table-of-contents:
+  en: 51bc4fd7dbab3a75
+  zh: f9eec6518f31908c
 /deepseek-ai-dsh-deepseek-suite/use-this-package:
-  en: c65b9e35f54152ab
-  zh: 79501a0b08564587
+  en: d16f8d0fad9b2aa6
+  zh: e9c9603fcd8f9b29
 /deepseek-ai-dsh-deepseek-suite/understand-the-implementation:
-  en: d31774f7b4924599
-  zh: 40d8b48994ff7122
+  en: 81529a8c6226bcf6
+  zh: 3a2aa63e42a3ce27
 /deepseek-ai-dsh-deepseek-suite/further-exploration:
-  en: 2822c06a88898e9f
-  zh: 699aebb36c8344f5
+  en: 0ef7ae9ca84ec9df
+  zh: f0c421cfeb34eaa0
 /deepseek-ai-dsh-deepseek-suite/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -39,5 +39,8 @@
   en: 225edf030cea80f8
   zh: 77aa3c07c8a66f85
 /deepseek-ai-dsh-deepseek-suite/known-limitations-and-deferred-work:
-  en: 95289d1fe47211c3
-  zh: 10db1f0a99443d18
+  en: 4fbaef4f6e7cbb0e
+  zh: a4280897dd392a68
+/deepseek-ai-dsh-deepseek-suite/known-limitations-and-deferred-work/dev-note:
+  en: f965696812635434
+  zh: 47ac5742f3b87b13

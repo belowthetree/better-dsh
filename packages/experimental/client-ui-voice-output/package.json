@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-voice-output",
   "description": "Browser-side speech playback: auto-speak policy, voice selection, and the speechOutput Remote mount",
-  "version": "0.2.2-rc.4",
+  "version": "0.2.3-alpha.2",
   "publishConfig": {
     "access": "public"
   },

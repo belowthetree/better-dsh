@@ -1,6 +1,6 @@
 /** Shared fixed-Chat Conversation occurrence used by Better workbench cards. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ConversationViewsProps, WorkspaceSelectedHandler } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 
 /**
@@ -12,8 +12,14 @@ export function FixedChatConversationView(props: ConversationViewsProps) {
   return <>{props.renderSlot('conversation.session', { view: 'chat' })}</>
 }
 
+/** Injected face shared by both workbench conversation occurrences. */
+export interface EmbeddedConversationInjected {
+  /** What a Workspace picked in the blank Hero does: open that Workspace's blank Session as the main Session. */
+  readonly openWorkspace: WorkspaceSelectedHandler
+}
+
 /** Session and factory inputs shared by the two workbench conversation slots. */
-export interface EmbeddedConversationProps {
+export interface EmbeddedConversationProps extends EmbeddedConversationInjected {
   /** Bound Session identity. */
   readonly sessionId: SessionId
   /** Bound Session lifecycle source. */
@@ -32,7 +38,7 @@ export interface EmbeddedConversationProps {
  * @returns the embedded Conversation content with only its Chat View.
  */
 export function EmbeddedConversation({
-  sessionId, useSession, useConversation, useSessions, renderFactorySlot,
+  sessionId, useSession, useConversation, useSessions, renderFactorySlot, openWorkspace,
 }: EmbeddedConversationProps) {
   const session = useSession(value => value)
   const conversation = useConversation(value => value)
@@ -44,7 +50,8 @@ export function EmbeddedConversation({
   const settling = shellPhase === 'blank' && session.openState === 'loading' && summaryBlank !== true
   const hero = shellPhase === 'blank' && (session.openState === 'open' || summaryBlank === true)
   const phase = settling ? 'settling' : hero ? 'hero' : 'active'
-  return renderFactorySlot('conversation.content', { variant: 'embedded', phase, hero }, {
-    slots: { views: FixedChatConversationView },
-  })
+  return renderFactorySlot('conversation.content',
+    { variant: 'embedded', phase, hero, onWorkspaceSelected: openWorkspace }, {
+      slots: { views: FixedChatConversationView },
+    })
 }

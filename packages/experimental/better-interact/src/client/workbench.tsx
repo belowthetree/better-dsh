@@ -14,6 +14,7 @@ import { workbenchGroups } from './workbench-groups.ts'
 import type { WorkbenchPagesState } from './workbench-pages.ts'
 import css from './Workbench.module.css'
 import { EmbeddedConversation } from './embedded-conversation.tsx'
+import type { EmbeddedConversationInjected } from './embedded-conversation.tsx'
 
 /**
  * Dialog size the workbench asks the carrier for: four fifths of the work area
@@ -243,6 +244,7 @@ export function WorkbenchDialog(props: WorkbenchDialogProps) {
 export type WorkbenchConversationProps =
   & PropsRuntime<'better-interact.workbench.conversation'>
   & PropsRenderFactories
+  & InjectFace<EmbeddedConversationInjected>
 
 /**
  * Compose the shared Conversation content for the workbench's bound Session.

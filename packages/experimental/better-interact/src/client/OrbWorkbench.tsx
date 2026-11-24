@@ -11,6 +11,7 @@ import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/c
 import type { NS } from './orb-locales.ts'
 import css from './OrbWorkbench.module.css'
 import { EmbeddedConversation } from './embedded-conversation.tsx'
+import type { EmbeddedConversationInjected } from './embedded-conversation.tsx'
 
 /** Registered `shell.modal` entry id of the management workbench. */
 export const ORB_WORKBENCH_MODAL_ID = 'orb.workbench'
@@ -62,6 +63,7 @@ export function OrbWorkbench(props: OrbWorkbenchProps) {
 export type OrbWorkbenchConversationProps =
   & PropsRuntime<'orb.workbench.conversation'>
   & PropsRenderFactories
+  & InjectFace<EmbeddedConversationInjected>
 
 /** Compose the same fixed-Chat Conversation occurrence as the general workbench. */
 export function OrbWorkbenchConversation(props: OrbWorkbenchConversationProps) {

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-better-interact",
   "description": "Desktop orb form with quick management chat, output bubbles, and Workspace-paged workbenches",
-  "version": "0.2.2-rc.4",
+  "version": "0.2.3-alpha.2",
   "publishConfig": {
     "access": "public"
   },
@@ -25,18 +25,16 @@
     "./assets/*": "./lib/assets/*",
     "./locale/*.json": "./locale/*.json",
     "./src/*": "./src/*",
-    "./package.json": "./package.json",
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./package.json": "./package.json"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/client.js",
     "lib/assets",
     "lib/types/**/*.d.ts",
     "lib/types/**/*.d.ts.map",
     "lib/**/*.js.map",
-    "cordis.patch.yml",
-    "locale/*.json",
     "src"
   ],
   "license": "MIT",

@@ -3,8 +3,11 @@
 中文 | [English](README.en.md)
 
 ![Better DSH 海报：大肥鱼悬浮球常驻桌面，回答气泡在旁边升起](docs/assets/better-dsh/poster.jpg)
+
 ![大肥鱼对话气泡：输入框以无边框面板悬浮在桌面壁纸上](docs/assets/better-dsh/chat.png)
+
 ![大肥鱼工作台：左侧是会话书签，右侧是会话转录与任务状态](docs/assets/better-dsh/workspace.png)
+
 ![大肥鱼角色立绘：蓝发女仆装的小鱼人](docs/assets/better-dsh/fish.png)
 
 > 基于 DeepSeek Harness 的桌面 agent 交互形态：让 agent 常驻桌面，而不是成为一个需要造访的窗口。

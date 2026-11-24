@@ -338,6 +338,10 @@ export function apply(ctx: Context): void {
 
   ctx.effect(() => ctx.slots.inject('better-interact.workbench.conversation', () => ctx.slots.register({
     name: 'better-interact.workbench.conversation',
+    inject: () => ({
+      openWorkspace: (workspaceId: WorkspaceId, adopt: (sessionId: SessionId) => void) =>
+        navigation.openWorkspace(workspaceId, adopt),
+    }),
   }, WorkbenchConversation)), 'better-interact: workbench conversation')
 
   const surface = createSnapshotStore<SurfaceSnapshot>(ctx.surface.snapshot())

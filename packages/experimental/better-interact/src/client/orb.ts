@@ -1,6 +1,8 @@
 /** Orb chrome, quick prompt, dedicated management workbench, and their commands. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -354,6 +356,10 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   }, OrbWorkbench))
   ctx.slots.inject('orb.workbench.conversation', () => ctx.slots.register({
     name: 'orb.workbench.conversation',
+    inject: () => ({
+      openWorkspace: (workspaceId: WorkspaceId, adopt: (sessionId: SessionId) => void) =>
+        ctx.uiWorkspace.openWorkspace(workspaceId, adopt),
+    }),
   }, OrbWorkbenchConversation))
 
   ctx.effect(() => ctx.shortcuts.register({
