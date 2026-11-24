@@ -39,8 +39,9 @@
     "d021e1acc96493233ec8a9cba000e9847acded67c39d913fa893761aaf917250": 1
   },
   "apps/desktop/tests/directory-picker.spec.ts": {
-    "326597b335539db945b2e3b7c86638d40849d2077c0a5670d064e45486f4e407": 1,
-    "f085ad10d79aed4354f06c71f72760cae58e097b15c83f13a96176f27529e638": 1
+    "f085ad10d79aed4354f06c71f72760cae58e097b15c83f13a96176f27529e638": 1,
+    "fea5f35cdfac495b62e7bd366a175b01b5664c953ac2262aa9d8a1c42af6b0e0": 1,
+    "b87b1aafd7884ec57b9786f1ae385e2cd78466a77dee5f456e8035c32f61d90a": 1
   },
   "apps/desktop/tests/host-update-tasks.spec.ts": {
     "46197efe57255c9d92d64476470c89d0602c7333bf98ad75509bf43c1b357a3b": 1,
@@ -1906,5 +1907,12 @@
   },
   "website/tests/raw-markdown.spec.ts": {
     "016337c62f55ffcdfc006da693aaf9bb20c3bb49260939c0d50191117c48934e": 1
+  },
+  "packages/experimental/better-interact/tests/resource.client.spec.ts": {
+    "5f73d2b1193cad7f39b937efce841b3fd89b02c66e9a0bbed0bff75695c145b2": 1,
+    "0b3d2847cebf72e442803f3ac12bfe6ebc9287cc5910b6abe777dfe459e7c13c": 1
+  },
+  "packages/experimental/better-interact/tests/voice-section.client.spec.tsx": {
+    "f20bc9ad6e332bb8c7c8ce9a6c0b6c92d65df3f648b859ba6d2b6031154d4d39": 1
   }
 }

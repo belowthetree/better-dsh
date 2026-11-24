@@ -218,6 +218,11 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-client-ui-theme': ['lib/styles'],
   // The physical-key protocol is a public entry usable without the browser service.
   '@deepseek-ai/dsh-client-shortcuts': ['lib/protocol.js'],
+  // The Better DSH surface and speech protocol subpaths are public entries the
+  // host and browser faces import without the plugin service.
+  '@deepseek-ai/dsh-client-surface': ['lib/protocol.js'],
+  '@deepseek-ai/dsh-client-voice-capture': ['lib/protocol.js'],
+  '@deepseek-ai/dsh-client-ui-voice-output': ['lib/protocol.js'],
   // The Feishu entry skill travels with the package; the guides it indexes stay in lark-cli.
   '@deepseek-ai/dsh-feishu': ['skills'],
   // The WeCom plugin ships its entry skill; the upstream guides it indexes are downloaded at load.

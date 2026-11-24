@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek スイート",
+    "description": "DeepSeek の OCR、音声認識、音声合成、メモリ内再生のツールと、それらの音声プロバイダーを組み込みます。"
+  }
+}

@@ -57,6 +57,19 @@ function header(id: string, cwd: string | null = '/workspace'): SessionHeader {
   }
 }
 
+/** A prepared observation carrying empty projections, which resume and ownership tests hand to the path. */
+function projectedObservation(meta: SessionHeader): SessionObservation {
+  return {
+    source: 'prepared',
+    header: meta,
+    events: [],
+    cursor: -1,
+    projections: { asOfSeq: -1, values: {} },
+    retain: vi.fn(),
+    [Symbol.dispose]: vi.fn(),
+  } as unknown as SessionObservation
+}
+
 function providePersistence(ctx: Context, persistence: Record<string, unknown>): () => void {
   return ctx.provide('sessionPersistence', testSessionPersistence(ctx, persistence) as never)
 }
@@ -93,15 +106,7 @@ describe('ApiSession Agent lookup and recovery', () => {
       agent: resumed,
       dispose: () => Promise.resolve(),
     })
-    const observed = {
-      source: 'prepared',
-      header: meta,
-      events: [],
-      cursor: -1,
-      projections: { asOfSeq: -1, values: {} },
-      retain: vi.fn(),
-      [Symbol.dispose]: vi.fn(),
-    } as unknown as SessionObservation
+    const observed = projectedObservation(meta)
 
     await expect(agents.resolveObservedAgent(observed)).resolves.toEqual({ agent: resumed })
     expect(resume).toHaveBeenCalledWith(expect.objectContaining({ resumeSessionId: meta.id }))
@@ -121,15 +126,7 @@ describe('ApiSession Agent lookup and recovery', () => {
     const resumed = unpublishedAgent(ctx, meta)
     const dispose = vi.fn(() => Promise.resolve())
     vi.spyOn(ctx.agents, 'resume').mockResolvedValue({ agent: resumed, dispose })
-    const observed = {
-      source: 'prepared',
-      header: meta,
-      events: [],
-      cursor: -1,
-      projections: { asOfSeq: -1, values: {} },
-      retain: vi.fn(),
-      [Symbol.dispose]: vi.fn(),
-    } as unknown as SessionObservation
+    const observed = projectedObservation(meta)
 
     await agents.resolveObservedAgent(observed)
 

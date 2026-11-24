@@ -38,7 +38,7 @@ it('shows shortcuts, a Plan outline, and Session review steps before restoring t
   await cp(reviewBundle, installedReview, { recursive: true })
   const scopeDir = join(installedReview, 'node_modules', '@deepseek-ai')
   await mkdir(scopeDir, { recursive: true })
-  await symlink(schemastery, join(scopeDir, 'schemastery'), 'junction')
+  await symlink(schemastery, join(installedReview, 'node_modules', '@deepseek-ai/schemastery'), 'junction')
   const { scaffold, browser, page, tripwire } = await fixture([
     { dir: shortcutsBundle, enabled: true },
     { dir: installedReview, enabled: true },
