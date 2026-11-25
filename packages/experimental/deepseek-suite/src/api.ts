@@ -142,16 +142,19 @@ export interface TransportOptions {
   readonly authorization?: AccountAuthorization | undefined
 }
 
+/** The one body a request carries: a JSON value or an assembled multipart form. */
+export type RequestPayload =
+  | { readonly json: unknown }
+  | { readonly formData: FormData }
+
 /** One low-level request. */
 export interface SendOptions extends TransportOptions {
   /** Absolute API path appended to the origin. */
   readonly path: string
   /** User-facing API name used in failure messages. */
   readonly apiName: string
-  /** JSON body; ignored when `formData` is present. */
-  readonly body?: unknown
-  /** Multipart body. */
-  readonly formData?: FormData | undefined
+  /** Request body. */
+  readonly payload: RequestPayload
   /** Per-request deadline. */
   readonly timeoutMs?: number | undefined
   /** Caller cancellation. */
@@ -235,7 +238,7 @@ async function errorDetail(response: Response): Promise<{ message?: string; type
  */
 async function send(options: SendOptions): Promise<Response> {
   const {
-    fetchImpl = globalThis.fetch, baseUrl, apiKey, authorization, path, body, formData, timeoutMs, signal, apiName,
+    fetchImpl = globalThis.fetch, baseUrl, apiKey, authorization, path, payload, timeoutMs, signal, apiName,
   } = options
   if (typeof fetchImpl !== 'function') {
     throw new DeepSeekApiError(`${apiName} 失败：当前运行环境没有可用的 fetch 实现`)
@@ -248,18 +251,18 @@ async function send(options: SendOptions): Promise<Response> {
     signal: combineSignal(signal, timeoutMs, authorization?.revoked) ?? null,
     ...authorization?.kind === 'account' ? { redirect: 'error' as const } : {},
   }
-  if (formData !== undefined) {
-    init.body = formData
-  } else if (body !== undefined) {
+  if ('formData' in payload) {
+    init.body = payload.formData
+  } else {
     headers['content-type'] = 'application/json'
-    init.body = JSON.stringify(body)
+    init.body = JSON.stringify(payload.json)
   }
 
   let response: Response
   try {
     response = await fetchImpl(authorization?.endpoint ?? joinUrl(baseUrl, path), init)
   } catch (error) {
-    if (signal?.aborted === true) throw signal.reason ?? error
+    if (signal?.aborted === true) throw signal.reason
     if (authorization?.revoked?.aborted === true) {
       throw new DeepSeekApiError(`${apiName} 的 DeepSeek 登录状态已失效，请重新登录`, {
         code: 'ACCOUNT_REVOKED', cause: error,
@@ -352,9 +355,9 @@ export async function loadUploadFile(
   try {
     info = await stat(filePath)
   } catch (error) {
-    const code = isRecord(error) ? error.code : undefined
-    if (code === 'ENOENT') throw new Error(`文件不存在：${filePath}`)
-    throw new Error(`无法读取文件 ${filePath}：${String(isRecord(error) ? error.message ?? error : error)}`)
+    const failure = error as NodeJS.ErrnoException
+    if (failure.code === 'ENOENT') throw new Error(`文件不存在：${filePath}`)
+    throw new Error(`无法读取文件 ${filePath}：${failure.message}`)
   }
   if (!info.isFile()) throw new Error(`不是普通文件：${filePath}`)
   if (info.size > maxBytes) {
@@ -384,7 +387,7 @@ export async function recognizeDocument(
   const data = await postJson({
     ...transport,
     path: '/v1/tools/ocr',
-    formData: buildFormData({ purpose }, [{ field: 'file', ...file }]),
+    payload: { formData: buildFormData({ purpose }, [{ field: 'file', ...file }]) },
     apiName: 'DeepSeek OCR',
     timeoutMs,
     signal,
@@ -427,7 +430,7 @@ export async function transcribeAudio(
   const data = await postJson({
     ...transport,
     path: '/v1/tools/asr',
-    formData: buildFormData({}, [{ field: 'file', ...file }]),
+    payload: { formData: buildFormData({}, [{ field: 'file', ...file }]) },
     apiName: 'DeepSeek 语音识别',
     timeoutMs,
     signal,
@@ -463,7 +466,7 @@ export async function synthesizeSpeech(
   const response = await send({
     ...transport,
     path: '/v1/tools/tts',
-    body: { text, voice_id: voiceId, format, filter_markdown: filterMarkdown },
+    payload: { json: { text, voice_id: voiceId, format, filter_markdown: filterMarkdown } },
     apiName: 'DeepSeek 语音合成',
     timeoutMs,
     signal,

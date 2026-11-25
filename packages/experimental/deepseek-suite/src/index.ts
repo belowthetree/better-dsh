@@ -231,11 +231,10 @@ export function apply(ctx: Context, rawConfig: Config): void {
       const file = await loadFile()
       return await transcribeAudio({ ...authorized, file, timeoutMs: Math.max(config.timeoutMs, 300_000) })
     } catch (error) {
-      if (signal?.aborted === true) throw signal.reason ?? error
+      if (signal?.aborted === true) throw signal.reason
       const revoked = authorized.authorization?.revoked?.aborted === true
       const failure = error instanceof DeepSeekApiError ? error : undefined
-      if (revoked || failure?.status === 401 || failure?.code === 'ACCOUNT_REVOKED'
-        || failure?.code === 'ACCOUNT_UNAUTHORIZED') {
+      if (revoked || failure?.status === 401) {
         throw new HarnessError(ASR_LOGIN_MESSAGE, ASR_SIGN_IN_CODE, { cause: error })
       }
       throw error
@@ -276,7 +275,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
       const signal = exec.signal
       const absolute = await resolveInputPath(args.filePath, signal, exec.agent)
       const file = await loadUploadFile(absolute).catch((error: unknown) => {
-        throw new Error(`deepseek-suite: ${error instanceof Error ? error.message : String(error)}`)
+        throw new Error(`deepseek-suite: ${(error as Error).message}`)
       })
       const data = await recognizeDocument({
         ...(await transport(signal)),
