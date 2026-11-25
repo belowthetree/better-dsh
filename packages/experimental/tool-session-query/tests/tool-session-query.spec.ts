@@ -2370,7 +2370,7 @@ describe('latest reply and cross-session messages', () => {
     const target = createSession(mounted.ctx, 'message-cancelled', '/work')
     const controller = new AbortController()
     const cancellation = new Error('caller cancelled the message')
-    prompt.mockImplementationOnce(async () => {
+    prompt.mockImplementationOnce(() => {
       controller.abort(cancellation)
       throw cancellation
     })
@@ -2387,7 +2387,7 @@ describe('latest reply and cross-session messages', () => {
   it('reports a non-Error message refusal without leaking the thrown value', async () => {
     const { mounted, prompt } = await mountMessages()
     const target = createSession(mounted.ctx, 'message-untyped-refusal', '/work')
-    prompt.mockImplementationOnce(() => Promise.reject('mailbox closed'))
+    prompt.mockRejectedValueOnce('mailbox closed')
 
     const result = await mounted.call('session_send_message', {
       session_id: target.id,
@@ -2492,7 +2492,7 @@ describe('session creation', () => {
     const { mounted, create, prompt } = await mountCreate()
     const createCancellation = new Error('caller cancelled creation')
     const createController = new AbortController()
-    create.mockImplementationOnce(async () => {
+    create.mockImplementationOnce(() => {
       createController.abort(createCancellation)
       throw createCancellation
     })
@@ -2504,7 +2504,7 @@ describe('session creation', () => {
 
     const promptCancellation = new Error('caller cancelled the first message')
     const promptController = new AbortController()
-    prompt.mockImplementationOnce(async () => {
+    prompt.mockImplementationOnce(() => {
       promptController.abort(promptCancellation)
       throw promptCancellation
     })
@@ -2521,13 +2521,13 @@ describe('session creation', () => {
 
   it('reports non-Error creation and first-message failures as unknown', async () => {
     const { mounted, create, prompt } = await mountCreate()
-    create.mockImplementationOnce(() => Promise.reject('controller unavailable'))
+    create.mockRejectedValueOnce('controller unavailable')
     const refused = await mounted.call('session_create', {})
 
     expect(errorCode(refused)).toBe('SESSION_CREATE_TOOL_REFUSED')
     expect(text(refused)).toBe('Error: session creation was refused: unknown failure')
 
-    prompt.mockImplementationOnce(() => Promise.reject('delivery closed'))
+    prompt.mockRejectedValueOnce('delivery closed')
     const undelivered = await mounted.call('session_create', { message: 'hello' })
 
     expect(errorCode(undelivered)).toBe('SESSION_CREATE_TOOL_REFUSED')
