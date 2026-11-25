@@ -5,6 +5,22 @@ const responses = [
   { token: 'PWSH_FAIL', code: 7 },
 ]
 
+const START_TAG = '__DSH_PERSISTENT_PWSH_START_'
+const END_TAG = '__DSH_PERSISTENT_PWSH_END_'
+
+/**
+ * Recover one command marker from the submitted wrapper. The wrapper emits each
+ * marker as two concatenated quoted literals so its interactive echo can never
+ * contain one; the frame rebuilds the same pair.
+ * @param text - the submitted wrapper source.
+ * @param tag - the marker's fixed prefix.
+ * @returns the contiguous marker, or undefined when the wrapper is not the tool's.
+ */
+function markerOf(text, tag) {
+  const tail = new RegExp(`'${tag}' \\+ '([^']*)'`).exec(text)?.[1]
+  return tail === undefined ? undefined : `${tag}${tail}`
+}
+
 class SnapshotSession {
   motd = 'dsh> '
   statusValue = { kind: 'running' }
@@ -16,8 +32,8 @@ class SnapshotSession {
     if (!response || !request.submit || !request.text.includes(`[Console]::Out.Write('  ${response.token}  ')`)) {
       throw new Error('unexpected padded-completion snapshot command')
     }
-    const start = /__DSH_PERSISTENT_PWSH_START_[a-f0-9-]+__/.exec(request.text)?.[0]
-    const end = /__DSH_PERSISTENT_PWSH_END_[a-f0-9-]+:/.exec(request.text)?.[0]
+    const start = markerOf(request.text, START_TAG)
+    const end = markerOf(request.text, END_TAG)
     if (!start || !end) throw new Error('padded-completion snapshot requires the actual command markers')
     const viewport = `${request.text}\r\n${start}\r\n  ${response.token}  ${end}${response.code}  \r\n${this.motd}`
     this.scrollback += viewport

@@ -47,6 +47,12 @@ interface RetainedOutput {
 interface CapturedOutput {
   text: string
   incomplete: boolean
+  /**
+   * Whether the executed wrapper announced itself. Without that marker the
+   * retained text holds only the interactive echo of the submitted wrapper, so
+   * no command output exists yet.
+   */
+  started: boolean
   exitCode?: number
 }
 
@@ -62,12 +68,30 @@ function maybeTruncate(content: string, maxOutputChars: number, incomplete = fal
     : truncateWithoutSplittingSurrogatePair(content, maxOutputChars) + TRUNCATED_MESSAGE
 }
 
+const START_TAG = '__DSH_PERSISTENT_PWSH_START_'
+const END_TAG = '__DSH_PERSISTENT_PWSH_END_'
+
 function markers(): CommandMarkers {
   const nonce = randomUUID()
   return {
-    start: `__DSH_PERSISTENT_PWSH_START_${nonce}__`,
-    end: `__DSH_PERSISTENT_PWSH_END_${nonce}:`,
+    start: `${START_TAG}${nonce}__`,
+    end: `${END_TAG}${nonce}:`,
   }
+}
+
+/**
+ * Emit one marker as two concatenated quoted literals.
+ *
+ * The interactive shell echoes the submitted wrapper source, so a marker kept
+ * in a single literal would also appear in the transcript before the wrapper
+ * runs. Splitting it leaves every contiguous marker occurrence attributable to
+ * the executed wrapper.
+ * @param marker - the contiguous marker the extraction searches for.
+ * @param tag - the marker's fixed prefix, emitted as the first literal.
+ * @returns the PowerShell expression that prints `marker`.
+ */
+function markerExpression(marker: string, tag: string): string {
+  return `'${tag}' + '${marker.slice(tag.length)}'`
 }
 
 /**
@@ -91,39 +115,32 @@ function quoteForPwsh(value: string): string {
 
 function wrapCommand(command: string, marker: CommandMarkers): string {
   // Keep the wrapper on one physical line: PSReadLine renders the echoed
-  // input, and a wrapped line would split the echo the extraction strips.
-  // The echoed END nonce can never fabricate completion because the status
-  // regex needs digits immediately after it and the echo continues with
-  // quote characters.
+  // input, and a wrapped line would split the echo the extraction ignores.
+  // Both markers go out through markerExpression, so the echo cannot contain
+  // either of them, and the status regex still needs digits right after the
+  // end marker, which only the executed wrapper prints.
   const body = quoteForPwsh(command)
-  return `Write-Output '${marker.start}'; $LASTEXITCODE = $null; $__s = 1; try { Invoke-Expression "${body}"; $__ok = $? } catch { $__ok = $false }; if ($null -ne $LASTEXITCODE) { $__s = [int]$LASTEXITCODE } else { $__s = if ($__ok) { 0 } else { 1 } }; Write-Output ('${marker.end}' + $__s)`
+  return `Write-Output (${markerExpression(marker.start, START_TAG)}); $LASTEXITCODE = $null; $__s = 1; try { Invoke-Expression "${body}"; $__ok = $? } catch { $__ok = $false }; if ($null -ne $LASTEXITCODE) { $__s = [int]$LASTEXITCODE } else { $__s = if ($__ok) { 0 } else { 1 } }; Write-Output (${markerExpression(marker.end, END_TAG)} + $__s)`
 }
 
 function trimTrailingNewline(text: string): string {
   return text.replace(/\r?\n$/, '')
 }
 
-function commandOutput(
-  snapshot: RetainedOutput,
-  marker: CommandMarkers,
-  wrapper: string,
-): CapturedOutput | undefined {
+function commandOutput(snapshot: RetainedOutput, marker: CommandMarkers): CapturedOutput | undefined {
   const text = snapshot.text
   const end = text.lastIndexOf(marker.end)
   // Terminal padding belongs to the status line, not to captured command output.
   const status = /^(\d+) *\r?\n/.exec(text.slice(end + marker.end.length))?.[1]
   if (status === undefined) return undefined
+  // The echo carries neither marker, so the last occurrence before the status
+  // is the line the executing wrapper printed ahead of the command body.
   const startMarker = text.lastIndexOf(marker.start, end)
   const start = startMarker < 0 ? 0 : startMarker + marker.start.length
-  let captured = text.slice(start, end)
-  // The PSReadLine echo carries the wrapper source (including both marker
-  // nonces) before the real markers; anchor on the real markers excludes it,
-  // and stripping the wrapper covers the rare case where the real START
-  // scrolled out and extraction fell back to the echoed copy.
-  captured = captured.replaceAll(wrapper, '')
   return {
-    text: captured.replace(/^\r?\n/, '').replace(/\r?\n$/, ''),
+    text: text.slice(start, end).replace(/^\r?\n/, '').replace(/\r?\n$/, ''),
     incomplete: startMarker < 0,
+    started: true,
     exitCode: Number(status),
   }
 }
@@ -131,27 +148,33 @@ function commandOutput(
 function partialOutput(
   snapshot: RetainedOutput,
   marker: CommandMarkers,
-  wrapper: string,
   fallback: string,
-  fallbackTruncated = false,
 ): CapturedOutput {
   const startMarker = snapshot.text.lastIndexOf(marker.start)
   if (startMarker >= 0) {
     return {
       text: trimTrailingNewline(snapshot.text.slice(startMarker + marker.start.length).replace(/^\r?\n/, '')),
       incomplete: false,
+      started: true,
     }
   }
   const fallbackStart = fallback.lastIndexOf(marker.start)
-  const afterStart = fallbackStart < 0
-    ? fallback
-    : fallback.slice(fallbackStart + marker.start.length).replace(/^\r?\n/, '')
-  const fallbackEnd = afterStart.lastIndexOf(marker.end)
-  const beforeEnd = fallbackEnd < 0 ? afterStart : afterStart.slice(0, fallbackEnd)
-  return {
-    text: trimTrailingNewline(beforeEnd.replaceAll(wrapper, '')),
-    incomplete: fallbackTruncated || fallbackStart < 0,
+  if (fallbackStart >= 0) {
+    const afterStart = fallback.slice(fallbackStart + marker.start.length).replace(/^\r?\n/, '')
+    const fallbackEnd = afterStart.lastIndexOf(marker.end)
+    return {
+      text: trimTrailingNewline(fallbackEnd < 0 ? afterStart : afterStart.slice(0, fallbackEnd)),
+      incomplete: false,
+      started: true,
+    }
   }
+  // Neither buffer holds a marker, so the retained text cannot be attributed to
+  // this command. A truncated transcript dropped its oldest lines first —
+  // including the echo and the marker that followed it — so its tail still
+  // carries output; an intact transcript holds only the interactive echo.
+  return snapshot.truncated
+    ? { text: trimTrailingNewline(snapshot.text), incomplete: true, started: false }
+    : { text: '', incomplete: false, started: false }
 }
 
 async function pause(): Promise<void> {
@@ -227,16 +250,14 @@ async function respondToSessionExit(
   id: TerminalSessionId,
   status: { exitCode: number | null; signal: NodeJS.Signals | null },
   marker: CommandMarkers,
-  wrapped: string,
   fallback: string,
-  fallbackTruncated: boolean,
   config: ResolvedConfig,
 ): Promise<string> {
   const snapshot = retainedScrollback(ctx, owner, id)
   await shells.reset(owner, 'persistent pwsh shell exited')
   return [
     renderShellExitStatus(
-      renderCaptured(partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated), config.maxOutputChars),
+      renderCaptured(partialOutput(snapshot, marker, fallback), config.maxOutputChars),
       status.exitCode,
       status.signal,
     ),
@@ -328,7 +349,6 @@ async function executeCommand(
   const wrapped = wrapCommand(command, marker)
   let first = true
   let fallback = ''
-  let fallbackTruncated = false
 
   while (true) {
     // The shell may flip to exited between iterations (a fast `exit` can
@@ -337,9 +357,7 @@ async function executeCommand(
     // re-observing status before the next send closes that gap.
     const status = ctx.terminals.list(owner).find(session => session.sessionId === id)?.status
     if (status?.kind === 'exited') {
-      return await respondToSessionExit(
-        ctx, shells, owner, id, status, marker, wrapped, fallback, fallbackTruncated, config,
-      )
+      return await respondToSessionExit(ctx, shells, owner, id, status, marker, fallback, config)
     }
     let operation
     let result
@@ -357,15 +375,11 @@ async function executeCommand(
     }
     const incremental = operation.readOutput()
     fallback = incremental.delta.length > 0 ? fallback + incremental.delta : result.viewport
-    fallbackTruncated ||= incremental.truncated || result.truncated
     const latest = ctx.terminals.read(owner, id, { offset: 0, count: SCROLLBACK_PAGE_LINES })
     const timedOut = timeoutOf(commandDeadline.signal, TIMEOUT_CODE)
     if (timedOut !== undefined) {
       const snapshot = retainedScrollback(ctx, owner, id, latest)
-      const partial = renderCaptured(
-        partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated),
-        config.maxOutputChars,
-      )
+      const partial = renderCaptured(partialOutput(snapshot, marker, fallback), config.maxOutputChars)
       await shells.reset(owner, 'persistent pwsh command timed out')
       return [
         // TODO: Report a timeout only; this signal does not establish an OOM.
@@ -380,24 +394,23 @@ async function executeCommand(
       return ''
     }
     if (latest.text.includes(marker.end)) {
-      const complete = commandOutput(retainedScrollback(ctx, owner, id, latest), marker, wrapped)
+      const complete = commandOutput(retainedScrollback(ctx, owner, id, latest), marker)
       if (complete !== undefined) return renderCaptured(complete, config.maxOutputChars)
     }
     if (result.sessionStatus.kind === 'exited') {
-      return await respondToSessionExit(
-        ctx, shells, owner, id, result.sessionStatus, marker, wrapped, fallback, fallbackTruncated, config,
-      )
+      return await respondToSessionExit(ctx, shells, owner, id, result.sessionStatus, marker, fallback, config)
     }
     // The shell reads stdin again (its prompt, or a foreground child's own
     // read) without having printed the end marker — an interrupt, a replaced
     // shell, or an interactive child. Return what was captured instead of
-    // spinning until the command deadline.
+    // spinning until the command deadline, but only once the wrapper announced
+    // itself: readiness also settles while the shell is still rendering the
+    // submitted wrapper, and returning then would report that echo instead of
+    // the command's output.
     if (result.waitReason === 'stdin_read') {
       const snapshot = retainedScrollback(ctx, owner, id, latest)
-      return renderCaptured(
-        partialOutput(snapshot, marker, wrapped, fallback, fallbackTruncated),
-        config.maxOutputChars,
-      )
+      const partial = partialOutput(snapshot, marker, fallback)
+      if (partial.started) return renderCaptured(partial, config.maxOutputChars)
     }
     await pause()
   }

@@ -109,9 +109,25 @@ type StubMode =
   | 'with-echo'
   | 'exit-after-send'
   | 'prompt-collision'
+  | 'echo-then-complete'
+  | 'echo-then-hang'
+  | 'hang'
 
-const START_PATTERN = /__DSH_PERSISTENT_PWSH_START_[^_]+(?:-[^_]+)*__/
-const END_PATTERN = /__DSH_PERSISTENT_PWSH_END_[^:]+:/
+const START_TAG = '__DSH_PERSISTENT_PWSH_START_'
+const END_TAG = '__DSH_PERSISTENT_PWSH_END_'
+
+/**
+ * Recover one marker from the wrapper the tool submitted. The wrapper emits
+ * each marker as two concatenated quoted literals, so its interactive echo can
+ * never contain a marker; the stub rebuilds them the same way.
+ * @param sent - the text the tool submitted.
+ * @param tag - the marker's fixed prefix.
+ * @returns the contiguous marker, or undefined when the text carries no marker.
+ */
+function markerOf(sent: string, tag: string): string | undefined {
+  const tail = new RegExp(`'${tag}' \\+ '([^']*)'`).exec(sent)?.[1]
+  return tail === undefined ? undefined : `${tag}${tail}`
+}
 
 class StubTerminalSession implements TerminalBackendSession {
   readonly motd = 'stub> '
@@ -138,16 +154,38 @@ class StubTerminalSession implements TerminalBackendSession {
     if (this.mode === 'wait-for-abort' || this.mode === 'end-on-abort') {
       const done = new Promise<ReturnType<StubTerminalSession['result']>>((resolve) => {
         request.signal?.addEventListener('abort', () => {
-          const start = START_PATTERN.exec(request.text)?.[0]
-          const end = END_PATTERN.exec(request.text)?.[0]
+          const start = markerOf(request.text, START_TAG)
+          const end = markerOf(request.text, END_TAG)
           const output = this.mode === 'end-on-abort'
             ? `${start ?? ''}\ninterrupted\n${end ?? ''}130\n${this.motd}`
-            : 'partial output'
+            : `${start ?? ''}\npartial output`
           this.scrollback += output
           resolve(this.result(output, 'stdin_read'))
         }, { once: true })
       })
       return this.operation(done)
+    }
+    if (this.mode === 'hang') {
+      // Nothing is rendered: the test pre-seeds scrollback that already lost the
+      // current command's marker.
+      const done = new Promise<ReturnType<StubTerminalSession['result']>>((resolve) => {
+        request.signal?.addEventListener('abort', () => {
+          resolve(this.result('', 'timeout'))
+        }, { once: true })
+      })
+      return this.operation(done)
+    }
+    if (this.mode === 'echo-then-hang') {
+      // The readiness probe settled while the line editor was still rendering
+      // the submitted wrapper; the echo is all the transcript ever holds.
+      const echo = request.text
+      this.scrollback += `${echo}\n`
+      const done = new Promise<ReturnType<StubTerminalSession['result']>>((resolve) => {
+        request.signal?.addEventListener('abort', () => {
+          resolve(this.result(echo, 'timeout'))
+        }, { once: true })
+      })
+      return this.operation(done, echo)
     }
     if (this.mode === 'idle-then-normal') {
       this.mode = 'normal'
@@ -156,7 +194,7 @@ class StubTerminalSession implements TerminalBackendSession {
     }
     if (this.mode === 'prompt-after-idle') {
       if (request.text.length > 0) {
-        const start = START_PATTERN.exec(request.text)?.[0]
+        const start = markerOf(request.text, START_TAG)
         const output = `${start ?? ''}\npartial syntax output\n`
         this.scrollback += output
         return this.operation(Promise.resolve(this.result(output, 'inferred_idle')))
@@ -166,18 +204,30 @@ class StubTerminalSession implements TerminalBackendSession {
       return this.operation(Promise.resolve(this.result(output, 'stdin_read')))
     }
     if (this.mode === 'prompt-only' || this.mode === 'prompt-crlf') {
+      // The wrapper announced itself, then the shell rejected the line and read
+      // stdin again without printing the end marker.
       const newline = this.mode === 'prompt-crlf' ? '\r\n' : '\n'
-      const output = `pwsh: syntax error${newline}${this.motd}${newline}`
+      const output = `${markerOf(request.text, START_TAG) ?? ''}\npwsh: syntax error${newline}${this.motd}${newline}`
       this.scrollback += output
       return this.operation(Promise.resolve(this.result(output, 'stdin_read')))
     }
+    if (this.mode === 'echo-then-complete') {
+      // A readiness probe can settle while the shell is still rendering the
+      // submitted wrapper, before the wrapper printed anything. The echo is the
+      // only content at that point, and it carries no marker.
+      const echo = request.text.replace('$__s = 1;', '$__s =\n1;')
+      this.scrollback += `${echo}\n`
+      this.mode = 'normal'
+      this.pendingText = request.text
+      return this.operation(Promise.resolve(this.result(echo, 'stdin_read')), echo)
+    }
     const sent = request.text.length > 0 ? request.text : this.pendingText
     this.pendingText = ''
-    const start = START_PATTERN.exec(sent)?.[0]
-    const end = END_PATTERN.exec(sent)?.[0]
+    const start = markerOf(sent, START_TAG)
+    const end = markerOf(sent, END_TAG)
     if (this.mode === 'with-echo') {
       // The PSReadLine echo renders the submitted wrapper before the real
-      // markers; the tool must strip it from the captured result.
+      // markers; the tool must exclude it from the captured result.
       const output = `${sent}\n${start ?? ''}\nhello from stub\n${end ?? ''}0\n${this.motd}`
       this.scrollback += output
       return this.operation(Promise.resolve(this.result(output, 'stdin_read')))
@@ -366,7 +416,7 @@ describe('tool-pwsh-persistent', () => {
     expect(ctx.tools.get('pwsh')).toBeUndefined()
   })
 
-  it('strips the echoed wrapper from captured output', async () => {
+  it('excludes the echoed wrapper from captured output', async () => {
     const { ctx, owner, stub } = await setup({ backendType: 'stub' })
     await call(ctx, owner, 'warm up')
     stub.sessions[0]!.mode = 'with-echo'
@@ -375,6 +425,44 @@ describe('tool-pwsh-persistent', () => {
     expect(result).not.toContain('__DSH_PERSISTENT_PWSH_START_')
     expect(result).not.toContain('__DSH_PERSISTENT_PWSH_END_')
     expect(result).not.toContain('Invoke-Expression')
+  })
+
+  it('keeps polling when a send settles before the wrapper announces itself', async () => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub' })
+    await call(ctx, owner, 'warm up')
+    const session = stub.sessions[0]!
+    session.mode = 'echo-then-complete'
+
+    const result = text(await call(ctx, owner, 'Write-Output hi'))
+    expect(result).toBe('hello from stub')
+    expect(result).not.toContain('LASTEXITCODE')
+    // The premature settle costs one recovery send instead of a wrong result.
+    expect(session.sends).toBe(3)
+  })
+
+  it('reports no output instead of the echo when a timeout precedes execution', async () => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', timeoutMs: 10 })
+    await call(ctx, owner, 'warm up')
+    stub.sessions[0]!.mode = 'echo-then-hang'
+
+    const result = text(await call(ctx, owner, 'Write-Output hi'))
+    expect(result).toContain('timed out')
+    expect(result).toContain('next pwsh call starts from the workspace')
+    expect(result).not.toContain('LASTEXITCODE')
+    expect(result).not.toContain('Invoke-Expression')
+  })
+
+  it('reports the retained tail when the transcript dropped the marker', async () => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub', timeoutMs: 10 })
+    await call(ctx, owner, 'warm up')
+    const session = stub.sessions[0]!
+    session.mode = 'hang'
+    session.scrollback = 'older output\n'
+    session.historyTruncated = true
+
+    const result = text(await call(ctx, owner, 'Write-Output hi'))
+    expect(result).toContain('beginning of this command output was dropped')
+    expect(result).toContain('older output')
   })
 
   it("preserves command output that equals the backend's prompt text", async () => {
