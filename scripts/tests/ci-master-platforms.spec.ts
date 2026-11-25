@@ -37,7 +37,17 @@ function commands(job: Job): string[] {
 
 // These boolean/string cases share Actions and JavaScript semantics. GitHub
 // supplies status functions; this probe is not a general Actions interpreter.
-function evaluateCondition(expression: string, cancelled: boolean, results: string[], event = 'pull_request', ref = ''): boolean {
+// The aggregate condition names each need explicitly, so the probe exposes the
+// needs object as well as the flattened result list.
+function evaluateCondition(
+  expression: string,
+  cancelled: boolean,
+  results: string[],
+  event = 'pull_request',
+  ref = '',
+  needs: Record<string, { result: string }> = {},
+  repository = 'deepseek-ai/deepseek-harness',
+): boolean {
   const source = expression.trim().replace(/^[$][{][{]|[}][}]$/g, '')
     .replaceAll('needs.*.result', 'results')
   return runInNewContext(source, {
@@ -45,7 +55,8 @@ function evaluateCondition(expression: string, cancelled: boolean, results: stri
     always: () => true,
     contains: (values: string[], value: string) => values.includes(value),
     results,
-    github: { event_name: event, ref },
+    needs,
+    github: { event_name: event, ref, repository },
   }, { timeout: 1000 }) as boolean
 }
 
@@ -64,7 +75,10 @@ describe('master-only platform scheduling', () => {
       expect(evaluateCondition(condition, true, results)).toBe(false)
       expect(evaluateCondition(condition, false, results, 'push')).toBe(false)
       const failureStep = aggregate.steps!.find(step => step.name === 'Fail if any needed job did not succeed')!
-      expect(evaluateCondition(failureStep.if!, false, results)).toBe(result !== 'success')
+      // The aggregate names every need, so the probe builds the same object and
+      // assigns the varied result to the first listed need.
+      const needs = Object.fromEntries(aggregate.needs!.map((name, index) => [name, { result: index === 0 ? result : 'success' }]))
+      expect(evaluateCondition(failureStep.if!, false, results, 'pull_request', '', needs)).toBe(result !== 'success')
       expect(failureStep.run).toContain('exit 1')
     },
   )
