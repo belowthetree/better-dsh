@@ -196,6 +196,8 @@ const claudeCodeTestingAliases = {
 const liveshareRemoteBuild = fileURLToPath(new URL('./packages/experimental/liveshare/lib/typert.remote-client.js', import.meta.url))
 const chatImportRemoteBuild = fileURLToPath(new URL('./packages/experimental/deepseek-chat-import/lib/typert.remote-client.js', import.meta.url))
 const hmrRemoteBuild = fileURLToPath(new URL('./packages/client/hmr/lib/typert.remote-client.js', import.meta.url))
+const speechRemoteBuild = fileURLToPath(new URL('./packages/experimental/api-speech-to-text/lib/typert.remote-client.js', import.meta.url))
+const speechOutputRemoteBuild = fileURLToPath(new URL('./packages/experimental/api-text-to-speech/lib/typert.remote-client.js', import.meta.url))
 const generatedRemoteAliases = {
   ...existsSync(hmrRemoteBuild) ? {} : {
     '@deepseek-ai/dsh-client-hmr/remote': fileURLToPath(new URL('./packages/client/hmr/tests/generated-remote-stub.ts', import.meta.url)),
@@ -205,6 +207,12 @@ const generatedRemoteAliases = {
   },
   ...existsSync(chatImportRemoteBuild) ? {} : {
     '@deepseek-ai/dsh-deepseek-chat-import/remote': fileURLToPath(new URL('./packages/experimental/deepseek-chat-import/tests/generated-remote-stub.ts', import.meta.url)),
+  },
+  ...existsSync(speechRemoteBuild) ? {} : {
+    '@deepseek-ai/dsh-experimental-api-speech-to-text/remote': fileURLToPath(new URL('./packages/experimental/api-speech-to-text/tests/generated-remote-stub.ts', import.meta.url)),
+  },
+  ...existsSync(speechOutputRemoteBuild) ? {} : {
+    '@deepseek-ai/dsh-api-text-to-speech/remote': fileURLToPath(new URL('./packages/experimental/api-text-to-speech/tests/generated-remote-stub.ts', import.meta.url)),
   },
 }
 const testingAliases = { ...claudeCodeTestingAliases, ...generatedRemoteAliases }
