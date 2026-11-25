@@ -644,6 +644,54 @@ describe('capture observation', () => {
     await settle()
     expect(b.speech.synthesize).not.toHaveBeenCalled()
   })
+
+  it('takes no capture registration after disposal', () => {
+    const b = fixture()
+    b.service.dispose()
+    const detach = b.service.observeCapture(captureFixture('idle').source)
+    expect(detach).toBeTypeOf('function')
+    detach()
+  })
+
+  it('marks voice turns only while the current capture registration watches', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(3_000_000)
+    const bench = sessionFixture()
+    const b = fixture()
+    await settle()
+    b.service.setPolicy('voice')
+    const { events } = follow(b.service, bench)
+    const first = captureFixture('idle')
+    const second = captureFixture('idle')
+    const detachFirst = b.service.observeCapture(first.source)
+    const detachSecond = b.service.observeCapture(second.source)
+
+    // A superseded registration's disposer leaves the newer watch in place.
+    detachFirst()
+    second.emit('transcribing')
+    await settle()
+    second.emit('idle')
+    await settle()
+    events.append(turnStart(1, 1))
+    events.append(userMessage(2))
+    events.append(assistantMessage(3, 1, 'marked by the current capture'))
+    await settle()
+    expect(requestOf(b.speech, 0).text).toBe('marked by the current capture')
+    b.audio.clips[0]!.ended()
+    await settle()
+
+    // The owning registration's disposer ends the watch, so a later capture marks nothing.
+    detachSecond()
+    second.emit('transcribing')
+    await settle()
+    second.emit('idle')
+    await settle()
+    events.append(turnStart(4, 2))
+    events.append(userMessage(5))
+    events.append(assistantMessage(6, 2, 'unmarked after detach'))
+    await settle()
+    expect(b.speech.synthesize).toHaveBeenCalledOnce()
+  })
 })
 
 describe('lifecycle', () => {

@@ -33,6 +33,11 @@ describe('formatOcrResult', () => {
     expect(text).toContain('（没有识别出文本。）')
   })
 
+  it('numbers a page that carries no position and leaves its text empty', () => {
+    const text = formatOcrResult({ pages: [{ finish_reason: 'stop' }] })
+    expect(text).toBe('文件：(未命名)（purpose: text_recognition，共 1 页）\n\n--- 第 1 页 ---\n')
+  })
+
   it('honors the output budget', () => {
     const pages = Array.from({ length: 5 }, (_, index) => ({ index, text: 'x'.repeat(50) }))
     const text = formatOcrResult({ pages }, { maxOutputChars: 80 })

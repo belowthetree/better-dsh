@@ -363,6 +363,17 @@ describe('SessionDeleteConfirmDialog', () => {
     expect(settleSessionDelete).toHaveBeenCalledOnce()
     expect(deleteSession).toHaveBeenCalledOnce()
   })
+
+  it('reports a non-Error rejection as its text and keeps the dialog open', async () => {
+    const deleteSession = vi.fn<SessionDeleteConfirmInjected['deleteSession']>()
+      .mockRejectedValueOnce('denied')
+    const { settleSessionDelete, ask } = deleteDialog(deleteSession)
+    ask()
+    fireEvent.click(screen.getByRole('button', { name: '永久删除' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('denied') })
+    expect(settleSessionDelete).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: '永久删除此会话？' })).toBeTruthy()
+  })
 })
 
 

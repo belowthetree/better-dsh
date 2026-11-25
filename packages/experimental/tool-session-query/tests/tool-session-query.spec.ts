@@ -33,7 +33,7 @@ import SessionQueryEngine, {
   type SessionTitleObservationResult,
 } from '@deepseek-ai/dsh-session-query'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { TOOL_ABORTED, type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { Config as ToolSessionQueryConfig } from '@deepseek-ai/dsh-tool-session-query'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import { MAX_LATEST_REPLY_CHARS } from '../src/reply.ts'
@@ -2232,6 +2232,31 @@ describe('latest reply and cross-session messages', () => {
     expect(JSON.parse(text(replaced))).toMatchObject({ text: null, seq: null })
   })
 
+  it('selects only text blocks from an assistant message that also carries reasoning', async () => {
+    const mounted = await mount()
+    const target = createSession(mounted.ctx, 'reply-mixed-blocks', '/work')
+    target.append(
+      'assistant/message',
+      {
+        stream: [],
+        turn: 1,
+        step: 1,
+        message: createMessage({
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'internal deliberation' },
+            { type: 'text', text: 'the visible answer' },
+          ],
+          source: { kind: 'model', ...{ provider: 'test', model: 'test' } },
+        }),
+      },
+      { surfaceOp: 'append' },
+    )
+
+    const result = await mounted.call('session_latest_reply', { session_id: target.id })
+    expect(JSON.parse(text(result))).toMatchObject({ seq: 0, text: 'the visible answer' })
+  })
+
   it('bounds a long reply and marks it truncated', async () => {
     const mounted = await mount()
     const target = createSession(mounted.ctx, 'reply-long', '/work')
@@ -2265,6 +2290,10 @@ describe('latest reply and cross-session messages', () => {
     const { mounted } = await mountMessages()
     expect(mounted.ctx.tools.get('session_send_message')).toBeDefined()
     expect(mounted.ctx.tools.get('session_send_message')?.isConcurrencySafe?.({})).toBe(false)
+    expect(mounted.ctx.tools.get('session_send_message')?.isConcurrencySafe?.({
+      session_id: 'other',
+      message: 'x',
+    })).toBe(false)
     expect(mounted.ctx.tools.get('session_send_message')?.presentCall?.({ session_id: 'other', message: 'x' }))
       .toEqual({ card: 'generic', kind: 'other', title: 'Send message to other', rawInput: { session_id: 'other' } })
     const assembly = await mounted.ctx.systemPrompt.assemble()
@@ -2334,6 +2363,39 @@ describe('latest reply and cross-session messages', () => {
     })
     expect(errorCode(result)).toBe('SESSION_MESSAGE_TOOL_REFUSED')
     expect(text(result)).toContain('session is archived')
+  })
+
+  it('keeps caller cancellation ahead of a message refusal', async () => {
+    const { mounted, prompt } = await mountMessages()
+    const target = createSession(mounted.ctx, 'message-cancelled', '/work')
+    const controller = new AbortController()
+    const cancellation = new Error('caller cancelled the message')
+    prompt.mockImplementationOnce(async () => {
+      controller.abort(cancellation)
+      throw cancellation
+    })
+
+    const result = await mounted.call('session_send_message', {
+      session_id: target.id,
+      message: 'cancelled',
+    }, { signal: controller.signal })
+
+    expect(result.error?.info).toEqual({ name: 'AbortError', code: TOOL_ABORTED })
+    expect(text(result)).toBe('Error: caller cancelled the message')
+  })
+
+  it('reports a non-Error message refusal without leaking the thrown value', async () => {
+    const { mounted, prompt } = await mountMessages()
+    const target = createSession(mounted.ctx, 'message-untyped-refusal', '/work')
+    prompt.mockImplementationOnce(() => Promise.reject('mailbox closed'))
+
+    const result = await mounted.call('session_send_message', {
+      session_id: target.id,
+      message: 'refused',
+    })
+
+    expect(errorCode(result)).toBe('SESSION_MESSAGE_TOOL_REFUSED')
+    expect(text(result)).toBe('Error: session message was not accepted: unknown failure')
   })
 })
 
@@ -2424,6 +2486,70 @@ describe('session creation', () => {
     expect(errorCode(undelivered)).toBe('SESSION_CREATE_TOOL_REFUSED')
     expect(text(undelivered)).toContain('created-session')
     expect(text(undelivered)).toContain('target archived')
+  })
+
+  it('keeps caller cancellation ahead of creation and first-message refusals', async () => {
+    const { mounted, create, prompt } = await mountCreate()
+    const createCancellation = new Error('caller cancelled creation')
+    const createController = new AbortController()
+    create.mockImplementationOnce(async () => {
+      createController.abort(createCancellation)
+      throw createCancellation
+    })
+
+    const refused = await mounted.call('session_create', {}, { signal: createController.signal })
+    expect(refused.error?.info).toEqual({ name: 'AbortError', code: TOOL_ABORTED })
+    expect(text(refused)).toBe('Error: caller cancelled creation')
+    expect(prompt).not.toHaveBeenCalled()
+
+    const promptCancellation = new Error('caller cancelled the first message')
+    const promptController = new AbortController()
+    prompt.mockImplementationOnce(async () => {
+      promptController.abort(promptCancellation)
+      throw promptCancellation
+    })
+
+    const undelivered = await mounted.call(
+      'session_create',
+      { message: 'hello' },
+      { signal: promptController.signal },
+    )
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(undelivered.error?.info).toEqual({ name: 'AbortError', code: TOOL_ABORTED })
+    expect(text(undelivered)).toBe('Error: caller cancelled the first message')
+  })
+
+  it('reports non-Error creation and first-message failures as unknown', async () => {
+    const { mounted, create, prompt } = await mountCreate()
+    create.mockImplementationOnce(() => Promise.reject('controller unavailable'))
+    const refused = await mounted.call('session_create', {})
+
+    expect(errorCode(refused)).toBe('SESSION_CREATE_TOOL_REFUSED')
+    expect(text(refused)).toBe('Error: session creation was refused: unknown failure')
+
+    prompt.mockImplementationOnce(() => Promise.reject('delivery closed'))
+    const undelivered = await mounted.call('session_create', { message: 'hello' })
+
+    expect(errorCode(undelivered)).toBe('SESSION_CREATE_TOOL_REFUSED')
+    expect(text(undelivered))
+      .toBe('Error: session created-session was created but its first message was not accepted: unknown failure')
+  })
+
+  it('returns the preset the controller assigns to the new session', async () => {
+    const { mounted, create } = await mountCreate()
+    create.mockResolvedValueOnce({
+      sessionId: brandString<SessionId>('preset-session'),
+      agentPreset: 'reviewer',
+    })
+
+    const result = await mounted.call('session_create', {})
+
+    expect(result.isError).toBe(false)
+    expect(JSON.parse(text(result))).toEqual({
+      session_id: 'preset-session',
+      agent_preset: 'reviewer',
+      prompted: false,
+    })
   })
 
   it('requires a caller that owns a workspace directory', async () => {

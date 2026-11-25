@@ -135,6 +135,23 @@ describe('ApiSession Agent lookup and recovery', () => {
     await expect(agents.disposeAgent(meta.id)).resolves.toBe(false)
   })
 
+  it('keeps ownership of a resumed Agent whose stop failed so deletion can retry', async () => {
+    const { ctx, agents } = await harness()
+    const meta = header('failed-dispose')
+    const resumed = unpublishedAgent(ctx, meta)
+    const dispose = vi.fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('teardown failed'))
+      .mockResolvedValueOnce(undefined)
+    vi.spyOn(ctx.agents, 'resume').mockResolvedValue({ agent: resumed, dispose })
+
+    await agents.resolveObservedAgent(projectedObservation(meta))
+
+    await expect(agents.disposeAgent(meta.id)).rejects.toThrow('teardown failed')
+    await expect(agents.disposeAgent(meta.id)).resolves.toBe(true)
+    expect(dispose).toHaveBeenCalledTimes(2)
+    await expect(agents.disposeAgent(meta.id)).resolves.toBe(false)
+  })
+
   it('projects live Agent contexts and maps missing cold identities through Typert lookup failures', async () => {
     const { ctx } = await harness()
     const live = agent(ctx, header('live'))

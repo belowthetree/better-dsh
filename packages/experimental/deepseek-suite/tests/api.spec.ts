@@ -90,6 +90,44 @@ describe('recognizeDocument', () => {
       file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
     })).rejects.toThrow('DeepSeek OCR 响应缺少 pages 数组')
   })
+
+  it('keeps only the provider fields a page carries', async () => {
+    const { fetchImpl } = stubFetch(() => json({
+      pages: [null, { index: 1 }, { text: 'only text' }, { finish_reason: 'stop' }],
+    }))
+    const data = await recognizeDocument({
+      ...transport(fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    })
+    expect(data).toEqual({
+      pages: [{}, { index: 1 }, { text: 'only text' }, { finish_reason: 'stop' }],
+    })
+  })
+
+  it('reports a provider error record without a message or a code', async () => {
+    const noMessage = stubFetch(() => json({ error: { type: 'invalid_request' } }))
+    await expect(recognizeDocument({
+      ...transport(noMessage.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    })).rejects.toMatchObject({ message: 'DeepSeek OCR 失败：未知错误', code: undefined })
+
+    const noCode = stubFetch(() => json({ error: { message: 'quota exceeded' } }))
+    const failure = await recognizeDocument({
+      ...transport(noCode.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    }).catch((error: unknown) => error)
+    expect((failure as DeepSeekApiError).code).toBeUndefined()
+  })
+
+  it('uploads an unknown extension as opaque bytes', async () => {
+    const { fetchImpl, calls } = stubFetch(() => json({ pages: [] }))
+    await recognizeDocument({
+      ...transport(fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'scan.xyz', size: 1 },
+    })
+    const upload = formEntries(calls[0]!.init)[1]![1] as File
+    expect(upload.type).toBe('application/octet-stream')
+  })
 })
 
 describe('transcribeAudio', () => {
@@ -119,6 +157,14 @@ describe('transcribeAudio', () => {
       ...transport(fetchImpl), file: { bytes: new Uint8Array([1]), filename: 'a.wav', size: 1 },
     })).rejects.toThrow('DeepSeek 语音识别响应缺少 text 字段')
   })
+
+  it('omits the duration when the provider does not report one', async () => {
+    const { fetchImpl } = stubFetch(() => json({ text: '你好' }))
+    const data = await transcribeAudio({
+      ...transport(fetchImpl), file: { bytes: new Uint8Array([1]), filename: 'a.wav', size: 1 },
+    })
+    expect(data).toEqual({ text: '你好' })
+  })
 })
 
 describe('synthesizeSpeech', () => {
@@ -139,6 +185,13 @@ describe('synthesizeSpeech', () => {
     const { fetchImpl } = stubFetch(() => new Response(new Uint8Array(), { headers: { 'content-type': 'audio/wav' } }))
     await expect(synthesizeSpeech({ ...transport(fetchImpl), text: '你好' }))
       .rejects.toThrow('DeepSeek 语音合成返回了空音频')
+  })
+
+  it('defaults the audio content type when the response names none', async () => {
+    const { fetchImpl } = stubFetch(() => new Response(new Uint8Array([1, 2])))
+    const audio = await synthesizeSpeech({ ...transport(fetchImpl), text: '你好' })
+    expect([...audio.bytes]).toEqual([1, 2])
+    expect(audio.contentType).toBe('audio/wav')
   })
 })
 
@@ -162,6 +215,78 @@ describe('failure mapping', () => {
     }).catch((error: unknown) => error)
     expect((limitedFailure as DeepSeekApiError).retryable).toBe(true)
     expect((limitedFailure as DeepSeekApiError).status).toBe(429)
+  })
+
+  it('reads provider details from a flat payload and a bare error code', async () => {
+    const flat = stubFetch(() => json({ message: 'flat failure', type: 'invalid_request', code: 'bad_input' }, 500))
+    const flatFailure = await recognizeDocument({
+      ...transport(flat.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    }).catch((error: unknown) => error)
+    const flatError = flatFailure as DeepSeekApiError
+    expect(flatError.code).toBe('bad_input')
+    expect(flatError.type).toBe('invalid_request')
+    expect(flatError.retryable).toBe(true)
+    expect(flatError.message).toContain('服务端内部错误')
+    expect(flatError.message).toContain('flat failure')
+
+    const bare = stubFetch(() => json({ error: { code: 'only_code' } }, 418))
+    const bareFailure = await recognizeDocument({
+      ...transport(bare.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    }).catch((error: unknown) => error)
+    const bareError = bareFailure as DeepSeekApiError
+    expect(bareError.code).toBe('only_code')
+    expect(bareError.type).toBeUndefined()
+    expect(bareError.message).toContain('HTTP 418')
+    expect(bareError.retryable).toBe(false)
+  })
+
+  it('falls back to the status hint for an unreadable provider payload', async () => {
+    const scalar = stubFetch(() => json({ error: 'plain text' }, 400))
+    const scalarFailure = await recognizeDocument({
+      ...transport(scalar.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    }).catch((error: unknown) => error)
+    const scalarError = scalarFailure as DeepSeekApiError
+    expect(scalarError.message).toContain('请求参数不合法')
+    expect(scalarError.message).not.toContain('：')
+    expect(scalarError.code).toBeUndefined()
+
+    const text = stubFetch(() => new Response('gateway exploded', { status: 502 }))
+    const textFailure = await recognizeDocument({
+      ...transport(text.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    }).catch((error: unknown) => error)
+    expect((textFailure as DeepSeekApiError).message).toContain('网关错误')
+    expect((textFailure as DeepSeekApiError).message).toContain('gateway exploded')
+
+    const empty = stubFetch(() => new Response('   ', { status: 408 }))
+    const emptyFailure = await recognizeDocument({
+      ...transport(empty.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    }).catch((error: unknown) => error)
+    expect((emptyFailure as DeepSeekApiError).message).toContain('请求超时')
+
+    const brokenStream = new ReadableStream<Uint8Array>({
+      start(controller) { controller.error(new Error('body read failed')) },
+    })
+    const broken = stubFetch(() => new Response(brokenStream, { status: 503 }))
+    const brokenFailure = await recognizeDocument({
+      ...transport(broken.fetchImpl),
+      file: { bytes: new Uint8Array([1]), filename: 'a.pdf', size: 1 },
+    }).catch((error: unknown) => error)
+    expect((brokenFailure as DeepSeekApiError).message).toContain('服务繁忙')
+  })
+
+  it('maps a rejection that is not an object', async () => {
+    const rejection = 'offline'
+    const down = stubFetch(() => { throw rejection })
+    const failure = await transcribeAudio({
+      ...transport(down.fetchImpl), file: { bytes: new Uint8Array([1]), filename: 'a.wav', size: 1 },
+    }).catch((error: unknown) => error)
+    expect((failure as DeepSeekApiError).message).toContain('网络请求失败：offline')
+    expect((failure as DeepSeekApiError).retryable).toBe(true)
   })
 
   it('rejects the account credential on a 401 account request', async () => {
@@ -253,5 +378,11 @@ describe('loadUploadFile', () => {
     const file = join(directory, 'big.pdf')
     await writeFile(file, new Uint8Array([1, 2, 3]))
     await expect(loadUploadFile(file, { maxBytes: 2 })).rejects.toThrow('文件过大')
+  })
+
+  it('reports a stat failure that is not a missing file', async () => {
+    const failure = await loadUploadFile('bad\u0000path.pdf').catch((error: unknown) => error)
+    expect((failure as Error).message).toContain('无法读取文件')
+    expect((failure as Error).message).toContain('without null bytes')
   })
 })

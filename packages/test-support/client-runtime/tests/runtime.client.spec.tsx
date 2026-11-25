@@ -442,6 +442,22 @@ describe('sessions', () => {
     ])
     await runtime.dispose()
   })
+
+  it('deletes a catalogued fixture through the service face and records the call', async () => {
+    const runtime = await runtimeWithFrame()
+    await runtime.sessions.add({ id: 's1' })
+    await runtime.sessions.add({ id: 's2' })
+    using reference = runtime.sessions.retain('s1' as SessionId)
+    await reference.ready
+
+    await runtime.sessions.delete('s1' as SessionId)
+
+    expect(runtime.sessions.calls).toEqual([{ method: 'delete', args: ['s1'] }])
+    expect(runtime.sessions.list.getSnapshot().ids).toEqual(['s2'])
+    expect(runtime.sessions.binding('s1')?.session.getSnapshot().removed).toBe(true)
+    await expect(runtime.sessions.delete('ghost' as SessionId)).rejects.toThrow(/not added/)
+    await runtime.dispose()
+  })
 })
 
 describe('stores', () => {

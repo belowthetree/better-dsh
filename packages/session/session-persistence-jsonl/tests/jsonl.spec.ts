@@ -3006,6 +3006,19 @@ describe('JsonlSessionPersistence: permanent deletion', () => {
       .rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
   })
 
+  it('forgets only the removed session in the listed-header memo', async () => {
+    const kept = meta('delete-kept', '/work')
+    const doomed = meta('delete-doomed', '/work')
+    await writeLog(ctx.sessionPersistence, kept, oneTurnLog())
+    await writeLog(ctx.sessionPersistence, doomed, oneTurnLog())
+    expect((await ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id).sort())
+      .toEqual([kept.id, doomed.id].sort())
+
+    await ctx.sessionPersistence.delete(doomed.id)
+
+    expect((await ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id)).toEqual([kept.id])
+  })
+
   it('refuses an open write handle, then succeeds after close', async () => {
     const m = meta('delete-open-writer', '/work')
     const writer = await ctx.sessionPersistence.create(m)

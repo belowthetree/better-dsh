@@ -438,6 +438,11 @@ export default defineConfig({
         // Command executor lifecycle branches need the same maturing lanes.
         // TODO(gui): cover and remove with the client test lane above.
         'packages/interaction/commands/src/index.ts',
+        // The fork's orb/workbench presentation layer: window placement, animation,
+        // and modal composition whose remaining branches need the same browser-grade
+        // harness as the client UI files above. Host-side behavior stays gated.
+        // TODO(gui): cover and remove with the client test lane above.
+        'packages/experimental/better-interact/src/client/*',
         ...windowsUnsupportedCoveragePackages.map(path => `${path}/src/**/*.ts`),
         ...windowsOnlyCoverageExclusions,
         ...windowsRunnerCoverageExclusions,

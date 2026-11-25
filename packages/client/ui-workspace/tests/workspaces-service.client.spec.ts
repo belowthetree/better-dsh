@@ -1628,7 +1628,7 @@ describe('UiWorkspaceService', () => {
     expect(b.selectPanel).toHaveBeenCalledTimes(2)
   })
 
-  it('clears a selected Session after deleting it and preserves failures', async () => {
+  it('clears a selected Session after deleting it, keeps an unrelated selection, and preserves failures', async () => {
     const b = bench()
     b.uiWorkspace.openSession(sid('current'))
 
@@ -1637,6 +1637,14 @@ describe('UiWorkspaceService', () => {
     expect(b.sessions.delete).toHaveBeenCalledWith(sid('current'))
     expect(b.sessions.retained[0]!.release).toHaveBeenCalledOnce()
     expect(b.selectPanel).toHaveBeenCalledTimes(2)
+
+    const unrelated = bench()
+    unrelated.uiWorkspace.openSession(sid('current'))
+    await unrelated.uiWorkspace.deleteSession(sid('idle'))
+
+    expect(unrelated.sessions.delete).toHaveBeenCalledWith(sid('idle'))
+    expect(unrelated.sessions.retained[0]!.release).not.toHaveBeenCalled()
+    expect(unrelated.selectPanel).toHaveBeenCalledOnce()
 
     const failing = bench()
     failing.sessions.delete.mockRejectedValueOnce(new Error('delete rejected'))
