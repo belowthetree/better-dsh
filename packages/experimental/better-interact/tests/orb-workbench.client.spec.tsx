@@ -1,65 +1,21 @@
 // @vitest-environment jsdom
-/** Driven management workbench: the reference gate, the conversation factory input, and the fixed Chat view. */
+/** Driven management workbench: the reference gate and the shared embedded Conversation occurrence. */
 import { cleanup, render } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import { OrbWorkbench, OrbWorkbenchConversation } from '../src/client/OrbWorkbench.tsx'
-import { FixedChatConversationView } from '../src/client/embedded-conversation.tsx'
-import type { OrbWorkbenchConversationProps, OrbWorkbenchProps } from '../src/client/OrbWorkbench.tsx'
+import type { OrbWorkbenchProps } from '../src/client/OrbWorkbench.tsx'
 
 afterEach(cleanup)
 
-/** One bound-Session projection with the fields the phase derivation reads. */
-function sessionState(patch: Record<string, unknown> = {}) {
-  return {
-    blank: false,
-    awaitingFirstTurn: false,
-    running: false,
-    promptAttempted: false,
-    openState: 'open' as const,
-    ...patch,
-  }
-}
-
-/**
- * Build the conversation props with stub Session seats and a recording factory renderer.
- * @param patch - Session fields to override.
- * @returns the props and the factory-call spy.
- */
-function conversation(patch: Record<string, unknown> = {}) {
-  const state = sessionState(patch)
+it('composes the reusable embedded Conversation occurrence', () => {
   const renderFactorySlot = vi.fn(() => null)
-  const props = {
-    sessionId: 'managed',
-    useSession: (selector: (value: typeof state) => unknown) => selector(state),
-    useSessions: (selector: (value: { byId: Record<string, { blank?: boolean }> }) => unknown) =>
-      selector({ byId: { managed: { blank: false } } }),
-    useConversation: (selector: (value: { activeTargets: Set<string> }) => unknown) =>
-      selector({ activeTargets: new Set<string>() }),
-    renderFactorySlot,
-  } as OrbWorkbenchConversationProps
-  return { props, renderFactorySlot }
-}
-
-it('renders the active Chat view for a started conversation', () => {
-  const b = conversation()
-  render(<OrbWorkbenchConversation {...b.props} />)
-  expect(b.renderFactorySlot).toHaveBeenCalledOnce()
-  expect(b.renderFactorySlot).toHaveBeenCalledWith(
-    'conversation.content',
-    { variant: 'embedded', phase: 'active', hero: false },
-    { slots: { views: FixedChatConversationView } },
-  )
-})
-
-it('reports the hero phase while the bound Session is blank and open', () => {
-  const b = conversation({ blank: true, openState: 'open' })
-  render(<OrbWorkbenchConversation {...b.props} />)
-  expect(b.renderFactorySlot).toHaveBeenCalledWith(
-    'conversation.content',
-    { variant: 'embedded', phase: 'hero', hero: true },
-    { slots: { views: FixedChatConversationView } },
+  const openWorkspace = vi.fn()
+  render(createElement(OrbWorkbenchConversation, { renderFactorySlot, openWorkspace } as never))
+  expect(renderFactorySlot).toHaveBeenCalledExactlyOnceWith(
+    'conversation.embedded',
+    { onWorkspaceSelected: openWorkspace },
   )
 })
 

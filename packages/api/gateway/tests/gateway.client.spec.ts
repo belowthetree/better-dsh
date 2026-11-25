@@ -27,7 +27,7 @@ import type {
 } from '@deepseek-ai/dsh-typert-protocol'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import type { ClientRemote } from '../src/client/index.ts'
-import { apply, inject, isRemoteFailure, RemoteStream } from '../src/client/index.ts'
+import { apply, inject, isRemoteFailure, mountRemoteContribution, RemoteStream } from '../src/client/index.ts'
 import {
   ClientUplinkQueue,
   RemoteStreamCarrierError,
@@ -3480,3 +3480,40 @@ async function drainStream(source: AsyncIterable<unknown>): Promise<unknown[]> {
   for await (const value of source) values.push(value)
   return values
 }
+
+describe('mountRemoteContribution', () => {
+  const contribution = { package: '@fixture/probe', descriptors: [directDescriptor()] }
+
+  it('installs the consuming fiber and withdraws it before the contribution', async () => {
+    const ctx = await bench(vi.fn<ConnectionHandle['rpc']['call']>())
+    const order: string[] = []
+    let installedAfterMount: boolean | undefined
+    const dispose = await mountRemoteContribution(ctx, contribution, () => {
+      installedAfterMount = ctx.get('remote.probe') !== undefined
+      return Promise.resolve({ dispose: async () => { order.push('fiber') } })
+    })
+
+    expect(installedAfterMount).toBe(true)
+    await dispose()
+    expect(order).toEqual(['fiber'])
+    expect(ctx.get('remote.probe')).toBeUndefined()
+  })
+
+  it('unmounts the contribution when the consuming fiber fails to install', async () => {
+    const ctx = await bench(vi.fn<ConnectionHandle['rpc']['call']>())
+    const failure = new Error('install failed')
+
+    await expect(mountRemoteContribution(ctx, contribution, () => Promise.reject(failure))).rejects.toBe(failure)
+    expect(ctx.get('remote.probe')).toBeUndefined()
+  })
+
+  it('skips installation when the contribution fails to mount', async () => {
+    const ctx = await bench(vi.fn<ConnectionHandle['rpc']['call']>())
+    const install = vi.fn(() => Promise.resolve({ dispose: async () => {} }))
+
+    await expect(mountRemoteContribution(ctx, {
+      package: '@fixture/probe', descriptors: [directDescriptor(), directDescriptor()],
+    }, install)).rejects.toThrow()
+    expect(install).not.toHaveBeenCalled()
+  })
+})

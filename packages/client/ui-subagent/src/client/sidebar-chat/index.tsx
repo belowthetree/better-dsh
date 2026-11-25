@@ -4,7 +4,7 @@ import type {
   ISessions, SessionReference, SessionTarget,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ResourceProvider } from '@deepseek-ai/dsh-client-resources/client'
-import type { ConversationViewsProps, WorkspaceSelectedHandler } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { WorkspaceSelectedHandler } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PaneId, SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {
   HostObservable, PropsRenderFactories, PropsRenderSlots, PropsRuntime, TranslateNS,
@@ -229,31 +229,16 @@ export interface SidebarChatInjected {
   readonly openWorkspace: WorkspaceSelectedHandler
 }
 
-/** Fixed Chat selection used by an embedded Conversation occurrence. */
-export function FixedChatConversationView(props: ConversationViewsProps) {
-  return <>{props.renderSlot('conversation.session', { view: 'chat' })}</>
-}
-
 /** Props supplied to the child-Session Conversation host. */
 export type ConversationSlotPanelProps = PropsRuntime<'sidebar.chat.conversation'> & PropsRenderFactories
 
-/** Render the shared Conversation content for one explicitly provided child Session. */
-export function ConversationSlotPanel({
-  sessionId, useSession, useConversation, useSessions, renderFactorySlot, openWorkspace,
-}: ConversationSlotPanelProps) {
-  const session = useSession(value => value)
-  const conversation = useConversation(value => value)
-  const active = conversation.activeTargets.size > 0
-    || (!session.blank && !session.awaitingFirstTurn)
-    || session.running
-  const shellPhase = active ? 'active' : session.promptAttempted ? 'engaging' : 'blank'
-  const summaryBlank = useSessions(state => state.byId[sessionId]?.blank)
-  const settling = (shellPhase === 'blank' && session.openState === 'loading' && summaryBlank !== true)
-  const hero = shellPhase === 'blank' && (session.openState === 'open' || summaryBlank === true)
-  const phase = settling ? 'settling' : hero ? 'hero' : 'active'
-  return renderFactorySlot('conversation.content', { variant: 'embedded', phase, hero, onWorkspaceSelected: openWorkspace }, {
-    slots: { views: FixedChatConversationView },
-  })
+/**
+ * Render one embedded Conversation occurrence for the explicitly provided child Session.
+ * @param props - bound Session sources and the reusable embedded Conversation Factory renderer.
+ * @returns the embedded Conversation content with only its Chat View.
+ */
+export function ConversationSlotPanel(props: ConversationSlotPanelProps) {
+  return props.renderFactorySlot('conversation.embedded', { onWorkspaceSelected: props.openWorkspace })
 }
 
 /** Props supplied to the parent-Session Sidebar tab body. */

@@ -39,9 +39,9 @@
     "d021e1acc96493233ec8a9cba000e9847acded67c39d913fa893761aaf917250": 1
   },
   "apps/desktop/tests/directory-picker.spec.ts": {
+    "b87b1aafd7884ec57b9786f1ae385e2cd78466a77dee5f456e8035c32f61d90a": 1,
     "f085ad10d79aed4354f06c71f72760cae58e097b15c83f13a96176f27529e638": 1,
-    "fea5f35cdfac495b62e7bd366a175b01b5664c953ac2262aa9d8a1c42af6b0e0": 1,
-    "b87b1aafd7884ec57b9786f1ae385e2cd78466a77dee5f456e8035c32f61d90a": 1
+    "fea5f35cdfac495b62e7bd366a175b01b5664c953ac2262aa9d8a1c42af6b0e0": 1
   },
   "apps/desktop/tests/host-update-tasks.spec.ts": {
     "46197efe57255c9d92d64476470c89d0602c7333bf98ad75509bf43c1b357a3b": 1,
@@ -629,13 +629,10 @@
   },
   "packages/client/ui-subagent/tests/sidebar-chat.client.spec.tsx": {
     "024f8748e8908a495117a23a7673046a871f0d8187f8fe561aceba1269aefa31": 1,
-    "6f46259a9f4093d68b3fc7859c263f21b6318197b74aba368e8904321ab5c4f9": 1,
-    "7eb46f4e5e11cef80bd04f36bf7e9b81b3b3e0811e6a50c8dc0e59b13409ab47": 1,
     "93043ae394699d6c87db0291ac271884e16d5f5e5f80b8dffd6ec2ccbe0cb774": 1,
     "9fe5203965e5ff62ab3b914bbcbb5229a5146bf9b12839d99684742579b0f30f": 1,
     "c3f6bb95ba0791435add9be26269aec3bd5cf7bb8a1ffd88913ff8b08b142ed3": 1,
-    "e9abfbf3920ecd6502b74e5eb04d3a1a40b2519f849f5daa193ab7819184ee8b": 1,
-    "ffb048df32b10bac91f37b55c618701aa0f9d24c5b5504a3d3f953dc8b7cc7fb": 1
+    "e9abfbf3920ecd6502b74e5eb04d3a1a40b2519f849f5daa193ab7819184ee8b": 1
   },
   "packages/client/ui-theme/tests/apply.client.spec.ts": {
     "04984a2ce1486250236e638e0197da0a1a840855ed3975c59130a85358c7e5fe": 1
@@ -910,6 +907,13 @@
   },
   "packages/document/office-kit/tests/queue.spec.ts": {
     "bbe31b89b81048bb47c7158e78670deec5f2973286f9abc591290a8fdd851cf1": 1
+  },
+  "packages/experimental/better-interact/tests/resource.client.spec.ts": {
+    "0b3d2847cebf72e442803f3ac12bfe6ebc9287cc5910b6abe777dfe459e7c13c": 1,
+    "5f73d2b1193cad7f39b937efce841b3fd89b02c66e9a0bbed0bff75695c145b2": 1
+  },
+  "packages/experimental/better-interact/tests/voice-section.client.spec.tsx": {
+    "f20bc9ad6e332bb8c7c8ce9a6c0b6c92d65df3f648b859ba6d2b6031154d4d39": 1
   },
   "packages/experimental/browser-use-runtime/src/index.ts": {
     "04bc8a44533574365dfedf563e2356458bcf95f990a00906938c977c1d683356": 1
@@ -1907,12 +1911,5 @@
   },
   "website/tests/raw-markdown.spec.ts": {
     "016337c62f55ffcdfc006da693aaf9bb20c3bb49260939c0d50191117c48934e": 1
-  },
-  "packages/experimental/better-interact/tests/resource.client.spec.ts": {
-    "5f73d2b1193cad7f39b937efce841b3fd89b02c66e9a0bbed0bff75695c145b2": 1,
-    "0b3d2847cebf72e442803f3ac12bfe6ebc9287cc5910b6abe777dfe459e7c13c": 1
-  },
-  "packages/experimental/better-interact/tests/voice-section.client.spec.tsx": {
-    "f20bc9ad6e332bb8c7c8ce9a6c0b6c92d65df3f648b859ba6d2b6031154d4d39": 1
   }
 }

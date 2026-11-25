@@ -32,13 +32,6 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
-function waitForAbort(signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.resolve()
-  return new Promise((resolve) => {
-    signal.addEventListener('abort', () => { resolve() }, { once: true })
-  })
-}
-
 /** Connection lifecycle state published after the first attempt has an outcome. */
 export type ConnectionState =
   | 'connected'
@@ -168,7 +161,12 @@ export class ConnectionController {
         const retryDelay = new AbortController()
         this.retryDelay = retryDelay
         this.emitState('disconnected')
-        await waitForAbort(retryDelay.signal)
+        // A state sink may synchronously abort the delay, so re-read the signal before waiting on it.
+        if (!retryDelay.signal.aborted) {
+          await new Promise<void>((resolve) => {
+            retryDelay.signal.addEventListener('abort', () => { resolve() }, { once: true })
+          })
+        }
         if (this.retryDelay === retryDelay) this.retryDelay = null
         if (!this.isRunning()) return
         retry = true

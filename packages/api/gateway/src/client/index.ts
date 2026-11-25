@@ -862,6 +862,40 @@ export function isRemoteFailure(error: unknown): error is RemoteFailure {
   return remoteErrorOf(error) !== undefined
 }
 
+/** An installed effect fiber a mounted Remote contribution satisfies. */
+export interface RemoteContributionFiber {
+  /** Withdraw the fiber's effects; settles after their cleanup. */
+  dispose(): Promise<void>
+}
+
+/**
+ * Mount one generated Remote contribution together with the fiber that consumes its namespaces.
+ * `install` runs only after the contribution mounts, so its namespace services already exist;
+ * disposal withdraws the fiber before the contribution, and a failed install still unmounts.
+ * @param ctx - Client Context whose Remote mount owns the contribution.
+ * @param contribution - generated Host-for-Client contribution.
+ * @param install - creates the fiber that consumes the contribution's namespaces.
+ * @returns disposer withdrawing the installed fiber, then the contribution.
+ */
+export async function mountRemoteContribution(
+  ctx: Context,
+  contribution: TypertRemoteContribution,
+  install: () => PromiseLike<RemoteContributionFiber>,
+): Promise<() => Promise<void>> {
+  const unmount = await ctx.remote.$mount(contribution)
+  let installed: RemoteContributionFiber
+  try {
+    installed = await install()
+  } catch (error) {
+    await unmount()
+    throw error
+  }
+  return async () => {
+    await installed.dispose()
+    await unmount()
+  }
+}
+
 /**
  * Rebuild the wire failure as a local RemoteError instance so the error branch
  * carries a real Error and `throw result.error` keeps throw semantics. The code

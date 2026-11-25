@@ -10,7 +10,6 @@ import { MANAGE_PAGE_ID } from '../src/client/workbench-groups.ts'
 import type { WorkbenchPagesState } from '../src/client/workbench-pages.ts'
 import { WorkbenchConversation, WorkbenchDialog, scrollTabsByWheel } from '../src/client/workbench.tsx'
 import type { WorkbenchNotice } from '../src/client/workbench.tsx'
-import { FixedChatConversationView } from '../src/client/embedded-conversation.tsx'
 
 type SessionRow = {
   readonly updatedAt: number
@@ -278,66 +277,12 @@ it('translates the wheel over the rendered strip into horizontal scrolling', () 
   view.unmount()
 })
 
-function conversationProps(
-  session: { blank: boolean; running: boolean; promptAttempted: boolean; openState: string },
-  summaryKnown = true,
-) {
-  const calls: unknown[][] = []
-  const renderFactorySlot = (...args: unknown[]) => {
-    calls.push(args)
-    return <div data-testid="content" />
-  }
-  return {
-    props: {
-      sessionId: 'session-1' as SessionId,
-      useSession: (select: (value: unknown) => unknown) => select(session),
-      useConversation: (select: (value: unknown) => unknown) => select({ activeTargets: new Set<string>() }),
-      useSessions: (select: (state: { byId: Record<string, { blank: boolean }> }) => unknown) =>
-        select(summaryKnown ? { byId: { 'session-1': { blank: session.blank } } } : { byId: {} }),
-      renderFactorySlot,
-    },
-    calls,
-  }
-}
-
-/** Read the fixed View component one render handed to the conversation content. */
-function fixedView(calls: unknown[][]): unknown {
-  const options = calls[0]?.[2] as { slots: { views: unknown } }
-  return options.slots.views
-}
-
-it('composes the shared conversation content with the fixed chat view', () => {
-  const { props, calls } = conversationProps({ blank: true, running: false, promptAttempted: false, openState: 'open' })
-  render(createElement(WorkbenchConversation, props as never))
-  expect(calls[0]?.slice(0, 2)).toEqual([
-    'conversation.content',
-    { variant: 'embedded', phase: 'hero', hero: true },
-  ])
-  expect(typeof fixedView(calls)).toBe('function')
-})
-
-it('fixes the shared embedded View to Chat', () => {
-  const renderSlot = vi.fn()
-  render(createElement(FixedChatConversationView, { renderSlot } as never))
-  expect(renderSlot).toHaveBeenCalledExactlyOnceWith('conversation.session', { view: 'chat' })
-})
-
-it('follows a running conversation', () => {
-  const { props, calls } = conversationProps({ blank: false, running: true, promptAttempted: true,
-    openState: 'open' })
-  render(createElement(WorkbenchConversation, props as never))
-  expect(calls[0]?.slice(0, 2)).toEqual([
-    'conversation.content',
-    { variant: 'embedded', phase: 'active', hero: false },
-  ])
-})
-
-it('settles a blank session whose history is still loading', () => {
-  const { props, calls } = conversationProps(
-    { blank: true, running: false, promptAttempted: false, openState: 'loading' }, false)
-  render(createElement(WorkbenchConversation, props as never))
-  expect(calls[0]?.slice(0, 2)).toEqual([
-    'conversation.content',
-    { variant: 'embedded', phase: 'settling', hero: false },
-  ])
+it('composes the reusable embedded Conversation occurrence', () => {
+  const renderFactorySlot = vi.fn(() => null)
+  const openWorkspace = vi.fn()
+  render(createElement(WorkbenchConversation, { renderFactorySlot, openWorkspace } as never))
+  expect(renderFactorySlot).toHaveBeenCalledExactlyOnceWith(
+    'conversation.embedded',
+    { onWorkspaceSelected: openWorkspace },
+  )
 })

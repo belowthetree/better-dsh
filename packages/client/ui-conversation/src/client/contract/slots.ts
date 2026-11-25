@@ -373,6 +373,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 
   interface SlotFactoryMap {
+    /** Reusable embedded Conversation occurrence fixed to the Chat View and derived from its bound Session. */
+    'conversation.embedded': {
+      scope: 'session'
+      props: ConversationEmbeddedInputProps
+    }
     /** Reusable Conversation content instantiated by presentation hosts. */
     'conversation.content': {
       scope: 'session-maybe'
@@ -728,6 +733,21 @@ export type ConversationSlotProps =
   PropsRuntime<'main.conversation'>
   & PropsRenderSlots<'conversation.header'>
   & PropsRenderFactories
+
+/**
+ * Inputs of one embedded Conversation occurrence. The occurrence derives its
+ * phase and Hero from the bound Session, so the caller supplies only the
+ * Workspace pick behavior and optional Hero copy.
+ */
+export interface ConversationEmbeddedInputProps {
+  /** What a Workspace picked in the blank Hero does in this occurrence. */
+  onWorkspaceSelected: WorkspaceSelectedHandler
+  /** Text the blank-session Hero shows instead of its default headline and preview badge. */
+  headline?: string | undefined
+}
+
+/** Full props of the reusable embedded Conversation Factory definition. */
+export type ConversationEmbeddedProps = FactoryComponentPropsOf<'conversation.embedded'>
 
 /** Inputs shared by main and embedded Conversation content occurrences. */
 export interface ConversationContentInputProps {

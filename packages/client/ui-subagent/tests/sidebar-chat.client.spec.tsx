@@ -1,19 +1,18 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
+import { createElement } from 'react'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  ISessions, SessionListState, SessionReference, SessionSnapshot,
+  ISessions, SessionListState, SessionReference,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ResourceProvider } from '@deepseek-ai/dsh-client-resources/client'
-import { sessionSnapshot } from '@deepseek-ai/dsh-client-test-runtime'
-import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import {
-  ConversationSlotPanel, FixedChatConversationView, parseSubagentChatAddress,
+  ConversationSlotPanel, parseSubagentChatAddress,
   registerSidebarChat, sessionChatAddress, subagentChatAddress, SUBAGENT_CHAT_ID, type SidebarChatTabProps,
 } from '../src/client/sidebar-chat/index.tsx'
 import { SidebarChatTab } from '../src/client/sidebar-chat/index.tsx'
@@ -226,65 +225,13 @@ describe('Sidebar chat components', () => {
     expect(renderSlot).toHaveBeenCalledWith('sidebar.chat.conversation', {})
   })
 
-  it.each([
-    {
-      name: 'active',
-      session: { blank: false, awaitingFirstTurn: false, running: false },
-      summaryBlank: false,
-      expected: { phase: 'active', hero: false },
-    },
-    {
-      name: 'hero',
-      session: { blank: true, awaitingFirstTurn: true, running: false, openState: 'open' },
-      summaryBlank: true,
-      expected: { phase: 'hero', hero: true },
-    },
-    {
-      name: 'prompt attempted',
-      session: { blank: true, awaitingFirstTurn: true, running: false, openState: 'open', promptAttempted: true },
-      summaryBlank: false,
-      expected: { phase: 'active', hero: false },
-    },
-    {
-      name: 'loading',
-      session: { blank: true, awaitingFirstTurn: true, running: false, openState: 'loading' },
-      summaryBlank: false,
-      expected: { phase: 'settling', hero: false },
-    },
-    {
-      name: 'continuable child without parent availability',
-      session: {
-        blank: false,
-        awaitingFirstTurn: false,
-        running: false,
-        subagent: { address: ADDRESS },
-      },
-      summaryBlank: false,
-      expected: { phase: 'active', hero: false },
-    },
-  ])('derives the $name embedded phase and fixes the local view to Chat', ({ session: patch, summaryBlank, expected }) => {
-    const snapshot = { ...sessionSnapshot(CHILD), ...patch } as SessionSnapshot
+  it('composes the reusable embedded Conversation occurrence for the child Session', () => {
     const renderFactorySlot = vi.fn(() => null)
     const openWorkspace = vi.fn()
-    render(<ConversationSlotPanel {...({
-      sessionId: CHILD,
-      useSession: (select: (value: SessionSnapshot) => unknown) => select(snapshot),
-      useConversation: (select: (value: { activeTargets: ReadonlySet<string> }) => unknown) => select({ activeTargets: new Set() }),
-      useSessions: (select: (value: SessionListState) => unknown) => select({
-        ids: [], byId: { [CHILD]: { blank: summaryBlank } }, phase: 'ready', projectionsBySession: {}, jobsBySession: {},
-      } as unknown as SessionListState),
-      renderFactorySlot,
-    } as unknown as Parameters<typeof ConversationSlotPanel>[0])} openWorkspace={openWorkspace} />)
-    expect(renderFactorySlot).toHaveBeenCalledWith(
-      'conversation.content',
-      { variant: 'embedded', ...expected, onWorkspaceSelected: openWorkspace },
-      { slots: { views: FixedChatConversationView } },
+    render(createElement(ConversationSlotPanel, { renderFactorySlot, openWorkspace } as never))
+    expect(renderFactorySlot).toHaveBeenCalledExactlyOnceWith(
+      'conversation.embedded',
+      { onWorkspaceSelected: openWorkspace },
     )
-  })
-
-  it('routes the fixed local view through the ordinary Conversation Session slot', () => {
-    const renderSlot = vi.fn(() => null)
-    render(<FixedChatConversationView {...({ renderSlot } as unknown as ConversationViewsProps)} />)
-    expect(renderSlot).toHaveBeenCalledWith('conversation.session', { view: 'chat' })
   })
 })

@@ -43,6 +43,7 @@ import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
 import { ConversationRoot } from './skeleton/ConversationRoot.tsx'
 import { ConversationContent } from './skeleton/ConversationContent.tsx'
+import { EmbeddedConversation } from './skeleton/EmbeddedConversation.tsx'
 import { ConversationPanel } from './skeleton/ConversationPanel.tsx'
 import { ConversationHeader } from './skeleton/ConversationHeader.tsx'
 import { ConversationSession, ConversationSessionHeader } from './skeleton/ConversationSession.tsx'
@@ -393,6 +394,11 @@ export function apply(ctx: Context, config: SyncedConfig<ConversationConfig>): v
     }),
   }, ConversationContent)
 
+  const registerEmbeddedConversation = () => slots.registerFactory({
+    name: 'conversation.embedded',
+    scope: 'session',
+  }, EmbeddedConversation)
+
   const registerConversationSession = () => slots.register({
     name: 'conversation.session',
     children: {
@@ -578,6 +584,7 @@ export function apply(ctx: Context, config: SyncedConfig<ConversationConfig>): v
     }, ConversationPanel)
     yield registerConversationRoot()
     yield registerConversationContent()
+    yield registerEmbeddedConversation()
     yield registerConversationSession()
     yield registerHeader()
     yield registerSessionHeader()
