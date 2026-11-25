@@ -54,6 +54,14 @@ const headlessFailureExpected = join(goldensDir, 'headless-profile', 'stderr.exp
 const refreshing = process.env.DSH_SNAPSHOT === 'refresh'
 /** The shipped base bundle's title output cap, which marks a title request's `max_tokens`. */
 const TITLE_MAX_TOKENS = 4096
+/**
+ * Comment heartbeats of the DeepSeek defaults response. At the fixture server's
+ * 60 ms cadence they cover 1.2 s, outlasting the `streamIdleTimeoutMs: 1000` in
+ * `deepseek-defaults.patch.yml`: a provider that ignored SSE comments reaches
+ * the idle deadline inside this window and retries, while a heartbeat cadence
+ * stays far below the deadline.
+ */
+const COMMENT_HEARTBEATS = 20
 
 interface JsonObject {
   [key: string]: unknown
@@ -97,9 +105,23 @@ async function expectHeadlessStream(normalized: string, expectedPath: string): P
   expect(parseJsonl(normalized)).toEqual(parseJsonl(expected))
 }
 
+/** Options for {@link deepseekDefaultsServer}. */
+interface DeepSeekDefaultsServerOptions {
+  /** Hold the stream open with comments until the title request arrives. */
+  readonly waitForTitleRequest?: boolean
+  /** Answer with Chat Completions compatibility events instead of Messages events. */
+  readonly piAiCompatibility?: true
+  /**
+   * Comment heartbeats written before the response data. The default
+   * three-beat window stays below every fixture idle deadline; a caller that
+   * proves comment-refreshed idleness passes a window longer than the deadline.
+   */
+  readonly commentHeartbeats?: number
+}
+
 /** Serve one deterministic DeepSeek-compatible response while retaining its request body. */
 async function deepseekDefaultsServer(
-  options: { waitForTitleRequest?: boolean; piAiCompatibility?: true } = {},
+  options: DeepSeekDefaultsServerOptions = {},
 ): Promise<DeepSeekDefaultsServer> {
   const requests: JsonObject[] = []
   const paths: string[] = []
@@ -111,7 +133,7 @@ async function deepseekDefaultsServer(
       requests.push(JSON.parse(body) as JsonObject)
       paths.push(request.url ?? '')
       response.writeHead(200, { 'content-type': 'text/event-stream' })
-      let keepAlives = 3
+      let keepAlives = options.commentHeartbeats ?? 3
       const write = (): void => {
         // One-shot teardown may cancel background title work after the main response.
         if (keepAlives-- > 0
@@ -840,7 +862,7 @@ describe('headless stream-json snapshots', () => {
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
   it('keeps provider comments alive and sends DeepSeek defaults through the one-shot app', async () => {
-    const server = await deepseekDefaultsServer()
+    const server = await deepseekDefaultsServer({ commentHeartbeats: COMMENT_HEARTBEATS })
     try {
       const result = await runLoaderSmoke({
         label: 'DeepSeek adapter defaults headless stream-json snapshot',
@@ -863,6 +885,7 @@ describe('headless stream-json snapshots', () => {
       })
 
       expect(result.stderr).toBe('')
+      // One attempt per call: an idle-timeout retry would repeat the agent request.
       expect(server.requests).toHaveLength(2)
       expect(server.paths).toEqual(['/v1/messages', '/v1/messages'])
       const agentRequest = server.requests.find(request => request.max_tokens === 256_000)

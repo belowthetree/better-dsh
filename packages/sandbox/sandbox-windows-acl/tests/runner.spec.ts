@@ -32,6 +32,12 @@ function runRunner(args: string[], timeoutMs = 30_000) {
   })
 }
 
+function icacls(args: string[]): string {
+  const result = spawnSync('icacls', args, { encoding: 'utf8' })
+  if (result.status !== 0) throw new Error(`icacls ${args.join(' ')} failed: ${result.stdout}\n${result.stderr}`)
+  return result.stdout
+}
+
 describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
   let scratchRoot!: string
   let writableDir!: string
@@ -526,7 +532,7 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
-  it('a FullControl open inside a granted root still works for files (the deny inherits to containers only)', () => {
+  it('a FullControl open inside a granted root still works for files (the deny inherits to containers only)', (ctx) => {
     // The ambient-delete deny is 0x40, a member of FILE_ALL_ACCESS: inheriting
     // it onto files would deny every GENERIC_ALL/FullControl open by the user,
     // Administrators, SYSTEM, or the DSH host. Directories inside a granted
@@ -539,8 +545,20 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     writeFileSync(join(granted, 'file.txt'), 'x')
     writeFileSync(join(child, 'deep.txt'), 'x')
     const grant = AclWriteGrant.create(workspaceWriteSid(granted))
-    grant.add(granted, true)
     try {
+      // A directory created outside the inherited chain (a hosted runner's TEMP
+      // can materialize the creator's default DACL as plain entries) receives no
+      // later inheritable ACEs. Re-attach the fixture tree before the grant, and
+      // require the deny on the child before asserting the access it refuses.
+      icacls([granted, '/inheritance:e'])
+      icacls([child, '/inheritance:e'])
+      grant.add(granted, true)
+      const childDeniesDeleteChild = icacls([child]).split(/\r?\n/u)
+        .some(line => line.includes('(I)') && line.includes('(DENY)'))
+      if (!childDeniesDeleteChild) {
+        ctx.skip('this host does not propagate an inheritable ACE to an existing child directory')
+        return
+      }
       const probe = `
 $ErrorActionPreference='SilentlyContinue'
 Add-Type -Namespace P -Name F -MemberDefinition @'

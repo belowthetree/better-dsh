@@ -132,6 +132,9 @@ function normalized(path: string, lines: readonly string[]): string[] {
 
 describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl script', { timeout }, () => {
   let meSid!: string
+  // A capability, not an identity: some hosts grant the caller WRITE_OWNER on
+  // every object regardless of the DACL, and the grant cases cannot exist there.
+  let missingWriteOwnerEstablishable = false
 
   function newScratch(): string {
     // Windows runners may expose TEMP through an 8.3 alias; PowerShell reports long paths.
@@ -146,6 +149,20 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
 
   function stamp(path: string, sid: string, type: 'grant' | 'deny' = 'grant'): void {
     icacls(path, `/${type}`, `*${sid}:(RX)`)
+  }
+
+  // A directory created under a hosted Windows runner's TEMP can start with plain
+  // copies of the creator's SYSTEM, Administrators and signed-in user FullControl
+  // entries rather than inherited ones. `/inheritance:r` removes only inherited
+  // entries, so those copies would leave the caller holding WRITE_OWNER — the
+  // opposite of the state the grant cases must establish — and a leftover deny
+  // entry after allow entries makes the DACL non-canonical, which the script
+  // cannot extend. Strip the copies and the world delete-deny, then grant exactly
+  // Modify plus the DACL-write right the repair itself needs.
+  function establishMissingWriteOwner(target: string): void {
+    icacls(target, '/inheritance:r',
+      '/remove:d', '*S-1-1-0', '/remove:g', '*S-1-5-18', '/remove:g', '*S-1-5-32-544', '/remove:g', `*${meSid}`,
+      '/grant:r', `*${meSid}:(M,WDAC)`)
   }
 
   function dispose(root: string): void {
@@ -171,7 +188,26 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     } finally {
       dispose(probe)
     }
+    // The grant cases need a directory whose DACL withholds WRITE_OWNER while the
+    // caller can still write its DACL. Probe that with the script itself: an
+    // environment that reports both rights regardless of the fixture cannot host
+    // these cases, so they skip rather than assert a state it never established.
+    const preconditionProbe = newScratch()
+    try {
+      const target = makeDir(preconditionProbe, 'precondition')
+      establishMissingWriteOwner(target)
+      const run = runScript(['-Path', target, '-AllowRoot', preconditionProbe, '-Out', join(preconditionProbe, 'out')])
+      missingWriteOwnerEstablishable = run.output.includes('VERDICT=PRECONDITION')
+    } finally {
+      dispose(preconditionProbe)
+    }
   }, timeout)
+
+  function requireMissingWriteOwner(ctx: { skip: (note?: string) => void }): boolean {
+    if (missingWriteOwnerEstablishable) return true
+    ctx.skip('this host grants the caller effective WRITE_OWNER regardless of the DACL, so the fixture cannot withhold it')
+    return false
+  }
 
   it('removes a foreign package allow ACE in one run and leaves a paired recovery record', () => {
     const scratch = newScratch()
@@ -241,14 +277,15 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('grants full control to a directory that lacks WRITE_DAC and WRITE_OWNER, preserving owner and label', () => {
+  it('grants full control to a directory that lacks WRITE_DAC and WRITE_OWNER, preserving owner and label', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'missing-write-owner')
       icacls(target, '/setintegritylevel', 'L')
       const labelsBefore = integrityLines(target)
       expect(labelsBefore.length).toBeGreaterThan(0)
-      icacls(target, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      establishMissingWriteOwner(target)
       const ownerBefore = ownerOf(target)
 
       const run = runScript(['-Path', target, '-AllowRoot', scratch, '-Out', join(scratch, 'out')])
@@ -268,11 +305,12 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('repairs a missing grant and a package ACE in the same invocation', () => {
+  it('repairs a missing grant and a package ACE in the same invocation', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'both')
-      icacls(target, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      establishMissingWriteOwner(target)
       stamp(target, PACKAGE_SID)
       const ownerBefore = ownerOf(target)
 
@@ -335,13 +373,15 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('repairs the whole subtree in one run when only the workspace root is named', () => {
+  it('repairs the whole subtree in one run when only the workspace root is named', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       // The sandbox reports its provisioning failure on the workspace root while the
       // conflicting entry sits deeper, so one approved call must clear both.
       const root = makeDir(scratch, 'workspace')
-      icacls(root, '/inheritance:r', '/grant:r', '*S-1-5-11:(M)')
+      establishMissingWriteOwner(root)
+      icacls(root, '/grant:r', '*S-1-5-11:(M)')
       const deep = makeDir(root, 'deep')
       const leaf = makeDir(deep, 'leaf')
       icacls(deep, '/inheritance:r', '/grant:r', `*${PACKAGE_SID}:(OI)(CI)(RX)`)
@@ -374,11 +414,13 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('keeps an inherit-only ACE when it grants the missing right', () => {
+  it('keeps an inherit-only ACE when it grants the missing right', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'inherit-only')
-      icacls(target, '/inheritance:r', '/grant:r', '*S-1-5-11:(M)')
+      establishMissingWriteOwner(target)
+      icacls(target, '/grant', '*S-1-5-11:(M)')
       icacls(target, '/grant', '*S-1-5-32-545:(OI)(CI)(IO)(F)')
       const inheritOnlyBefore = aclLines(target).filter(line => line.includes('(IO)'))
       expect(inheritOnlyBefore).toHaveLength(1)
@@ -561,12 +603,13 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('restores every attempted change in reverse order when a later path fails', () => {
+  it('restores every attempted change in reverse order when a later path fails', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       const out = join(scratch, 'out')
       const first = makeDir(scratch, 'multi-first')
-      icacls(first, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      establishMissingWriteOwner(first)
       const second = makeDir(scratch, 'multi-second')
       stamp(second, PACKAGE_SID)
       icacls(second, '/deny', `*${meSid}:(WO)`)
@@ -583,12 +626,13 @@ describe.skipIf(!isWin32 || !pwshAvailable())('diagnose-windows-sandbox-acl scri
     }
   }, timeout)
 
-  it('prints the pending recovery command and reports restore_pending_then_stop when rollback fails', () => {
+  it('prints the pending recovery command and reports restore_pending_then_stop when rollback fails', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       const out = join(scratch, 'out')
       const first = makeDir(scratch, 'pending-first')
-      icacls(first, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      establishMissingWriteOwner(first)
       const second = makeDir(scratch, 'pending-second')
       stamp(second, PACKAGE_SID)
       icacls(second, '/deny', `*${meSid}:(WO)`)
@@ -801,12 +845,13 @@ function icacls { throw [System.IO.IOException]::new('icacls unavailable') }
     }
   }, timeout)
 
-  it('repairs its own workspace root when -AllowRoot is the object itself', () => {
+  it('repairs its own workspace root when -AllowRoot is the object itself', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       const out = join(scratch, 'out')
       const grantRoot = makeDir(scratch, 'self-grant')
-      icacls(grantRoot, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      establishMissingWriteOwner(grantRoot)
       const grantRun = runScript(['-Path', grantRoot, '-AllowRoot', grantRoot, '-Out', out])
       expect(grantRun.code, grantRun.output).toBe(0)
       expect(grantRun.output).toContain(`GRANTED ${grantRoot} SID=${meSid}`)
@@ -823,11 +868,12 @@ function icacls { throw [System.IO.IOException]::new('icacls unavailable') }
     }
   }, timeout)
 
-  it('is idempotent: a second repair run changes nothing', () => {
+  it('is idempotent: a second repair run changes nothing', (ctx) => {
+    if (!requireMissingWriteOwner(ctx)) return
     const scratch = newScratch()
     try {
       const target = makeDir(scratch, 'idempotent')
-      icacls(target, '/inheritance:r', '/grant:r', `*${meSid}:(M)`)
+      establishMissingWriteOwner(target)
       stamp(target, PACKAGE_SID)
       const out = join(scratch, 'out')
 

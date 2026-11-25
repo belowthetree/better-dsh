@@ -10,7 +10,11 @@
     baseURL: !!js process.env.DSH_SNAPSHOT_BASE_URL
     thinking: enabled
     reasoningEffort: low
-    streamIdleTimeoutMs: 150
+    # Keep-alive comments are the only SSE activity before the first event. The
+    # snapshot server writes them for longer than this deadline, so a provider
+    # that ignored comments would idle out and retry, while the deadline stays
+    # far above the heartbeat cadence and CI scheduling jitter.
+    streamIdleTimeoutMs: 1000
 
 - id: agent-loop
   config:
