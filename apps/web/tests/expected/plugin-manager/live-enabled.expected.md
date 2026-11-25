@@ -38,6 +38,11 @@
     - status
     - switch "启用 自动授权审查"
   - listitem:
+    - button "查看 更佳形态": 更佳形态
+    - text: Desktop 的球体、面板与模态形态，组合语音输入与语音输出插件。
+    - status
+    - switch "启用 更佳形态"
+  - listitem:
     - button "查看 变更请求与工作树": 变更请求与工作树
     - text: 实验性 在会话侧栏集中跟踪关联的代码变更请求，支持 GitHub PR 以及 GitLab MR：查看检查状态、评审意见与代码差异，并把修改建议交给智能体继续处理。也可查看本地改动，用独立工作树隔离任务。GitHub 功能需要本机安装 gh 并登录。GitLab 合并请求需要本机安装 glab 并登录。
     - status

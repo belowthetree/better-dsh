@@ -880,6 +880,7 @@ describe('web e2e: plugin manager', () => {
       ['@deepseek-ai/dsh-experimental-voice-input-bundle', 1],
       ['@deepseek-ai/dsh-experimental-plugin-market-bundle', 1],
       ['@deepseek-ai/dsh-experimental-auto-review', 1],
+      ['@deepseek-ai/dsh-better-bundle', 0],
       ['@deepseek-ai/dsh-experimental-forge-bundle', 1],
       ['@deepseek-ai/dsh-experimental-inspector-profile', 1],
       ...cuaSupported ? [['@deepseek-ai/dsh-cua-bundle', 1]] : [],

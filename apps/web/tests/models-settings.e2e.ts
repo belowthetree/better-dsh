@@ -700,6 +700,7 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     expect(tripwire.pageErrors).toEqual([])
   })
 
+  // Two browser pages and two settings editors: the WebKit case runs on the lane's test budget.
   it.each([{ name: 'Chromium', engine: chromium }, { name: 'WebKit', engine: webkit }])(
     'keeps mobile model actions, focus and keyboard order in $name', async ({ name: engineName, engine }) => {
       const provider = `review-${engineName.toLowerCase()}`
@@ -809,7 +810,7 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
         await mobileBrowser?.close()
         await scaffold.ctx.settings.mutate('llm-pi-ai', [{ op: 'unset', path: ['providers', provider] }])
       }
-    }, 60_000,
+    },
   )
 
   it.each([{ name: 'Chromium', engine: chromium }, { name: 'WebKit', engine: webkit }])(
