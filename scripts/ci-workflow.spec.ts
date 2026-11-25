@@ -869,6 +869,24 @@ describe('CI workflow', () => {
     expect(JSON.stringify(report.steps)).not.toContain('pnpm install')
   })
 
+  it('budgets web snapshot browser workers for the runner that owns them', () => {
+    const webSnapshot = workflowJob(loadWorkflow('.github/workflows/ci.yml'), 'node-24-web-snapshot')
+    if (!isRecord(webSnapshot.env) || typeof webSnapshot.env.DSH_WEB_SNAPSHOT_WORKERS !== 'string') {
+      throw new TypeError('web snapshot job must declare its worker budget')
+    }
+    const source = webSnapshot.env.DSH_WEB_SNAPSHOT_WORKERS
+      .replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
+    const evaluate = (vars: Record<string, string>, repository: string): unknown => runInNewContext(source, {
+      vars,
+      github: { event: { pull_request: { user: { login: 'author' } } }, repository },
+    }, { timeout: 1000 })
+    // The self-hosted pool admits six browsers; a fork's hosted four-vCPU runner
+    // keeps two so a reload or settings boot is not starved by siblings.
+    expect(evaluate({ DSH_CI_FAILOVER_LINUX: 'selfhosted' }, 'deepseek-ai/deepseek-harness')).toBe('6')
+    expect(evaluate({}, 'belowthetree/better-dsh')).toBe('2')
+    expect(evaluate({}, 'deepseek-ai/deepseek-harness')).toBe('')
+  })
+
   it('fails the required verdict for every needed job except the scoped-out benchmark lane', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const aggregate = workflowJob(workflow, 'all-checks-passed')

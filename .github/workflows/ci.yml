@@ -864,7 +864,9 @@ jobs:
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
       DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '10' || '' }}
-      DSH_WEB_SNAPSHOT_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '6' || '' }}
+      # Six browser workers need the self-hosted 16-core pool; a hosted four-vCPU
+      # runner keeps two so a reload or settings boot is not starved by siblings.
+      DSH_WEB_SNAPSHOT_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '6' || (github.repository != 'deepseek-ai/deepseek-harness' && '2' || '') }}
       DSH_WEB_SNAPSHOT_SHARD: ${{ matrix.shard }}/2
       # Every shard reads these shares. Each shard runs alone on its
       # machine; the last shard also runs the ~40s of serial files first.
