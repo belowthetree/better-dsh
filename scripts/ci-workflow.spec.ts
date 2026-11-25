@@ -680,6 +680,20 @@ describe('CI workflow', () => {
     // product-branch push starts them alongside pull requests.
     expect(windowsAggregate.if).toBe("${{ !cancelled() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/better-dsh') }}")
     expect(aggregate.if).toBe(windowsAggregate.if)
+    // The fork's product-branch push runs the same matrix as a pull request, so
+    // every job the verdict needs must admit that ref: one skipped need fails
+    // the verdict, and a pull-request-only guard is what makes a job skip.
+    for (const name of aggregate.needs as string[]) {
+      const guard = workflowJob(workflow, name).if
+      if (guard === undefined) continue
+      if (typeof guard !== 'string') throw new TypeError(`${name} must declare a trigger condition`)
+      const body = guard.replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
+      expect(runInNewContext(body, {
+        cancelled: () => false,
+        github: { event_name: 'push', ref: 'refs/heads/better-dsh' },
+        vars: {},
+      }, { timeout: 1000 }), `${name} must run on a better-dsh push`).toBe(true)
+    }
     // The benchmark lane is a required verdict input and runs alone so its
     // wall-clock budgets never share a runner with a concurrent aggregate.
     expect(aggregate.needs).toContain('node-24-bench')
