@@ -27,12 +27,17 @@ interface DefaultWeb {
  * Boot the built Web profile under plain Node and dispose it to quiescence after an assertion callback.
  * @param test - owning Vitest case, including its timeout, cancellation, and cleanup hooks.
  * @param inspect - assertions against the running process and its ephemeral loopback URL.
- * @param options - additional profile patches and test data prepared before startup.
+ * @param options - additional profile patches and test data prepared before startup, plus the
+ * experimental Client entry the negative-control command mounts dynamically.
  */
 export async function withDefaultWeb(
   test: TestContext,
   inspect: (app: DefaultWeb) => Promise<void>,
-  options: { patches?: readonly string[]; prepare?: (root: string) => Promise<void> } = {},
+  options: {
+    patches?: readonly string[]
+    prepare?: (root: string) => Promise<void>
+    negativeControl?: string
+  } = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-web-default-isolation-'))
   let removal: Promise<void> | undefined
@@ -55,7 +60,8 @@ export async function withDefaultWeb(
     await writeFile(patch, JSON.stringify([{ insert: [{
       id: 'runtime-roster-observer',
       name: pathToFileURL(join(root, 'fixtures/runtime-roster-observer.js')).href,
-      config: { negativeControl: pathToFileURL(join(repoRoot, 'packages/experimental/client-ui-voice-input/lib/index.js')).href },
+      config: { negativeControl: options.negativeControl
+        ?? pathToFileURL(join(repoRoot, 'packages/experimental/client-ui-voice-input/lib/index.js')).href },
     }] }]) + '\n')
     const launch = resolveExampleLaunch({
       srcBin: join(repoRoot, 'apps/cli/src/bin.ts'),

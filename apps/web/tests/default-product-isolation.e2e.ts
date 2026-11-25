@@ -49,6 +49,10 @@ function experimentalClientReferences(roster: Awaited<ReturnType<typeof readClie
 }
 
 it('activates the actual default Client registry without experimental packages', async (test) => {
+  // The negative control mounts the built entry of an experimental Client plugin
+  // whose services the default Web composition already provides, so a reload can
+  // activate it. Voice input left the control set when the fork moved its capture
+  // service into a separate experimental plugin.
   await withDefaultWeb(test, async ({ url, request }) => {
     const browser = await chromium.launch({ timeout: test.task.timeout })
     test.onTestFinished(async () => { await browser.close() })
@@ -110,7 +114,7 @@ it('activates the actual default Client registry without experimental packages',
       expect(roster.plugins.some(plugin => plugin.modules.includes('@deepseek-ai/dsh-client-ui-layout'))).toBe(true)
       expect(experimentalClientReferences(roster)).toEqual([])
       const contaminatedHost = await request('mount-experimental-entry')
-      const experimentalName = '@deepseek-ai/dsh-experimental-client-ui-voice-input'
+      const experimentalName = '@deepseek-ai/dsh-experimental-client-ui-stats'
       expect(contaminatedHost.client.entries.map(entry => entry.id)).toContain(experimentalName)
       await page.reload()
       await expect.poll(async () => {
@@ -125,8 +129,7 @@ it('activates the actual default Client registry without experimental packages',
     } finally {
       await browser.close()
     }
+  }, {
+    negativeControl: new URL('../../../packages/experimental/client-ui-stats/lib/index.js', import.meta.url).href,
   })
-  // Booting the built Web profile and driving its real Client registry through a
-  // browser is the slowest single case of the lane; the serial project keeps the
-  // cores free, and this budget covers the spawn and teardown as well.
-}, 240_000)
+})

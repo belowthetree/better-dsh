@@ -21,15 +21,12 @@
  */
 import { basename } from 'node:path'
 
-/** Files that rewrite the shared build output or need the runner to themselves, in the order the CI runner runs them alone. */
+/** Files that rewrite the shared build output, in the order the CI runner runs them alone. */
 export const WEB_SNAPSHOT_SERIAL_FILES: readonly string[] = [
   'apps/web/tests/hmr-live.e2e.ts',
   'apps/web/tests/client-plugin-live.e2e.ts',
   // Recorded SVG streaming retains live heartbeat assertions; reserve its browser CPU budget.
   'apps/web/tests/present-svg.e2e.ts',
-  // Boots the built default Web profile and drives its registry through a real browser; a
-  // four-vCPU hosted runner starves it when three other browser workers share the cores.
-  'apps/web/tests/default-product-isolation.e2e.ts',
 ]
 
 /** Name of the project that holds {@link WEB_SNAPSHOT_SERIAL_FILES}. */
