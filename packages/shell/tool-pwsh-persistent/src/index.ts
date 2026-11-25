@@ -25,6 +25,9 @@ const TIMEOUT_CODE = 'PERSISTENT_PWSH_TIMEOUT'
 const SCROLLBACK_PAGE_LINES = 1_000
 const POLL_INTERVAL_MS = 25
 
+/** Polls allowed for the end marker after an early readiness settle (about 250 ms). */
+const STDIN_READ_GRACE_POLLS = 10
+
 const DEFAULT_DESCRIPTION = 'Run commands in a persistent PowerShell shell. State, including the current directory and exported environment variables, persists across calls for this agent.'
 
 interface ResolvedConfig {
@@ -179,6 +182,30 @@ function partialOutput(
 
 async function pause(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+}
+
+/**
+ * Look for the command's end marker after an early readiness settle.
+ * @param ctx - context carrying the terminal service.
+ * @param owner - Session owner of the persistent shell.
+ * @param id - the shell's terminal session.
+ * @param marker - this command's markers.
+ * @returns the complete capture, or undefined when the command made no further progress.
+ */
+async function completionWithin(
+  ctx: Context,
+  owner: Agent,
+  id: TerminalSessionId,
+  marker: CommandMarkers,
+): Promise<CapturedOutput | undefined> {
+  for (let poll = 0; poll < STDIN_READ_GRACE_POLLS; poll += 1) {
+    await pause()
+    const latest = ctx.terminals.read(owner, id, { offset: 0, count: SCROLLBACK_PAGE_LINES })
+    if (!latest.text.includes(marker.end)) continue
+    const complete = commandOutput(retainedScrollback(ctx, owner, id, latest), marker)
+    if (complete !== undefined) return complete
+  }
+  return undefined
 }
 
 function nextScrollbackOffset(page: TerminalReadResult, offset: number): number | undefined {
@@ -410,7 +437,18 @@ async function executeCommand(
     if (result.waitReason === 'stdin_read') {
       const snapshot = retainedScrollback(ctx, owner, id, latest)
       const partial = partialOutput(snapshot, marker, fallback)
-      if (partial.started) return renderCaptured(partial, config.maxOutputChars)
+      if (partial.started) {
+        // Readiness can settle again between the wrapper's start marker and the
+        // command's first output, so a partial answer needs a bounded grace
+        // window for the end marker; resending would duplicate an interactive
+        // child's output, while returning at once reports an empty result.
+        const completed = await completionWithin(ctx, owner, id, marker)
+        if (completed !== undefined) return renderCaptured(completed, config.maxOutputChars)
+        return renderCaptured(
+          partialOutput(retainedScrollback(ctx, owner, id), marker, fallback),
+          config.maxOutputChars,
+        )
+      }
     }
     await pause()
   }

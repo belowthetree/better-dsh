@@ -111,6 +111,8 @@ type StubMode =
   | 'prompt-collision'
   | 'echo-then-complete'
   | 'echo-then-hang'
+  | 'stdin-read-after-start'
+  | 'stdin-read-torn-status'
   | 'hang'
 
 const START_TAG = '__DSH_PERSISTENT_PWSH_START_'
@@ -220,6 +222,29 @@ class StubTerminalSession implements TerminalBackendSession {
       this.mode = 'normal'
       this.pendingText = request.text
       return this.operation(Promise.resolve(this.result(echo, 'stdin_read')), echo)
+    }
+    if (this.mode === 'stdin-read-after-start') {
+      // The wrapper announces itself and the readiness probe settles before the
+      // command's first output line; the shell prints the rest moments later.
+      this.mode = 'normal'
+      this.pendingText = request.text
+      const start = markerOf(request.text, START_TAG)
+      const end = markerOf(request.text, END_TAG)
+      this.scrollback += `${start ?? ''}\n`
+      setTimeout(() => { this.scrollback += `late output\n${end ?? ''}0\n${this.motd}` }, 5)
+      return this.operation(Promise.resolve(this.result(start ?? '', 'stdin_read')))
+    }
+    if (this.mode === 'stdin-read-torn-status') {
+      // The command's output and end marker arrive before the status digits, so
+      // the first grace poll sees a marker it cannot parse yet.
+      this.mode = 'normal'
+      this.pendingText = request.text
+      const start = markerOf(request.text, START_TAG)
+      const end = markerOf(request.text, END_TAG)
+      this.scrollback += `${start ?? ''}\n`
+      setTimeout(() => { this.scrollback += `late output\n${end ?? ''}` }, 20)
+      setTimeout(() => { this.scrollback += `0\n${this.motd}` }, 90)
+      return this.operation(Promise.resolve(this.result(start ?? '', 'stdin_read')))
     }
     const sent = request.text.length > 0 ? request.text : this.pendingText
     this.pendingText = ''
@@ -438,6 +463,30 @@ describe('tool-pwsh-persistent', () => {
     expect(result).not.toContain('LASTEXITCODE')
     // The premature settle costs one recovery send instead of a wrong result.
     expect(session.sends).toBe(3)
+  })
+
+  it('waits out a readiness settle that lands before the first output line', async () => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub' })
+    await call(ctx, owner, 'warm up')
+    const session = stub.sessions[0]!
+    session.mode = 'stdin-read-after-start'
+
+    // The wrapper announced itself, so returning the empty capture at once would
+    // report a successful command with no output; the grace window sees the rest.
+    const result = text(await call(ctx, owner, 'Write-Output hi'))
+    expect(result).toBe('late output')
+    expect(result).not.toContain('LASTEXITCODE')
+    expect(session.sends).toBe(2)
+  })
+
+  it('keeps the grace window open while the completion status is still torn', async () => {
+    const { ctx, owner, stub } = await setup({ backendType: 'stub' })
+    await call(ctx, owner, 'warm up')
+    stub.sessions[0]!.mode = 'stdin-read-torn-status'
+
+    const result = text(await call(ctx, owner, 'Write-Output hi'))
+    expect(result).toBe('late output')
+    expect(result).not.toContain('LASTEXITCODE')
   })
 
   it('reports no output instead of the echo when a timeout precedes execution', async () => {
