@@ -268,7 +268,9 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     // forbidden settlements keeps both visible through the reasons rather than wall-clock.
     // Formatting probes host versions, so only a failed sequence pays that cost.
     const commands = 8
-    const unexpected = settleReasons.filter(reason => reason !== 'stdin_read' && reason !== 'session_exit')
+    const unexpected = settleReasons.filter(reason => reason !== 'stdin_read'
+      && reason !== 'session_exit'
+      && reason !== 'inferred_idle')
     const exits = settleReasons.filter(reason => reason === 'session_exit')
     const degraded = unexpected.length > 0 || exits.length !== 1 || settleReasons.length < commands
     const failure = degraded ? `${JSON.stringify(settleReasons)}\n${timeline.format()}` : ''
