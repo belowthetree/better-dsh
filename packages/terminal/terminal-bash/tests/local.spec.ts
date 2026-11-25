@@ -393,16 +393,19 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
       text: '"console=" + [Console]::OutputEncoding.WebName + " out=" + $OutputEncoding.WebName',
       submit: true,
     })
-    const pinnedResult = await pinned.done
-    expect(pinnedResult.viewport).toContain('console=utf-8 out=utf-8')
-    // Char codes keep the submitted line ASCII-only, so the assertion is a
-    // pure output-decode check.
+    // Readiness can settle while the shell is still rendering the submitted line,
+    // so poll the retained viewport instead of the first settle snapshot.
+    const viewport = () => ctx.terminals.read(agent, created.sessionId, { offset: 0, count: 100 }).text
+    await pinned.done
+    await expect.poll(viewport, { timeout: 5_000 }).toContain('console=utf-8 out=utf-8')
+    // Char codes keep the submitted line ASCII-only, so the
+    // assertion is a pure output-decode check.
     const sent = ctx.terminals.startSend(agent, created.sessionId, {
       text: "[Console]::Write([char]0x4E2D + [char]0x6587 + ' encoding-ok')",
       submit: true,
     })
-    const result = await sent.done
-    expect(result.viewport).toContain('中文 encoding-ok')
+    await sent.done
+    await expect.poll(viewport, { timeout: 5_000 }).toContain('中文 encoding-ok')
     await ctx.terminals.kill(agent, created.sessionId)
   }, 30_000)
 })
