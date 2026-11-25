@@ -126,4 +126,7 @@ it('activates the actual default Client registry without experimental packages',
       await browser.close()
     }
   })
-})
+  // Booting the built Web profile and driving its real Client registry through a
+  // browser is the slowest single case of the lane; the serial project keeps the
+  // cores free, and this budget covers the spawn and teardown as well.
+}, 240_000)

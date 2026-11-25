@@ -18,8 +18,10 @@ const UNTRUSTED_OVERLAY = fileURLToPath(new URL('./remote-connection-untrusted.o
 
 async function remoteSettings(page: Page): Promise<Locator> {
   await openSettings(page, 'zh')
+  // The section list arrives with the settings dialog's own plugin loading; a shared
+  // four-vCPU hosted runner can need most of a minute when the dialog follows a reload.
   await page.getByRole('dialog', { name: '设置', exact: true })
-    .getByRole('button', { name: '远程连接', exact: true }).click()
+    .getByRole('button', { name: '远程连接', exact: true }).click({ timeout: 60_000 })
   const section = page.getByRole('region', { name: '远程连接', exact: true })
   await section.waitFor()
   const link = section.getByRole('region', { name: '访问地址', exact: true })
