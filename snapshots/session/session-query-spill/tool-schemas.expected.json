@@ -412,6 +412,19 @@
       }
     },
     {
+      "name": "session_latest_reply",
+      "description": "Read the newest non-empty assistant text reply from one authorized session. Returns its event sequence, time, and up to 20000 characters of text; use session_event_read with that sequence for the complete event.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Target Session ID. Omit to read the caller's own reply. The target must share the caller's workspace."
+          }
+        }
+      }
+    },
+    {
       "name": "session_search",
       "description": "Search prior sessions in the caller workspace and return the strongest matching event from each session.",
       "parameters": {

@@ -6,3 +6,4 @@ recording: authored
 header:
   class: manage-session-list-current
   pin: true
+platform: posix
