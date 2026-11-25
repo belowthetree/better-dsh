@@ -682,17 +682,25 @@ describe('CI workflow', () => {
     expect(aggregate.if).toBe(windowsAggregate.if)
     // The fork's product-branch push runs the same matrix as a pull request, so
     // every job the verdict needs must admit that ref: one skipped need fails
-    // the verdict, and a pull-request-only guard is what makes a job skip.
+    // the verdict, and a pull-request-only guard is what makes a job skip. The
+    // benchmark lane is the one intentional exception, scoped to the repository
+    // that owns its calibration.
     for (const name of aggregate.needs as string[]) {
       const guard = workflowJob(workflow, name).if
       if (guard === undefined) continue
       if (typeof guard !== 'string') throw new TypeError(`${name} must declare a trigger condition`)
       const body = guard.replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
-      expect(runInNewContext(body, {
+      const evaluate = (repository: string): unknown => runInNewContext(body, {
         cancelled: () => false,
-        github: { event_name: 'push', ref: 'refs/heads/better-dsh' },
+        github: { event_name: 'push', ref: 'refs/heads/better-dsh', repository },
         vars: {},
-      }, { timeout: 1000 }), `${name} must run on a better-dsh push`).toBe(true)
+      }, { timeout: 1000 })
+      expect(evaluate('deepseek-ai/deepseek-harness'), `${name} must run on a better-dsh push`).toBe(true)
+      // The benchmark verdict owns budgets calibrated from the upstream
+      // repository's CI, so only its scope skip is allowed on a fork; the
+      // aggregate tolerates exactly that skip.
+      expect(evaluate('belowthetree/better-dsh'), `${name} must skip on a better-dsh push outside the calibrated repository`)
+        .toBe(name !== 'node-24-bench')
     }
     // The benchmark lane is a required verdict input and runs alone so its
     // wall-clock budgets never share a runner with a concurrent aggregate.
@@ -828,7 +836,7 @@ describe('CI workflow', () => {
     }
   })
 
-  it('runs required benchmarks on a four-vCPU Blacksmith runner and falls back to hosted Linux', () => {
+  it('runs required benchmarks only in the calibrated repository, on a four-vCPU Blacksmith runner or hosted Linux', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const benchmark = workflowJob(workflow, 'node-24-bench')
     const aggregate = workflowJob(workflow, 'all-checks-passed')
@@ -841,20 +849,61 @@ describe('CI workflow', () => {
       expect(evaluateRunsOn(benchmark['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: mode } })).toBe('ubuntu-24.04')
     }
     expect(JSON.stringify(benchmark.steps)).not.toContain('DSH_CI_FAILOVER_LINUX')
-    expect(benchmark.if).toBe("github.event_name == 'pull_request' || github.ref == 'refs/heads/better-dsh'")
+    // Budgets are reviewed source constants; only the repository whose CI
+    // calibrated them may enforce them, so a fork's required verdict reports
+    // the lane as scoped out instead of inventing a hardware factor.
+    expect(benchmark.if).toBe("(github.event_name == 'pull_request' || github.ref == 'refs/heads/better-dsh') && github.repository == 'deepseek-ai/deepseek-harness'")
     expect(benchmark.needs).toBe('node-24-build')
     expect(benchmark['continue-on-error']).toBeUndefined()
     expect(aggregate.needs).toContain('node-24-bench')
 
-    // The report job renders on a small hosted runner and installs nothing.
+    // The report job renders on a small hosted runner and installs nothing. A
+    // skipped benchmark lane has no phase results to render.
     const report = workflowJob(workflow, 'node-24-bench-report')
     expect(evaluateRunsOn(report['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: 'blacksmith' } }))
       .toBe('blacksmith-2vcpu-ubuntu-2404')
     for (const mode of ['', 'selfhosted', 'unexpected']) {
       expect(evaluateRunsOn(report['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: mode } })).toBe('ubuntu-latest')
     }
-    expect(report.if).toBe("${{ !cancelled() && github.event_name == 'pull_request' }}")
+    expect(report.if).toBe("${{ !cancelled() && github.event_name == 'pull_request' && needs['node-24-bench'].result != 'skipped' }}")
     expect(JSON.stringify(report.steps)).not.toContain('pnpm install')
+  })
+
+  it('fails the required verdict for every needed job except the scoped-out benchmark lane', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const aggregate = workflowJob(workflow, 'all-checks-passed')
+    if (!Array.isArray(aggregate.needs) || !Array.isArray(aggregate.steps)) {
+      throw new TypeError('all-checks-passed must define needs and steps')
+    }
+    const needs = aggregate.needs as string[]
+    const step = aggregate.steps.filter(isRecord).find(candidate => candidate.name === 'Fail if any needed job did not succeed')
+    if (!isRecord(step) || typeof step.if !== 'string') throw new TypeError('all-checks-passed must define its failure condition')
+    const condition = step.if.replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
+    // Index syntax keeps the hyphenated job ids unambiguous, and naming every
+    // need keeps a new one from silently escaping the verdict.
+    for (const name of needs) expect(condition).toContain(`needs['${name}'].result`)
+    // The condition stays within the operators plain JavaScript evaluates the
+    // same way, so its truth table runs here instead of being trusted from
+    // prose.
+    const fails = (results: Record<string, string>, repository: string): unknown => runInNewContext(condition, {
+      needs: Object.fromEntries(needs.map(name => [name, { result: results[name] ?? 'success' }])),
+      github: { repository },
+    }, { timeout: 1000 })
+    const upstream = 'deepseek-ai/deepseek-harness'
+    const fork = 'belowthetree/better-dsh'
+    expect(fails({}, upstream)).toBe(false)
+    expect(fails({}, fork)).toBe(false)
+    // The scope skip is tolerated only outside the calibrated repository.
+    expect(fails({ 'node-24-bench': 'skipped' }, fork)).toBe(false)
+    expect(fails({ 'node-24-bench': 'skipped' }, upstream)).toBe(true)
+    expect(fails({ 'node-24-bench': 'failure' }, fork)).toBe(true)
+    expect(fails({ 'node-24-bench': 'cancelled' }, fork)).toBe(true)
+    for (const name of needs.filter(need => need !== 'node-24-bench')) {
+      for (const result of ['skipped', 'failure', 'cancelled']) {
+        expect(fails({ [name]: result }, upstream), `${name} ${result} on upstream`).toBe(true)
+        expect(fails({ [name]: result }, fork), `${name} ${result} on the fork`).toBe(true)
+      }
+    }
   })
 
   it('always restores the hosted benchmark pnpm cache', () => {
