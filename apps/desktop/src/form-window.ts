@@ -14,6 +14,12 @@ export type DesktopFormRole = 'orb' | 'surface' | 'bubbles' | 'onboarding'
 /** Orb width and height in logical pixels; the square carrier shows the mascot artwork unbounded. */
 export const ORB_SIZE = 160
 
+/**
+ * Logical square the orb window grows into while its options ring is open. The
+ * ring's outer buttons stay inside this pad around the orb square.
+ */
+export const ORB_MENU_SIZE = 300
+
 /** Expanded quick-prompt size in logical pixels. */
 export const PANEL_SIZE = { width: 560, height: 160 } as const
 
@@ -95,6 +101,40 @@ export function containsPoint(
 export function orbBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea): FormPresentationBounds {
   const clamped = clampFormLayout(layout, workArea)
   return { x: clamped.orb.x, y: clamped.orb.y, width: ORB_SIZE, height: ORB_SIZE }
+}
+
+/**
+ * Place the enlarged orb window that hosts the options ring, centered on the
+ * orb square and kept inside the work area. A work area smaller than
+ * ORB_MENU_SIZE shrinks the window around the same center.
+ * @param layout - current orb layout.
+ * @param workArea - target work area.
+ * @returns the options-ring window bounds.
+ */
+export function orbMenuBounds(layout: DesktopFormLayout, workArea: DesktopWorkArea): FormPresentationBounds {
+  const orb = orbBounds(layout, workArea)
+  const width = Math.min(ORB_MENU_SIZE, workArea.width)
+  const height = Math.min(ORB_MENU_SIZE, workArea.height)
+  return {
+    x: Math.min(Math.max(orb.x + Math.floor((ORB_SIZE - width) / 2), workArea.x), workArea.x + workArea.width - width),
+    y: Math.min(Math.max(orb.y + Math.floor((ORB_SIZE - height) / 2), workArea.y), workArea.y + workArea.height - height),
+    width,
+    height,
+  }
+}
+
+/**
+ * Derive the direction from the orb center toward the work-area center, which
+ * orients the options ring away from the display edge the orb rests against.
+ * @param layout - current orb layout.
+ * @param workArea - target work area.
+ * @returns the direction in radians; zero when the centers coincide.
+ */
+export function orbMenuDirection(layout: DesktopFormLayout, workArea: DesktopWorkArea): number {
+  const orb = orbBounds(layout, workArea)
+  const deltaX = workArea.x + workArea.width / 2 - (orb.x + ORB_SIZE / 2)
+  const deltaY = workArea.y + workArea.height / 2 - (orb.y + ORB_SIZE / 2)
+  return deltaX === 0 && deltaY === 0 ? 0 : Math.atan2(deltaY, deltaX)
 }
 
 /**

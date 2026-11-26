@@ -69,13 +69,13 @@ class SwitchableAccess extends Service {
 /** The classic frame's carrier: no presentation commands, no form. */
 const CLASSIC_SURFACE = {
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-  orbDocked: false, orbHovered: false, modalOpen: false,
+  orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
 } as const
 
 /** The form profile's carrier: the page has no main column to occupy. */
 const FORM_SURFACE = {
   form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null,
-  orbDocked: false, orbHovered: false, modalOpen: false,
+  orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
 } as const
 
 async function bench(allows: ((action: string) => boolean) | 'switchable' = () => true, form = false) {

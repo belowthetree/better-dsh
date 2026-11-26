@@ -91,6 +91,7 @@ function createProductApi(): DshDesktopProductApi {
       setPinned: pinned => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'setPinned', pinned }) as Promise<void>,
       dragBy: (deltaX, deltaY) => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'dragBy', deltaX, deltaY }) as Promise<void>,
       snap: () => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'snap' }) as Promise<void>,
+      setOrbMenu: open => ipcRenderer.invoke(DESKTOP_IPC.surfaceCommand, { kind: 'setOrbMenu', open }) as Promise<void>,
       pointerInside: (inside) => { ipcRenderer.send(DESKTOP_IPC.surfacePointer, inside) },
       sendMessage: (target, channel, payload) => ipcRenderer.invoke(DESKTOP_IPC.surfaceMessage,
         { target, channel, payload }) as Promise<void>,

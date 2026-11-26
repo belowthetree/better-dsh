@@ -139,7 +139,7 @@ app.on('open-url', (event, url) => { event.preventDefault(); acceptDeepLink(url)
 /** Presentation a renderer boots with when its profile presents the classic workspace window. */
 const CLASSIC_SURFACE_SNAPSHOT: SurfaceSnapshot = {
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-  orbDocked: false, orbHovered: false, modalOpen: false,
+  orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
 }
 
 /**
@@ -542,6 +542,7 @@ async function main(): Promise<void> {
       // surface window was visible and focused for the panel.
       if (window !== undefined) { window.show(); window.focus(); window.moveTop() }
     },
+    focusOrb: () => { if (!onboardingActive) orbWindows.current()?.focus() },
     hideSurface: () => { productWindows.current()?.hide() },
     revealBubbles: () => { if (!onboardingActive) bubblesWindows.current()?.showInactive() },
     hideBubbles: () => { bubblesWindows.current()?.hide() },
@@ -1655,6 +1656,9 @@ async function main(): Promise<void> {
       window.on('show', () => { sessionEnding = false })
     }
     window.on('blur', formFocusLost)
+    // The options ring lives in the enlarged orb window; losing focus to another
+    // application collapses it before the window can block the desktop.
+    window.on('blur', () => { surfaceController?.closeOrbMenu() })
     window.on('closed', () => {
       surfaceMessages.drop('orb')
       navigations.delete(window)

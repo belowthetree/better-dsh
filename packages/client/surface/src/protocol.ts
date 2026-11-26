@@ -36,6 +36,20 @@ export interface ModalSizeHint {
  */
 export type SurfacePresentation = 'classic' | 'orb' | 'panel' | 'modal' | 'bubbles'
 
+/** Geometry of the open orb options ring inside the enlarged orb window. */
+export interface OrbMenuSnapshot {
+  /** Orb square left edge inside the orb window content, in CSS pixels. */
+  readonly anchorX: number
+  /** Orb square top edge inside the orb window content, in CSS pixels. */
+  readonly anchorY: number
+  /**
+   * Direction in radians from the orb center toward the work-area center. The
+   * ring spans a half circle around it, so the options open away from the
+   * display edge the orb rests against.
+   */
+  readonly direction: number
+}
+
 /** Presentation state shared by the carrier, the client service, and tests. */
 export interface SurfaceSnapshot {
   /** Shell form this window was created for. */
@@ -60,6 +74,12 @@ export interface SurfaceSnapshot {
    * report false.
    */
   readonly orbDocked: boolean
+  /**
+   * Geometry of the open orb options ring, or null while the orb square rests
+   * alone. An open ring means the carrier grew the orb window into a
+   * transparent pad around the orb; the renderer draws the ring there.
+   */
+  readonly orbMenu: OrbMenuSnapshot | null
   /**
    * Whether the pointer is over the resident orb window. A form profile's
    * surface window keeps the bubble column while the orb is hovered, even when
@@ -134,6 +154,11 @@ export interface DesktopSurfaceApi {
    * Snap the orb flush to the nearest work-area edge while it rests within the snap distance.
    */
   snap(): Promise<void>
+  /**
+   * Grow the resident orb window into its options ring, or restore the orb square.
+   * @param open - whether the options ring is shown.
+   */
+  setOrbMenu(open: boolean): Promise<void>
   /**
    * Report whether the pointer is over interactive content, so main can pass
    * clicks through.

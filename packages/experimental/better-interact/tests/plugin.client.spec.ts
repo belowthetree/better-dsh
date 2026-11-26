@@ -21,20 +21,20 @@ type Registration = { readonly name: string; readonly [key: string]: unknown }
 
 /** Orb presentation the carrier reports while the plugin runs. */
 const ORB: SurfaceSnapshot = {
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbMenu: null, orbHovered: false,
   modalOpen: false,
 }
 
 /** Dialog presentation the carrier reports while the workbench is open. */
 const WORKBENCH: SurfaceSnapshot = {
   form: 'orb', role: 'surface', presentation: 'modal', pinned: false, available: true,
-  modal: WORKBENCH_MODAL_ID, orbDocked: false, orbHovered: false, modalOpen: true,
+  modal: WORKBENCH_MODAL_ID, orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: true,
 }
 
 /** Classic shell presentation: the page itself owns playback and navigation. */
 const CLASSIC: SurfaceSnapshot = {
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true,
-  modal: null, orbDocked: false, orbHovered: false, modalOpen: false,
+  modal: null, orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
 }
 
 const sid = (value: string) => value as SessionId
@@ -104,6 +104,7 @@ function context(options: {
   const presentModal = vi.fn(() => Promise.resolve())
   const presentBubbles = vi.fn(() => Promise.resolve())
   const dismissBubbles = vi.fn(() => Promise.resolve())
+  const setOrbMenu = vi.fn(() => Promise.resolve())
   const openSession = vi.fn()
   const openWorkspace = vi.fn(() => Promise.resolve())
   const pickDirectory = vi.fn<() => Promise<string | null>>(() => Promise.resolve(null))
@@ -167,6 +168,7 @@ function context(options: {
       return () => {}
     }),
     get: vi.fn((name: string) => (withVoice && name === 'voiceOutput' ? voiceOutput : undefined)),
+    provide: vi.fn(),
     on: vi.fn(() => () => {}),
     theme: { getTheme: () => ({ preference: 'system' }), setTheme: vi.fn() },
     locale: { register: record, bind: vi.fn(() => (key: string) => key) },
@@ -186,6 +188,7 @@ function context(options: {
       presentModal,
       presentBubbles,
       dismissBubbles,
+      setOrbMenu,
       setPointerInside: vi.fn(),
       sendMessage,
       onMessage: (channel: string, listener: (message: SurfaceMessage) => void) => {
@@ -202,9 +205,10 @@ function context(options: {
     },
   }
   return {
-    ctx, registrations, commands, dictionaries, sessions, workspaces, catalog, presentModal, presentBubbles, dismissBubbles,
-    openSession, openWorkspace, pickDirectory, createWorkspace, initializeDefault, createSession, disposers, pendingInteractions,
-    sendMessage, emitMessage, speak, setVoice, voiceOutput, narrationEvents, retainNarration,
+    ctx, registrations, commands, dictionaries, sessions, workspaces, catalog,
+    presentModal, presentBubbles, dismissBubbles, setOrbMenu,
+    openSession, openWorkspace, pickDirectory, createWorkspace, initializeDefault, createSession,
+    disposers, pendingInteractions, sendMessage, emitMessage, speak, setVoice, voiceOutput, narrationEvents, retainNarration,
   }
 }
 
@@ -260,6 +264,25 @@ it('labels every workbench command for the shortcut catalog', () => {
     'command.newWorkspace', 'command.next', 'command.open', 'command.open', 'command.previous', 'command.sessions',
     'command.toggle', 'command.voice', 'orb.menu.workbench',
   ])
+})
+
+it('toggles the orb options ring from the global shortcut command', () => {
+  const closed = context()
+  apply(closed.ctx as never)
+  const command = closed.commands.find(entry => entry.id === 'orb.open')!
+  expect(command.modals).toEqual([])
+  const resolution = command.resolve(contextAt(null))
+  expect(resolution.status).toBe('handled')
+  if (resolution.status === 'handled') resolution.run()
+  expect(closed.setOrbMenu).toHaveBeenCalledWith(true)
+
+  const open = context({ surface: { ...ORB, orbMenu: { anchorX: 70, anchorY: 70, direction: Math.PI } } })
+  apply(open.ctx as never)
+  const closing = open.commands.find(entry => entry.id === 'orb.open')!
+  const closingResolution = closing.resolve(contextAt(null))
+  expect(closingResolution.status).toBe('handled')
+  if (closingResolution.status === 'handled') closingResolution.run()
+  expect(open.setOrbMenu).toHaveBeenCalledWith(false)
 })
 
 it('mounts the bubble column and its bound stack', () => {

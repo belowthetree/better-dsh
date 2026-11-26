@@ -6,7 +6,7 @@ import type {
 /** Presentation of a carrier that cannot change it: Web pages and classic Desktop windows. */
 const INERT_SNAPSHOT: SurfaceSnapshot = Object.freeze({
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-  orbDocked: false, orbHovered: false, modalOpen: false,
+  orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
 })
 
 /** Desktop window with the preload product API exposed as `window.dshDesktop`. */
@@ -60,6 +60,11 @@ export interface SurfaceAdapter {
   /** Snap the orb flush to the nearest work-area edge while it rests within the snap distance. */
   snap(): Promise<void>
   /**
+   * Grow the resident orb window into its options ring, or restore the orb square.
+   * @param open - whether the options ring is shown.
+   */
+  setOrbMenu(open: boolean): Promise<void>
+  /**
    * Report whether the pointer is over interactive content.
    * @param inside - whether the pointer is over the reporting window's content.
    */
@@ -98,6 +103,7 @@ export function inertSurfaceAdapter(): SurfaceAdapter {
     setPinned: () => Promise.resolve(),
     dragBy: () => Promise.resolve(),
     snap: () => Promise.resolve(),
+    setOrbMenu: () => Promise.resolve(),
     pointerInside: () => {},
     sendMessage: () => Promise.resolve(),
     subscribeMessages: () => () => {},
@@ -114,7 +120,7 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
   return {
     initial: () => descriptor ?? {
       form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
-      orbDocked: false, orbHovered: false, modalOpen: false,
+      orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
     },
     read: () => api.snapshot(),
     subscribe: listener => api.subscribe(listener),
@@ -127,6 +133,7 @@ export function electronSurfaceAdapter(api: DesktopSurfaceApi, descriptor: Surfa
     setPinned: pinned => api.setPinned(pinned),
     dragBy: (deltaX, deltaY) => api.dragBy(deltaX, deltaY),
     snap: () => api.snap(),
+    setOrbMenu: open => api.setOrbMenu(open),
     pointerInside: (inside) => { api.pointerInside(inside) },
     sendMessage: (target, channel, payload) => api.sendMessage(target, channel, payload),
     subscribeMessages: (channel, listener) => api.subscribeMessages(channel, listener),

@@ -350,7 +350,7 @@ describe('UiWorkspaceService', () => {
   it('skips startup restoration in an orb-form window', async () => {
     vi.stubGlobal('__DSH_SURFACE__', {
       form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true,
-      modal: null, orbDocked: false, orbHovered: false, modalOpen: false,
+      modal: null, orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
     } satisfies SurfaceSnapshot)
     const b = bench({ workspaces: workspaceState(), sessions: sessionState() })
     await setImmediate()

@@ -1,5 +1,5 @@
 /** Surface state over one carrier adapter, exposed to Client plugins as `ctx.surface`. */
-import type { ModalSizeHint, SurfaceMessage, SurfaceMessageRole, SurfaceSnapshot } from '../protocol.ts'
+import type { ModalSizeHint, OrbMenuSnapshot, SurfaceMessage, SurfaceMessageRole, SurfaceSnapshot } from '../protocol.ts'
 import type { SurfaceAdapter } from './adapters.ts'
 
 /* jscpd:ignore-start -- the service restates the carrier commands so each layer owns its JSDoc and the adapter can add initial/read. */
@@ -49,6 +49,11 @@ export interface SurfaceService {
   /** Snap the orb flush to the nearest work-area edge while it rests within the snap distance. */
   snap(): Promise<void>
   /**
+   * Grow the resident orb window into its options ring, or restore the orb square.
+   * @param open - whether the options ring is shown.
+   */
+  setOrbMenu(open: boolean): Promise<void>
+  /**
    * Report whether the pointer is over interactive content.
    * @param inside - whether the pointer is over the reporting window's content.
    */
@@ -79,8 +84,15 @@ function samePresentation(left: SurfaceSnapshot, right: SurfaceSnapshot): boolea
     && left.available === right.available
     && left.modal === right.modal
     && left.orbDocked === right.orbDocked
+    && sameOrbMenu(left.orbMenu, right.orbMenu)
     && left.orbHovered === right.orbHovered
     && left.modalOpen === right.modalOpen
+}
+
+/** Whether two orb-menu geometries describe the same open or closed ring. */
+function sameOrbMenu(left: OrbMenuSnapshot | null, right: OrbMenuSnapshot | null): boolean {
+  if (left === null || right === null) return left === right
+  return left.anchorX === right.anchorX && left.anchorY === right.anchorY && left.direction === right.direction
 }
 
 /** Carrier-backed surface state; one instance lives for one plugin lifetime. */
@@ -159,6 +171,11 @@ export class SurfaceRuntime implements SurfaceService {
   /** Snap the orb flush to a nearby work-area edge after a drag. */
   async snap(): Promise<void> {
     await this.command(() => this.adapter.snap())
+  }
+
+  /** Grow or restore the resident orb window around its options ring. */
+  async setOrbMenu(open: boolean): Promise<void> {
+    await this.command(() => this.adapter.setOrbMenu(open))
   }
 
   /** Report whether the pointer is over interactive content. */

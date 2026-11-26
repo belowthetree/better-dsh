@@ -6,7 +6,7 @@ import { SurfaceRuntime } from '../src/client/service.ts'
 
 /** Committed classic presentation used as the comparison baseline. */
 const BASE: SurfaceSnapshot = Object.freeze({
-  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null, orbDocked: false,
+  form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null, orbDocked: false, orbMenu: null,
   orbHovered: false, modalOpen: false,
 })
 
@@ -49,6 +49,7 @@ function fakeAdapter(): FakeAdapter {
     setPinned: async (pinned) => { state.commands.push(`setPinned:${String(pinned)}`) },
     dragBy: async (deltaX, deltaY) => { state.commands.push(`dragBy:${String(deltaX)},${String(deltaY)}`) },
     snap: async () => { state.commands.push('snap') },
+    setOrbMenu: async (open) => { state.commands.push(`setOrbMenu:${String(open)}`) },
     pointerInside: (inside) => { state.commands.push(`pointerInside:${String(inside)}`) },
     sendMessage: async (target, channel) => { state.commands.push(`message:${target}:${channel}`) },
     subscribeMessages: (_channel, listener) => {
@@ -92,6 +93,7 @@ describe('SurfaceRuntime snapshot', () => {
       { ...BASE, available: false },
       { ...BASE, modal: 'voice-setup' },
       { ...BASE, orbDocked: true },
+      { ...BASE, orbMenu: { anchorX: 70, anchorY: 70, direction: 0 } },
       { ...BASE, orbHovered: true },
       { ...BASE, modalOpen: true },
     ]
@@ -99,6 +101,14 @@ describe('SurfaceRuntime snapshot', () => {
       fake.push(change)
       expect(runtime.snapshot()).toBe(change)
     }
+    // An equal ring geometry is not a change; a moved anchor is.
+    const menu = { ...BASE, orbMenu: { anchorX: 70, anchorY: 70, direction: 0 } }
+    fake.push(menu)
+    fake.push({ ...BASE, orbMenu: { anchorX: 70, anchorY: 70, direction: 0 } })
+    expect(runtime.snapshot()).toBe(menu)
+    const moved = { ...BASE, orbMenu: { anchorX: 140, anchorY: 70, direction: 0 } }
+    fake.push(moved)
+    expect(runtime.snapshot()).toBe(moved)
   })
 
   it('stops following carrier notifications when its one subscription is disposed', () => {
@@ -130,10 +140,11 @@ describe('SurfaceRuntime commands', () => {
     await runtime.setPinned(true)
     await runtime.dragBy(6, -2)
     await runtime.snap()
+    await runtime.setOrbMenu(true)
     runtime.setPointerInside(true)
     expect(fake.commands).toEqual([
       'expand', 'collapse', 'presentModal:voice-setup', 'dismissModal', 'presentBubbles', 'dismissBubbles',
-      'setPinned:true', 'dragBy:6,-2', 'snap', 'pointerInside:true',
+      'setPinned:true', 'dragBy:6,-2', 'snap', 'setOrbMenu:true', 'pointerInside:true',
     ])
     expect(runtime.snapshot()).toBe(panel)
   })

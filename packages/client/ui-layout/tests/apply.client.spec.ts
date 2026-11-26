@@ -28,12 +28,12 @@ type InjectedFace = {
 /** Presentation without a carrier: the classic profile. */
 const CLASSIC_SURFACE: SurfaceSnapshot = {
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-  orbDocked: false, orbHovered: false, modalOpen: false,
+  orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
 }
 
 /** Orb presentation the carrier publishes once a form profile is active. */
 const ORB_SURFACE: SurfaceSnapshot = {
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbMenu: null, orbHovered: false,
   modalOpen: false,
 }
 
@@ -64,6 +64,7 @@ function fakeSurface(dismissModal: () => Promise<void> = async () => {}): FakeSu
       setPinned: async () => {},
       dragBy: async () => {},
       snap: async () => {},
+      setOrbMenu: async () => {},
       pointerInside: () => {},
       sendMessage: async () => {},
       subscribeMessages: () => () => {},

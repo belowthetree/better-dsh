@@ -7,7 +7,7 @@ import {
 
 /** Desktop presentation used by the committed form profiles. */
 const ORB: SurfaceSnapshot = Object.freeze({
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbMenu: null, orbHovered: false,
   modalOpen: false,
 })
 
@@ -46,6 +46,7 @@ function fakeBridge(initial: SurfaceSnapshot): FakeBridge {
     setPinned: pinned => command('setPinned', [pinned]),
     dragBy: (deltaX, deltaY) => command('dragBy', [deltaX, deltaY]),
     snap: () => command('snap', []),
+    setOrbMenu: open => command('setOrbMenu', [open]),
     pointerInside: (inside) => { calls.push({ name: 'pointerInside', args: [inside] }) },
     sendMessage: (target, channel, payload) => command('sendMessage', [target, channel, payload]),
     subscribeMessages: (_channel, listener) => {
@@ -79,7 +80,7 @@ describe('inert carrier', () => {
   it('reports classic and resolves every command without a bridge', async () => {
     expect(desktopSurfaceApi(window)).toBeUndefined()
     const adapter = createSurfaceAdapter(window)
-    expect(adapter.initial()).toEqual({ form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbDocked: false, orbHovered: false, modalOpen: false })
+    expect(adapter.initial()).toEqual({ form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null, orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false })
     const unsubscribe = adapter.subscribe(() => { throw new Error('the inert carrier never publishes') })
     unsubscribe()
     expect(await adapter.read()).toBe(adapter.initial())
@@ -92,6 +93,7 @@ describe('inert carrier', () => {
     await adapter.setPinned(true)
     await adapter.dragBy(12, -4)
     await adapter.snap()
+    await adapter.setOrbMenu(true)
     adapter.pointerInside(true)
     await adapter.sendMessage('surface', 'better/intent', { kind: 'open' })
     const offMessage = adapter.subscribeMessages('better/intent', () => { throw new Error('the inert carrier never publishes messages') })
@@ -103,7 +105,7 @@ describe('inert carrier', () => {
     expect(desktopSurfaceApi(window)).toBeUndefined()
     expect(createSurfaceAdapter(window).initial()).toEqual({
       form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-      orbDocked: false, orbHovered: false, modalOpen: false,
+      orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
     })
   })
 })
@@ -122,7 +124,7 @@ describe('desktop carrier', () => {
     installBridge(fakeBridge(ORB).api)
     expect(createSurfaceAdapter(window).initial()).toEqual({
       form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: true, modal: null,
-      orbDocked: false, orbHovered: false, modalOpen: false,
+      orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
     })
   })
 
@@ -170,6 +172,7 @@ describe('desktop carrier', () => {
     await adapter.setPinned(true)
     await adapter.dragBy(8, -3)
     await adapter.snap()
+    await adapter.setOrbMenu(true)
     adapter.pointerInside(false)
     expect(bridge.calls).toEqual([
       { name: 'expand', args: [] },
@@ -182,6 +185,7 @@ describe('desktop carrier', () => {
       { name: 'setPinned', args: [true] },
       { name: 'dragBy', args: [8, -3] },
       { name: 'snap', args: [] },
+      { name: 'setOrbMenu', args: [true] },
       { name: 'pointerInside', args: [false] },
     ])
   })

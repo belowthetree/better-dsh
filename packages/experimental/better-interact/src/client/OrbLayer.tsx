@@ -7,9 +7,11 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  IconCheckOutlineRegular, IconLoadingOutlineRegular, MenuSurface,
+  IconCheckOutlineRegular, IconLoadingOutlineRegular, IconNewChatOutlineRegular, MenuSurface,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {
+  HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
+} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
@@ -18,6 +20,8 @@ import type { VoiceCaptureSnapshot } from '@deepseek-ai/dsh-client-voice-capture
 import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-output/client'
 import { activeSession, orbLabelKey, orbVisualState } from './orb-state.ts'
 import type { OrbVisualState } from './orb-state.ts'
+import type { OrbActionView } from './orb-actions.ts'
+import { ORB_SIZE, orbActionPlacements } from './orb-action-layout.ts'
 import { usePointerDrag } from './use-pointer-drag.ts'
 import orbSidePeek from './assets/orb-side-peek.png'
 import orbStanding from './assets/orb-standing.png'
@@ -65,6 +69,16 @@ export interface OrbSurfaceActions {
   /** Open the settings panel in the form's modal presentation. */
   readonly openSettings: () => void
   /**
+   * Grow the orb window into the options ring, or collapse it back to the orb.
+   * @param open - whether the ring should show.
+   */
+  readonly setOptions: (open: boolean) => void
+  /**
+   * Close the ring and run one registered action.
+   * @param id - id of the action to run.
+   */
+  readonly activateAction: (id: string) => void
+  /**
    * Move the window by one pointer delta.
    * @param deltaX - horizontal movement in logical pixels.
    * @param deltaY - vertical movement in logical pixels.
@@ -103,6 +117,8 @@ export interface OrbOverlayInjected {
     reducedMotion: HostObservable<boolean>
     /** The persisted theme preference of the client. */
     theme: HostObservable<ThemePreference>
+    /** The actions plugins registered for the options ring. */
+    orbActions: HostObservable<readonly OrbActionView[]>
   }
   actions: OrbSurfaceActions & OrbPreferenceActions
 }
@@ -110,6 +126,7 @@ export interface OrbOverlayInjected {
 /** Complete props of the `shell.overlay` entry. */
 export type OrbLayerProps =
   & PropsRuntime<'shell.overlay'>
+  & PropsRenderSlots<'orb.action.icon'>
   & PropsLocale<typeof NS>
   & InjectFace<OrbOverlayInjected>
 
@@ -168,6 +185,29 @@ function OrbMenuRow({ choice, t, onSelect }: {
 }
 
 /**
+ * Glyph of the built-in assistant-dialog action.
+ * @returns the dialog glyph sized for one round action button.
+ */
+export function OrbDialogActionIcon() {
+  return <IconNewChatOutlineRegular size={20} />
+}
+
+/**
+ * Resolve one action's localized label without letting a broken plugin label
+ * take down the ring.
+ * @param action - registered action view.
+ * @returns the localized label, or the action id when the label throws.
+ */
+function orbActionLabel(action: OrbActionView): string {
+  try {
+    return action.label()
+  } catch (error) {
+    console.error(`orb: action ${action.id} label failed`, error)
+    return action.id
+  }
+}
+
+/**
  * Render the floating orb of the resident orb window.
  * @param props - carrier presentation, voice and theme observations, commands, and localized copy.
  * @returns the orb chrome in the orb window, or nothing in the surface or bubble column window.
@@ -179,28 +219,40 @@ export function OrbLayer(props: OrbLayerProps) {
   const reducedMotion = props.useReducedMotion(value => value)
   const themePreference = props.useTheme(preference => preference)
   const sessions = props.useSessions(state => state)
+  const orbActions = props.useOrbActions(items => items)
   const [hovered, setHovered] = useState(false)
   const [pressed, setPressed] = useState(false)
   const [appearance, setAppearance] = useState<OrbAppearance>(initialAppearance)
   const [menuOpen, setMenuOpen] = useState(false)
-  const { actions, t } = props
+  const { actions, renderSlot, t } = props
   const drag = usePointerDrag((deltaX, deltaY) => { actions.dragBy(deltaX, deltaY) })
   const session = useMemo(() => activeSession(sessions), [sessions])
   const state = useMemo(
     () => orbVisualState({ capture, voice }, session?.running === true),
     [capture, voice, session],
   )
-  /** Finish a gesture: the carrier snaps a released drag near a work-area edge. */
+  const menu = surface.orbMenu
+  const optionsOpen = menu !== null
+  const anchor = menu === null ? { x: 0, y: 0 } : { x: menu.anchorX, y: menu.anchorY }
+  const placements = menu === null
+    ? []
+    : orbActionPlacements(orbActions.length, menu.anchorX, menu.anchorY, menu.direction)
+  /** Finish a gesture: a drag closes the ring and the carrier snaps near a work-area edge. */
   const finishDrag = (): void => {
-    if (drag.moved()) actions.snap()
+    if (!drag.moved()) return
+    if (optionsOpen) actions.setOptions(false)
+    actions.snap()
   }
 
-  // Escape or leaving the orb window closes the settings menu, matching the
+  // Escape or leaving the orb window closes whichever menu is open, matching the
   // platform's context-menu behavior: a click on the desktop or on another
   // application blurs this window without reaching its document.
   useEffect(() => {
-    if (!menuOpen) return undefined
-    const close = (): void => { setMenuOpen(false) }
+    if (!menuOpen && !optionsOpen) return undefined
+    const close = (): void => {
+      setMenuOpen(false)
+      if (optionsOpen) actions.setOptions(false)
+    }
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') close()
     }
@@ -210,7 +262,7 @@ export function OrbLayer(props: OrbLayerProps) {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('blur', close)
     }
-  }, [menuOpen])
+  }, [menuOpen, optionsOpen, actions])
 
   // The surface window hosts panel and modal presentations and the bubble
   // column window hosts the output column; only the resident orb window draws the orb.
@@ -238,15 +290,19 @@ export function OrbLayer(props: OrbLayerProps) {
     data-orb
     data-state={state}
     data-appearance={appearance}
+    data-options={optionsOpen || undefined}
     data-reduced-motion={reducedMotion || undefined}
   >
+    {optionsOpen && <div className={css.dismissLayer} data-orb-options-dismiss
+      onPointerDown={() => { actions.setOptions(false) }} />}
     <button type="button" className={css.orb} data-orb-button
+      style={{ left: anchor.x, top: anchor.y }}
       data-hovered={hovered || undefined}
       data-pressed={pressed || undefined}
       data-dragging={drag.dragging || undefined}
-      aria-label={t(orbLabelKey(state))}
+      aria-label={optionsOpen ? t('orb.close') : t(orbLabelKey(state))}
       aria-haspopup="menu"
-      aria-expanded={menuOpen}
+      aria-expanded={menuOpen || optionsOpen}
       onPointerDown={(event) => { setPressed(true); drag.handlers.onPointerDown(event) }}
       onPointerMove={drag.handlers.onPointerMove}
       onPointerUp={(event) => { setPressed(false); drag.handlers.onPointerUp(event); finishDrag() }}
@@ -254,15 +310,42 @@ export function OrbLayer(props: OrbLayerProps) {
       onLostPointerCapture={drag.handlers.onPointerCancel}
       onPointerEnter={() => { setHovered(true); actions.pointerInside(true) }}
       onPointerLeave={() => { setHovered(false); actions.pointerInside(false) }}
-      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setMenuOpen(true) }}
-      onClick={() => { if (!drag.moved() && !menuOpen) actions.openChat() }}>
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (optionsOpen) actions.setOptions(false)
+        setMenuOpen(true)
+      }}
+      onClick={() => {
+        if (drag.moved() || menuOpen) return
+        actions.setOptions(!optionsOpen)
+      }}>
       <img className={css.orbArt} src={artwork} alt="" data-orb-art draggable={false} />
       <OrbGlyph state={state} />
       <span className={css.grip} data-orb-drag aria-hidden="true"
         onPointerEnter={() => { actions.pointerInside(true) }}
         onPointerLeave={() => { actions.pointerInside(false) }} />
     </button>
+    {optionsOpen && <div className={css.orbActions} role="group" aria-label={t('orb.actions.label')} data-orb-actions>
+      {orbActions.map((action, index) => {
+        const placement = placements[index]
+        if (placement === undefined) return null
+        const label = orbActionLabel(action)
+        return <button key={action.id} type="button" className={css.orbAction}
+          style={{ left: placement.x, top: placement.y, animationDelay: `${String(index * 24)}ms` }}
+          title={label}
+          aria-label={label}
+          data-orb-action={action.id}
+          onClick={() => { actions.activateAction(action.id) }}>
+          {renderSlot('orb.action.icon', { icon: action.icon }, {
+            entryKey: action.icon.key,
+            fallback: <span className={css.orbActionFallback} aria-hidden="true" />,
+          })}
+        </button>
+      })}
+    </div>}
     {menuOpen && <div className={css.menuLayer} data-orb-menu-layer
+      style={{ left: anchor.x, top: anchor.y, width: ORB_SIZE, height: ORB_SIZE }}
       onPointerDown={() => { setMenuOpen(false) }}>
       <MenuSurface compact role="menu" aria-label={t('orb.menu.label')} className={css.menu}
         onPointerDown={(event) => { event.stopPropagation() }}>

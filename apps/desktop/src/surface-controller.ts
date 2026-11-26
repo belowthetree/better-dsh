@@ -1,9 +1,11 @@
 /** Presentation state machine and validated command surface for a form profile's orb, surface, and bubble column windows. */
-import type { ModalSizeHint, SurfaceMessageRole, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
+import type { ModalSizeHint, OrbMenuSnapshot, SurfaceMessageRole, SurfaceSnapshot } from '@deepseek-ai/dsh-client-surface/protocol'
 import type { DesktopFormLayout, DesktopWorkArea } from './form-layout.ts'
 import { clampFormLayout } from './form-layout.ts'
 import type { DesktopFormRole, FormPresentationBounds } from './form-window.ts'
-import { bubblesBounds, modalBounds, orbBounds, ORB_SNAP_GAP, panelBounds, presentationResizable } from './form-window.ts'
+import {
+  bubblesBounds, modalBounds, orbBounds, orbMenuBounds, orbMenuDirection, ORB_SNAP_GAP, panelBounds, presentationResizable,
+} from './form-window.ts'
 
 /** Presentations the surface window hosts; the orb window always presents the orb. */
 type SurfacePresentation = 'orb' | 'panel' | 'modal'
@@ -35,6 +37,7 @@ export type SurfaceCommand =
   | { readonly kind: 'setPinned'; readonly pinned: boolean }
   | { readonly kind: 'dragBy'; readonly deltaX: number; readonly deltaY: number }
   | { readonly kind: 'snap' }
+  | { readonly kind: 'setOrbMenu'; readonly open: boolean }
   | { readonly kind: 'pointerInside'; readonly inside: boolean }
 
 /** Native effects the controller applies to the three form windows. */
@@ -49,6 +52,8 @@ export interface SurfaceWindowEffects {
   revealSurface(): void
   /** Reveal and focus the surface window for the modal presentation. */
   focusSurface(): void
+  /** Focus the resident orb window while its options ring is open. */
+  focusOrb(): void
   /** Hide the surface window while its presentation is the orb. */
   hideSurface(): void
   /** Reveal the bubble column window without taking focus. */
@@ -223,6 +228,8 @@ export function parseSurfaceCommand(raw: unknown): SurfaceCommand | undefined {
     }
     case 'setPinned':
       return typeof raw.pinned === 'boolean' ? { kind: 'setPinned', pinned: raw.pinned } : undefined
+    case 'setOrbMenu':
+      return typeof raw.open === 'boolean' ? { kind: 'setOrbMenu', open: raw.open } : undefined
     case 'dragBy':
       return typeof raw.deltaX === 'number' && Number.isFinite(raw.deltaX)
         && typeof raw.deltaY === 'number' && Number.isFinite(raw.deltaY)
@@ -255,6 +262,8 @@ export class DesktopSurfaceController {
   #modalSize: ModalSizeHint | undefined
   /** Whether the bubble column is up; the bubble window hides while it is false. */
   #bubblesVisible = false
+  /** Whether the orb window is grown into the options-ring pad. */
+  #orbMenuOpen = false
   readonly #pointer: Record<DesktopFormRole, PointerState> = {
     orb: { reported: false, inside: false },
     surface: { reported: false, inside: false },
@@ -287,6 +296,7 @@ export class DesktopSurfaceController {
       available: true,
       modal: role === 'surface' ? this.#modal : null,
       orbDocked: this.#orbDocked(),
+      orbMenu: this.#orbMenuSnapshot(),
       orbHovered: this.#pointer.orb.inside,
       modalOpen: this.#presentation === 'modal',
     }
@@ -365,6 +375,13 @@ export class DesktopSurfaceController {
         this.#effects.persist(this.#layout)
         return
       }
+      case 'setOrbMenu': {
+        // The orb renderer owns the ring; the surface renderer toggles it for the
+        // OS-global shortcut delivered while another window owns the keyboard.
+        if (origin !== 'orb' && origin !== 'surface') return
+        this.#setOrbMenu(command.open)
+        return
+      }
       case 'pointerInside': {
         const orbHoverChanged = origin === 'orb' && this.#pointer.orb.inside !== command.inside
         this.#pointer[origin] = { reported: true, inside: command.inside }
@@ -406,6 +423,14 @@ export class DesktopSurfaceController {
     if (this.#presentation === 'panel' && !this.#layout.pinned) this.#show('orb', false)
   }
 
+  /**
+   * Collapse the options ring after its orb window loses focus, so the enlarged
+   * window never outlives the interaction that opened it.
+   */
+  closeOrbMenu(): void {
+    this.#setOrbMenu(false)
+  }
+
   /** Re-clamp the orb position and all three windows' bounds after a display change. */
   reflow(): void {
     const area = this.#effects.workArea()
@@ -432,7 +457,7 @@ export class DesktopSurfaceController {
 
   /** Apply the resident orb's geometry and fixed interaction policy. */
   #placeOrb(): void {
-    this.#effects.setBounds('orb', orbBounds(this.#layout, this.#effects.workArea()))
+    this.#effects.setBounds('orb', this.#orbWindowBounds(this.#effects.workArea()))
     this.#effects.setResizable('orb', false)
     this.#effects.setIgnoreMouseEvents('orb', this.#ignoreMouse('orb'))
   }
@@ -451,6 +476,8 @@ export class DesktopSurfaceController {
   }
 
   #show(presentation: SurfacePresentation, focus = true): void {
+    // A panel or modal owns the screen; the options ring would sit behind it.
+    if (this.#orbMenuOpen) this.#orbMenuOpen = false
     const wasModal = this.#presentation === 'modal'
     this.#presentation = presentation
     this.#reconcileWindows(focus)
@@ -471,9 +498,40 @@ export class DesktopSurfaceController {
 
   /** Apply orb-led bounds after movement or reflow without changing visibility. */
   #placeLayout(area: DesktopWorkArea, bubbles: 'visible' | 'all', includeSurface = false): void {
-    this.#effects.setBounds('orb', orbBounds(this.#layout, area))
+    this.#effects.setBounds('orb', this.#orbWindowBounds(area))
     if (includeSurface && this.#presentation !== 'orb') this.#effects.setBounds('surface', this.#bounds())
     if (bubbles === 'all' || this.#bubblesVisible) this.#effects.setBounds('bubbles', bubblesBounds(this.#layout, area))
+  }
+
+  /** Grow or collapse the orb window around its options ring. */
+  #setOrbMenu(open: boolean): void {
+    // The ring belongs to the resting orb; a panel or modal owns the screen.
+    if (open && this.#presentation !== 'orb') return
+    if (this.#orbMenuOpen === open) return
+    this.#orbMenuOpen = open
+    this.#placeOrb()
+    this.#publish()
+    // Keyboard dismissal and the window's own blur collapse rely on the orb
+    // window owning the keyboard while the ring is up.
+    if (open) this.#effects.focusOrb()
+  }
+
+  /** Bounds of the orb window in its current orb-square or options-ring state. */
+  #orbWindowBounds(area: DesktopWorkArea): FormPresentationBounds {
+    return this.#orbMenuOpen ? orbMenuBounds(this.#layout, area) : orbBounds(this.#layout, area)
+  }
+
+  /** Geometry the orb renderer draws its options ring with while the ring is open. */
+  #orbMenuSnapshot(): OrbMenuSnapshot | null {
+    if (!this.#orbMenuOpen) return null
+    const area = this.#effects.workArea()
+    const orb = orbBounds(this.#layout, area)
+    const bounds = orbMenuBounds(this.#layout, area)
+    return {
+      anchorX: orb.x - bounds.x,
+      anchorY: orb.y - bounds.y,
+      direction: orbMenuDirection(this.#layout, area),
+    }
   }
 
   /** Whether the orb square rests within the snap gap of a work-area edge. */

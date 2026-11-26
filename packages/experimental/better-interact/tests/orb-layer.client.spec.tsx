@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 /** Driven OrbLayer props: presentation branches, visual states, and the drag gesture. */
+import type { ReactNode } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -13,14 +14,23 @@ import type { VoiceOutputSnapshot } from '@deepseek-ai/dsh-client-ui-voice-outpu
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import { OrbLayer } from '../src/client/OrbLayer.tsx'
 import type { OrbLayerProps } from '../src/client/OrbLayer.tsx'
+import type { OrbActionView } from '../src/client/orb-actions.ts'
+import { orbActionPlacements } from '../src/client/orb-action-layout.ts'
 import { zh } from '../src/client/orb-locales.ts'
 
 afterEach(cleanup)
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: true,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: true, orbMenu: null,
   orbHovered: false, modalOpen: false,
 })
+
+/** One registered action, as the orb action service publishes it. */
+const DIALOG_ACTION: OrbActionView = {
+  id: 'dialog',
+  label: () => zh['orb.action.dialog'],
+  icon: { key: 'dialog' },
+}
 
 /** One Session row; only the current main-view row is retained. */
 function row(id: string, title: string, options: { running?: boolean; current?: boolean } = {}): SessionSummary {
@@ -91,17 +101,26 @@ function pointer(
   fireEvent[type](target, { pointerId: 1, button: 0, clientX: x, clientY: y, screenX: screen.x, screenY: screen.y })
 }
 
-function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: SessionListState } = {}) {
+function fixture(initial: {
+  surface?: Partial<SurfaceSnapshot>
+  sessions?: SessionListState
+  actions?: readonly OrbActionView[]
+} = {}) {
   const surface = createSnapshotStore<SurfaceSnapshot>({ ...ORB_SURFACE, ...initial.surface })
   const captureStore = createSnapshotStore<VoiceCaptureSnapshot | null>(null)
   const voice = createSnapshotStore<VoiceOutputSnapshot | null>(null)
   const reducedMotion = createSnapshotStore(false)
   const sessions = createSnapshotStore<SessionListState>(initial.sessions ?? EMPTY_LIST)
   const theme = createSnapshotStore<ThemePreference>('system')
+  const orbActions = createSnapshotStore<readonly OrbActionView[]>(initial.actions ?? [DIALOG_ACTION])
   const actions = {
-    openChat: vi.fn(), openWorkbench: vi.fn(), openSettings: vi.fn(),
-    dragBy: vi.fn(), pointerInside: vi.fn(), toggleVoice: vi.fn(), setTheme: vi.fn(), snap: vi.fn(),
+    openChat: vi.fn(), openWorkbench: vi.fn(), openSettings: vi.fn(), setOptions: vi.fn(),
+    activateAction: vi.fn(), dragBy: vi.fn(), pointerInside: vi.fn(), toggleVoice: vi.fn(), setTheme: vi.fn(), snap: vi.fn(),
   }
+  const renderSlot = vi.fn((name: string, _owner: unknown, opts?: { readonly fallback?: ReactNode }) => {
+    if (name !== 'orb.action.icon') return null
+    return opts?.fallback ?? null
+  })
   const props = {
     useSurface: bindSnapshotSelector(surface),
     useCapture: bindSnapshotSelector(captureStore),
@@ -109,11 +128,13 @@ function fixture(initial: { surface?: Partial<SurfaceSnapshot>; sessions?: Sessi
     useReducedMotion: bindSnapshotSelector(reducedMotion),
     useTheme: bindSnapshotSelector(theme),
     useSessions: bindSnapshotSelector(sessions),
+    useOrbActions: bindSnapshotSelector(orbActions),
     actions,
+    renderSlot,
     t: makeTranslate(zh),
   } as OrbLayerProps
   render(<OrbLayer {...props} />)
-  return { surface, capture: captureStore, voice, reducedMotion, sessions, theme, actions }
+  return { surface, capture: captureStore, voice, reducedMotion, sessions, theme, orbActions, actions, renderSlot }
 }
 
 /** The overlay root and the orb button. */
@@ -247,10 +268,11 @@ it('marks hover, press, and the reduced-motion preference', () => {
   expect(root().dataset.reducedMotion).toBe('true')
 })
 
-it('opens the chat dialog on click and reports pointer presence from the orb and its drag handle', () => {
+it('opens the options ring on click and reports pointer presence from the orb and its drag handle', () => {
   const b = fixture()
   fireEvent.click(orb())
-  expect(b.actions.openChat).toHaveBeenCalledOnce()
+  expect(b.actions.setOptions).toHaveBeenCalledExactlyOnceWith(true)
+  expect(b.actions.openChat).not.toHaveBeenCalled()
   expect(b.actions.snap).not.toHaveBeenCalled()
   fireEvent.pointerEnter(orb())
   expect(b.actions.pointerInside).toHaveBeenLastCalledWith(true)
@@ -263,6 +285,54 @@ it('opens the chat dialog on click and reports pointer presence from the orb and
   fireEvent.pointerLeave(handle)
   expect(b.actions.pointerInside).toHaveBeenLastCalledWith(false)
   expect(b.actions.pointerInside.mock.calls).toEqual([[true], [false], [true], [true], [false], [false]])
+})
+
+it('closes the open ring when the orb is clicked again', () => {
+  const b = fixture({ surface: { orbMenu: { anchorX: 70, anchorY: 70, direction: Math.PI } } })
+  expect(root().dataset.options).toBe('true')
+  expect(orb().getAttribute('aria-label')).toBe(zh['orb.close'])
+  fireEvent.click(orb())
+  expect(b.actions.setOptions).toHaveBeenCalledExactlyOnceWith(false)
+})
+
+it('lays registered actions on the half circle toward the work-area center', () => {
+  const b = fixture({
+    surface: { orbMenu: { anchorX: 70, anchorY: 45, direction: Math.PI } },
+    actions: [DIALOG_ACTION],
+  })
+  const button = document.querySelector('[data-orb-action="dialog"]') as HTMLButtonElement
+  expect(button).not.toBeNull()
+  expect(button.getAttribute('aria-label')).toBe(zh['orb.action.dialog'])
+  expect(button.getAttribute('title')).toBe(zh['orb.action.dialog'])
+  const [placement] = orbActionPlacements(1, 70, 45, Math.PI)
+  expect(button.style.left).toBe(`${String(placement?.x ?? 0)}px`)
+  expect(button.style.top).toBe(`${String(placement?.y ?? 0)}px`)
+  expect(document.querySelector('[data-orb]')?.getAttribute('data-options')).toBe('true')
+  expect(b.renderSlot).toHaveBeenCalledWith('orb.action.icon', { icon: DIALOG_ACTION.icon }, expect.objectContaining({
+    entryKey: 'dialog',
+  }))
+  fireEvent.click(button)
+  expect(b.actions.activateAction).toHaveBeenCalledExactlyOnceWith('dialog')
+})
+
+it('closes the ring from its backdrop, Escape, blur, and the orb drag', () => {
+  const b = fixture({ surface: { orbMenu: { anchorX: 70, anchorY: 70, direction: 0 } } })
+  fireEvent.pointerDown(document.querySelector('[data-orb-options-dismiss]') as HTMLElement)
+  expect(b.actions.setOptions).toHaveBeenLastCalledWith(false)
+
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(b.actions.setOptions).toHaveBeenLastCalledWith(false)
+
+  fireEvent.blur(window)
+  expect(b.actions.setOptions).toHaveBeenLastCalledWith(false)
+  expect(b.actions.setOptions).toHaveBeenCalledTimes(3)
+
+  pointer(orb(), 'pointerDown', 10, 10)
+  pointer(orb(), 'pointerMove', 30, 18)
+  act(flushFrames)
+  pointer(orb(), 'pointerUp', 30, 18)
+  expect(b.actions.setOptions).toHaveBeenCalledTimes(4)
+  expect(b.actions.snap).toHaveBeenCalledOnce()
 })
 
 it('drags the orb through throttled deltas and suppresses the click it would produce', () => {
@@ -283,7 +353,7 @@ it('drags the orb through throttled deltas and suppresses the click it would pro
   expect(orb().dataset.dragging).toBeUndefined()
   expect(b.actions.snap).toHaveBeenCalledOnce()
   fireEvent.click(orb())
-  expect(b.actions.openChat).not.toHaveBeenCalled()
+  expect(b.actions.setOptions).not.toHaveBeenCalled()
 })
 
 it('measures drag movement in screen coordinates so the moving window cannot cancel it', () => {
@@ -319,7 +389,7 @@ it('treats a press that stays inside the threshold as a click', () => {
   pointer(orb(), 'pointerUp', 12, 11)
   expect(b.actions.dragBy).not.toHaveBeenCalled()
   fireEvent.click(orb())
-  expect(b.actions.openChat).toHaveBeenCalledOnce()
+  expect(b.actions.setOptions).toHaveBeenCalledExactlyOnceWith(true)
 })
 
 it('ignores a secondary press, a foreign pointer, and a cancelled gesture', () => {

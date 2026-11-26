@@ -432,7 +432,7 @@ describe('ui-settings-general apply', () => {
     const { c } = await client(mock, start)
     const orbSurface: SurfaceSnapshot = {
       form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null,
-      orbDocked: false, orbHovered: false, modalOpen: false,
+      orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
     }
     let state: SurfaceSnapshot = orbSurface
     const surface = c.ctx.get('surface')

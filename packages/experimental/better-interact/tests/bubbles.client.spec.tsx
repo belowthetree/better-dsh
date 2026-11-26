@@ -18,7 +18,7 @@ import type { ReminderInteraction } from '../src/client/reminders.ts'
 
 /** Orb presentation of the committed form profile. */
 const ORB: SurfaceSnapshot = {
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbMenu: null, orbHovered: false,
   modalOpen: false,
 }
 

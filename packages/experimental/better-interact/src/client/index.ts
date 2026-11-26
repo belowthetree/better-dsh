@@ -58,6 +58,8 @@ export const WORKBENCH_SESSIONS_COMMAND_ID = 'betterInteract.workbench.sessions'
 /** Bubble intent executed by the surface renderer that owns Workspace navigation. */
 const OPEN_SESSION_CHANNEL = 'better-interact/open-session'
 
+export type { OrbAction, OrbActionIcon, OrbActions } from './orb-actions.ts'
+
 /** Parse the one cross-renderer Session-navigation intent at the message boundary. */
 function openSessionIntent(payload: unknown): { readonly sessionId: SessionId } | undefined {
   if (typeof payload !== 'object' || payload === null) return undefined

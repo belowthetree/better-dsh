@@ -37,7 +37,7 @@ afterEach(async () => {
 beforeEach(() => { window.localStorage.clear() })
 
 const ORB_SURFACE: SurfaceSnapshot = Object.freeze({
-  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
+  form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbMenu: null, orbHovered: false,
   modalOpen: false,
 })
 
@@ -96,6 +96,7 @@ function surfaceDouble(initial: SurfaceSnapshot = ORB_SURFACE) {
       setPinned: vi.fn(() => Promise.resolve()),
       dragBy: vi.fn(() => Promise.resolve()),
       snap: vi.fn(() => Promise.resolve()),
+      setOrbMenu: vi.fn(() => Promise.resolve()),
       presentBubbles: vi.fn(() => Promise.resolve()),
       dismissBubbles: vi.fn(() => Promise.resolve()),
       setPointerInside: vi.fn(),
@@ -258,7 +259,8 @@ async function provideVoice(
 }
 
 it('registers the overlay chrome, the chat dialog, and the system commands', async () => {
-  const b = await bench()
+  const carrier = surfaceDouble()
+  const b = await bench({ surface: carrier.service })
   const overlay = b.runtime.slots.entries('shell.overlay')
   expect(overlay.map(entry => entry.options.id)).toEqual(['better-interact.bubbles', 'orb'])
   expect(overlay.find(entry => entry.options.id === 'orb')?.locale).toBe('orb')
@@ -294,13 +296,19 @@ it('registers the overlay chrome, the chat dialog, and the system commands', asy
     'desktop:macos': { code: 'KeyD', modifiers: ['control', 'alt'] },
   })
   expect(open?.label()).toBe(zh['command.open'])
-  expect(open?.aliases).toEqual(['orb', 'chat', 'open', 'show'])
+  expect(open?.aliases).toEqual(['orb', 'options', 'menu', 'open', 'show'])
   const opened = open?.resolve({ region: 'page', modal: null, target: null })
   expect(opened?.status).toBe('handled')
   if (opened?.status === 'handled') opened.run()
   await flush()
-  expect(b.surface.presentModal).toHaveBeenCalledTimes(2)
-  expect(b.surface.presentModal).toHaveBeenLastCalledWith(ORB_CHAT_MODAL_ID)
+  expect(b.surface.setOrbMenu).toHaveBeenCalledWith(true)
+  expect(b.surface.presentModal).toHaveBeenCalledOnce()
+  carrier.publish({ orbMenu: { anchorX: 70, anchorY: 70, direction: 0 } })
+  await flush()
+  const closed = open?.resolve({ region: 'page', modal: null, target: null })
+  if (closed?.status === 'handled') closed.run()
+  await flush()
+  expect(b.surface.setOrbMenu).toHaveBeenLastCalledWith(false)
 
   const workbench = b.commands.get('orb.workbench')
   expect(workbench?.scope).toBe('system')
@@ -317,6 +325,11 @@ it('registers the overlay chrome, the chat dialog, and the system commands', asy
   expect(voiceCommand?.defaults).toEqual({})
   expect(voiceCommand?.label()).toBe(zh['command.voice'])
   expect(voiceCommand?.resolve({ region: 'page', modal: null, target: null })).toEqual({ status: 'pass' })
+
+  expect(overlay.find(entry => entry.options.id === 'orb')?.children)
+    .toEqual({ 'orb.action.icon': { kind: 'keyed', scope: 'root', inline: true } })
+  expect(b.runtime.slots.entries('orb.action.icon').map(entry => entry.options.key)).toEqual(['dialog'])
+  expect(b.runtime.ctx.get('orbActions')?.items.getSnapshot().map(action => action.id)).toEqual(['dialog'])
 })
 
 it('opens the settings panel from the orb menu action', async () => {
@@ -470,6 +483,8 @@ it('issues every registered action through the entry faces', async () => {
   const overlayEntry = benchResult.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'orb')
   const face = overlayEntry?.inject?.() as { actions: {
     openChat(): void
+    setOptions(open: boolean): void
+    activateAction(id: string): void
     dragBy(deltaX: number, deltaY: number): void
     pointerInside(inside: boolean): void
     toggleVoice(): void
@@ -477,8 +492,12 @@ it('issues every registered action through the entry faces', async () => {
   face.actions.openChat()
   face.actions.dragBy(6, -4)
   face.actions.pointerInside(true)
+  face.actions.setOptions(true)
+  face.actions.activateAction('dialog')
   await flush()
+  expect(surface.service.presentModal).toHaveBeenCalledTimes(2)
   expect(surface.service.presentModal).toHaveBeenCalledWith(ORB_CHAT_MODAL_ID)
+  expect(surface.service.setOrbMenu.mock.calls).toEqual([[true], [false]])
   expect(surface.service.dragBy).toHaveBeenCalledExactlyOnceWith(6, -4)
   expect(surface.service.setPointerInside).toHaveBeenCalledExactlyOnceWith(true)
 

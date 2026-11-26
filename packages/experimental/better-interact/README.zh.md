@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-Better DSH 让 agent 成为桌面上的常驻存在。回答以气泡形式在悬浮球旁升起，漫画式对话气泡会报告等待权限、回答或计划确认的会话。Ctrl+Alt+W 打开一个悬浮工作台，管理对话排在最前，每个工作区一页，每个会话一个书签。键盘优先：Ctrl+Tab 切换页面，Ctrl+Q 进入会话导航，Ctrl+Alt+N 添加工作区；书签菜单可归档或删除会话。它复用 shell 的会话内容，因此转录、工具与输入框保持不变。它是 Desktop orb 形态的体验，不替代 classic shell。
+Better DSH 让 agent 成为桌面上的常驻存在。回答以气泡形式在悬浮球旁升起，漫画式对话气泡会报告等待权限、回答或计划确认的会话。点击悬浮球或按 Ctrl+Alt+D，会在悬浮球朝向桌面中心的一侧唤出半圈圆形选项按钮，插件可以继续添加自己的选项。Ctrl+Alt+W 打开一个悬浮工作台，管理对话排在最前，每个工作区一页，每个会话一个书签。键盘优先：Ctrl+Tab 切换页面，Ctrl+Q 进入会话导航，Ctrl+Alt+N 添加工作区；书签菜单可归档或删除会话。它复用 shell 的会话内容，因此转录、工具与输入框保持不变。它是 Desktop orb 形态的体验，不替代 classic shell。
 
 ## 目录
 
@@ -31,7 +31,32 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 
 气球内容默认会被朗读：设置里的“语音播报”分区提供开关（默认开启）、音色选择与试听。播报失败会在该分区单独提示，音色选择与试听保持可用，因为下一次成功播放会清除失败记录。播报使用共享的 `voiceOutput` 合成与播放服务，音频只在浏览器内存里；提醒气球与新出现的大肥鱼气球各朗读一次。工具结果带 `speak` 展示元数据时（例如内置 `deepseek-suite` 的 `deepseek_speak`）也会朗读一次：由持有播放服务的渲染进程直接观察主视图会话，气泡列关闭时也不会漏掉。音色与悬浮球右键菜单、自动朗读策略共用同一份选择。
 
-点击悬浮球会打开 `orb.chat`，在聚焦的输入框中向管理对话提问。接受提问后会打开单 Session 的 `orb.workbench`；其输入框、转录本、工具、审批与提问都来自共享 Conversation 包。快捷提问、专用工作台与管理页通过一个控制器解析 Session，并保留现有 `dsh.orb.management-session.v2` 偏好。新建时优先使用 Host 默认工作区，不可用时复用主视图 Session 所属的已注册工作区；两者都不可用时经现有提问框或工作台错误提示失败，不创建未注册的管理 Session。挂载对应兄弟服务后会显示语音输入与播放状态。识别目录里没有选中的识别器、该识别器仍在准备、或识别服务尚未应答时，点击麦克风会说明原因，而不是开始一次注定失败的录音。转写拒绝携带 DeepSeek Provider 的登录错误码时，输入框显示本地化的“设置 → 账号”登录指引，而不是通用重试提示。
+点击悬浮球或按 Ctrl+Alt+D 会唤出选项半环：一圈圆形按钮围绕着大肥鱼，朝向工作区中心。内置的“大肥鱼对话框”选项打开 `orb.chat`，在聚焦的输入框中向管理对话提问。再次点击悬浮球、点击按钮外侧的透明垫、按 Escape，或把焦点移到其他应用都会关闭半环；拖动悬浮球会关闭半环并继续拖动。接受提问后会打开单 Session 的 `orb.workbench`；其输入框、转录本、工具、审批与提问都来自共享 Conversation 包。快捷提问、专用工作台与管理页通过一个控制器解析 Session，并保留现有 `dsh.orb.management-session.v2` 偏好。新建时优先使用 Host 默认工作区，不可用时复用主视图 Session 所属的已注册工作区；两者都不可用时经现有提问框或工作台错误提示失败，不创建未注册的管理 Session。挂载对应兄弟服务后会显示语音输入与播放状态。识别目录里没有选中的识别器、该识别器仍在准备、或识别服务尚未应答时，点击麦克风会说明原因，而不是开始一次注定失败的录音。转写拒绝携带 DeepSeek Provider 的登录错误码时，输入框显示本地化的“设置 → 账号”登录指引，而不是通用重试提示。
+
+### 给大肥鱼添加选项
+
+需要自己的圆形选项的 Client 插件注入 `orbActions` 服务并注册一个动作；按钮外观与弧形摆放由悬浮球绘制。标签函数在每次渲染半环时读取，因此绑定字典的 `t` 会跟随当前语言。图标是 keyed 的 `orb.action.icon` 组件：用与动作的 `icon.key` 相同的 key 注册，它就会收到该动作的图标元数据（包括可选的图片 URL）。
+
+```ts ignore-check
+import type { Context } from '@deepseek-ai/cordis'
+
+export const inject = ['orbActions', 'slots', 'locale']
+
+export function apply(ctx: Context): void {
+  ctx.effect(() => ctx.orbActions.register({
+    id: 'my-plugin.review',
+    label: () => ctx.locale.bind('myPlugin')('orb.review'),
+    icon: { key: 'my-plugin.review' },
+    order: 100,
+    run: () => { /* open the plugin's own surface */ },
+  }), 'my plugin: orb option')
+  ctx.slots.inject('orb.action.icon', () => ctx.slots.register({
+    name: 'orb.action.icon', key: 'my-plugin.review',
+  }, ReviewGlyph))
+}
+```
+
+重复 id 或半环已有八个动作时注册会抛错，因此冲突的组装在挂载时失败，而不是悄悄隐藏选项。动作在半环关闭后执行；它打开的模态框使用形态正常的模态呈现。
 
 工作台是宽大的无边框表面：管理对话与工作区页面的 Fluent 卡片位于居中的会话面板上方，该页的会话以书签卡片排列在面板左侧外部。管理页始终排在卡片条最前；工作区增多时，卡片条可用滚轮、触控板或方向键横向滚动。当前会话带强调色条；键盘光标带独立的选中环。Ctrl+Tab 与 Shift+Ctrl+Tab 循环切换页面。Ctrl+Q 把焦点移到书签；方向键移动选中环但不切换会话，回车打开焦点所在的会话。Ctrl+Alt+N 选择文件夹并添加或复用工作区页面，Ctrl+N 在活动页面的工作区里创建会话。悬停卡片或书签会显示完整名称与绑定快捷键。重新打开对话框时会恢复上次的页面与会话。
 
@@ -41,7 +66,7 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 
 ### 最小配置
 
-在形态声明了 orb 呈现的 profile 中加入 `better-interact` 行，并同时挂载 [client-surface](../../client/surface/README.zh.md)、感知呈现的 [ui-layout](../../client/ui-layout/README.zh.md) 与 [client-ui-workspace](../../client/ui-workspace/README.zh.md)。本包注入 `surface`、`slots`、`locale`、`shortcuts`、`resources`、`sessions`、`workspaces`、`uiWorkspace`、`uiSession` 与 `theme`，读取可选的设置和语音服务，不接受配置字段。
+在形态声明了 orb 呈现的 profile 中加入 `better-interact` 行，并同时挂载 [client-surface](../../client/surface/README.zh.md)、感知呈现的 [ui-layout](../../client/ui-layout/README.zh.md) 与 [client-ui-workspace](../../client/ui-workspace/README.zh.md)。本包注入 `surface`、`slots`、`locale`、`shortcuts`、`resources`、`sessions`、`workspaces`、`uiWorkspace`、`uiSession` 与 `theme`，读取可选的设置和语音服务，向其他插件提供 `orbActions`，不接受配置字段。
 
 <a id="understand-the-implementation"></a>
 ## 了解实现
@@ -55,10 +80,14 @@ Better DSH 基于三个理念。**存在感优于导航**：全天使用的 agen
 
 surface 渲染进程拥有页面写入、Session 导航以及真实的采集和播放服务。悬浮球与气泡渲染进程通过 `ctx.surface` 发送有界意图；主渲染进程只返回悬浮球所需的采集阶段与朗读状态投影。音频和完整录音状态留在主渲染进程，悬浮球重新加载后可请求恢复快照。
 
+选项半环留在常驻悬浮球窗口内。`ctx.orbActions` 把已注册动作发布为呈现视图；悬浮球渲染进程从载体的 `orbMenu` 快照读取弧形几何，并按悬浮球锚点把每个按钮摆在半圆上。打开或关闭半环是 `ctx.surface.setOrbMenu()` 载体命令：载体把悬浮球窗口扩成围绕悬浮球方块的 300 像素垫，保持悬浮球方块在屏幕上的位置不变，并让半环背向最近的显示边缘。其他呈现接管或悬浮球窗口失去焦点时，载体收起半环。
+
 | 区域 | 源码 |
 |---|---|
 | 条目、命令与页面 | [src/client/index.ts](src/client/index.ts) |
 | Orb 条目与命令 | [src/client/orb.ts](src/client/orb.ts) |
+| Orb 选项注册表 | [src/client/orb-actions.ts](src/client/orb-actions.ts) |
+| Orb 选项布局 | [src/client/orb-action-layout.ts](src/client/orb-action-layout.ts) |
 | 共享管理 Session | [src/client/management-session.ts](src/client/management-session.ts) |
 | 共享嵌入式 Conversation | [src/client/embedded-conversation.tsx](src/client/embedded-conversation.tsx) |
 | 气泡列 | [src/client/bubbles.tsx](src/client/bubbles.tsx) |
@@ -99,6 +128,10 @@ surface 渲染进程拥有页面写入、Session 导航以及真实的采集和�
 <a id="known-limitations-and-deferred-work"></a>
 
 - 快捷对话框没有转录本；接受的提问会打开专用管理工作台，由它持有历史与后续输入。
+- 选项半环最多容纳八个插件动作；第九个注册会在挂载时失败，而不是把弧形挤在一起。
+- 半环按钮位于放大的悬浮球窗口内，因此停在屏幕角落的悬浮球可能让弧形远端被工作区边缘裁掉。载体保持悬浮球方块位置不变，而不是移动用户的悬浮球。
+- “大肥鱼对话框”仍是唯一内置选项；其他选项需要注入 `orbActions` 的 Client 插件。
+- 半环打开期间会持有键盘焦点，因此关闭后键盘回到悬浮球窗口，而不是之前的活动应用。
 - 专用 `orb.workbench` 刻意只显示一个 Session，没有工作区卡片条或会话书签；这些属于通用工作台。
 - 语音控制与播放状态依赖兄弟采集和播放服务；没有这些服务时，提问框与悬浮球仍保留文本和指针行为。
 - 气泡列一次只报告一个会话：优先运行活动，其次最近完成的输出；运行中的目标保持稳定直到它停止。

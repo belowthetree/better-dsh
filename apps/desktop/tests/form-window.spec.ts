@@ -4,6 +4,7 @@ import {
   MODAL_WINDOW_MARGIN,
   ONBOARDING_WINDOW_MIN_SIZE,
   ONBOARDING_WINDOW_SIZE,
+  ORB_MENU_SIZE,
   ORB_SIZE,
   PANEL_MIN_SIZE,
   PANEL_SIZE,
@@ -18,6 +19,8 @@ import {
   onboardingWindowBounds,
   onboardingWindowOptions,
   orbBounds,
+  orbMenuBounds,
+  orbMenuDirection,
   panelBounds,
   presentationResizable,
 } from '../src/form-window.ts'
@@ -46,6 +49,35 @@ describe('orb bounds', () => {
   it('clamps an orb whose layout lies outside the work area', () => {
     const outside: DesktopFormLayout = { version: 1, orb: { x: 5000, y: -50 }, pinned: false }
     expect(orbBounds(outside, WORK_AREA)).toEqual({ x: 1760, y: 0, width: ORB_SIZE, height: ORB_SIZE })
+  })
+})
+
+describe('orb options ring geometry', () => {
+  it('centers the enlarged orb window on an orb that fits', () => {
+    expect(orbMenuBounds(LAYOUT, WORK_AREA)).toEqual({
+      x: 230, y: 130, width: ORB_MENU_SIZE, height: ORB_MENU_SIZE,
+    })
+  })
+
+  it('clamps the enlarged window into the work area at an edge', () => {
+    const docked: DesktopFormLayout = { version: 1, orb: { x: 1760, y: 920 }, pinned: false }
+    expect(orbMenuBounds(docked, WORK_AREA)).toEqual({
+      x: 1920 - ORB_MENU_SIZE, y: 1080 - ORB_MENU_SIZE, width: ORB_MENU_SIZE, height: ORB_MENU_SIZE,
+    })
+  })
+
+  it('shrinks the enlarged window to a work area smaller than the ring pad', () => {
+    const small: DesktopWorkArea = { x: 10, y: 20, width: 200, height: 180 }
+    expect(orbMenuBounds(LAYOUT, small)).toEqual({ x: 10, y: 20, width: 200, height: 180 })
+  })
+
+  it('points the ring away from the nearest display edge', () => {
+    const left: DesktopFormLayout = { version: 1, orb: { x: 0, y: 460 }, pinned: false }
+    const right: DesktopFormLayout = { version: 1, orb: { x: 1760, y: 460 }, pinned: false }
+    expect(orbMenuDirection(left, WORK_AREA)).toBeCloseTo(0)
+    expect(orbMenuDirection(right, WORK_AREA)).toBeCloseTo(Math.PI)
+    // A centered orb has no preferred side; the ring opens to the right.
+    expect(orbMenuDirection({ version: 1, orb: { x: 880, y: 460 }, pinned: false }, WORK_AREA)).toBe(0)
   })
 })
 

@@ -4,15 +4,13 @@
 .orbRoot {
   position: fixed;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Only the orb takes pointer input: the rest of the window stays click-through. */
+  /* Only the orb and its open options take pointer input: the rest of the window stays click-through. */
   pointer-events: none;
 }
 
 .orb {
-  position: relative;
+  position: absolute;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -32,6 +30,73 @@
   transition:
     background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
     transform var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+/* The transparent pad around the open ring: a click anywhere outside it closes the ring. */
+.dismissLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+}
+
+/* The half ring is a positioning plane; only its round buttons take pointer input. */
+.orbActions {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.orbAction {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-specific-input-major);
+  box-shadow: var(--dsw-elevation-panel);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  pointer-events: auto;
+  animation: orb-action-in 140ms var(--ds-ease-in-out) both;
+}
+
+@media (hover: hover) {
+  .orbAction:hover {
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+  }
+}
+
+.orbAction:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* A registered action without a keyed glyph still reads as a deliberate dot. */
+.orbActionFallback {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+@keyframes orb-action-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* The square orb shows the mascot artwork without any other frame chrome. */
@@ -130,7 +195,8 @@
 
 .orbRoot[data-reduced-motion] .speaking,
 .orbRoot[data-reduced-motion] .spinner,
-.orbRoot[data-reduced-motion] .wave i {
+.orbRoot[data-reduced-motion] .wave i,
+.orbRoot[data-reduced-motion] .orbAction {
   animation: none;
 }
 
@@ -141,7 +207,8 @@
 @media (prefers-reduced-motion: reduce) {
   .speaking,
   .spinner,
-  .wave i {
+  .wave i,
+  .orbAction {
     animation: none;
   }
 
@@ -175,9 +242,8 @@
 /* Compact settings menu: five checked rows fit inside the resident square. */
 .menuLayer {
   position: absolute;
-  inset: 0;
-  z-index: 2;
-  /* The window root is click-through; the menu owns the whole square while it is open. */
+  z-index: 3;
+  /* The window root is click-through; the menu owns the orb square while it is open. */
   pointer-events: auto;
 }
 

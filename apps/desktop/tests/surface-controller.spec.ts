@@ -6,7 +6,10 @@ import {
   parseSurfaceCommand, parseSurfaceMessage, type SurfaceWindowEffects,
 } from '../src/surface-controller.ts'
 import type { DesktopFormLayout } from '../src/form-layout.ts'
-import { bubblesBounds, modalBounds, orbBounds, panelBounds, type DesktopFormRole, type FormPresentationBounds } from '../src/form-window.ts'
+import {
+  bubblesBounds, modalBounds, orbBounds, orbMenuBounds, orbMenuDirection, panelBounds, type DesktopFormRole,
+  type FormPresentationBounds,
+} from '../src/form-window.ts'
 
 const WORK_AREA = { x: 0, y: 0, width: 1440, height: 900 }
 const LAYOUT: DesktopFormLayout = { version: 1, orb: { x: 1300, y: 400 }, pinned: false }
@@ -31,6 +34,7 @@ function effects(workArea = WORK_AREA): SurfaceWindowEffects & {
   readonly publishedBubbles: SurfaceSnapshot[]
   readonly revealed: number
   readonly focused: number
+  readonly orbFocused: number
   readonly hidden: number
   readonly bubblesRevealed: number
   readonly bubblesHidden: number
@@ -45,6 +49,7 @@ function effects(workArea = WORK_AREA): SurfaceWindowEffects & {
     publishedBubbles: [] as SurfaceSnapshot[],
     revealed: 0,
     focused: 0,
+    orbFocused: 0,
     hidden: 0,
     bubblesRevealed: 0,
     bubblesHidden: 0,
@@ -59,6 +64,7 @@ function effects(workArea = WORK_AREA): SurfaceWindowEffects & {
     get publishedBubbles() { return record.publishedBubbles },
     get revealed() { return record.revealed },
     get focused() { return record.focused },
+    get orbFocused() { return record.orbFocused },
     get hidden() { return record.hidden },
     get bubblesRevealed() { return record.bubblesRevealed },
     get bubblesHidden() { return record.bubblesHidden },
@@ -67,6 +73,7 @@ function effects(workArea = WORK_AREA): SurfaceWindowEffects & {
     setIgnoreMouseEvents: (role, value) => { record.ignored.push({ role, value }) },
     revealSurface: () => { record.revealed++ },
     focusSurface: () => { record.focused++ },
+    focusOrb: () => { record.orbFocused++ },
     hideSurface: () => { record.hidden++ },
     revealBubbles: () => { record.bubblesRevealed++ },
     hideBubbles: () => { record.bubblesHidden++ },
@@ -150,6 +157,8 @@ describe('parseSurfaceCommand', () => {
     ],
     [{ kind: 'presentModal', id: 'voice-setup', size: {} }, { kind: 'presentModal', id: 'voice-setup', size: {} }],
     [{ kind: 'setPinned', pinned: true }, { kind: 'setPinned', pinned: true }],
+    [{ kind: 'setOrbMenu', open: true }, { kind: 'setOrbMenu', open: true }],
+    [{ kind: 'setOrbMenu', open: false }, { kind: 'setOrbMenu', open: false }],
     [{ kind: 'dragBy', deltaX: -4, deltaY: 8 }, { kind: 'dragBy', deltaX: -4, deltaY: 8 }],
     [{ kind: 'pointerInside', inside: false }, { kind: 'pointerInside', inside: false }],
   ])('accepts %j', (raw, expected) => {
@@ -166,6 +175,7 @@ describe('parseSurfaceCommand', () => {
     ['oversized modal id', { kind: 'presentModal', id: 'x'.repeat(MAX_MODAL_ID_CHARS + 1) }],
     ['non-string modal id', { kind: 'presentModal', id: 7 }],
     ['non-boolean pinned', { kind: 'setPinned', pinned: 'yes' }],
+    ['non-boolean orb menu', { kind: 'setOrbMenu', open: 'yes' }],
     ['non-object size', { kind: 'presentModal', id: 'x', size: 'tall' }],
     ['zero height ratio', { kind: 'presentModal', id: 'x', size: { heightRatio: 0 } }],
     ['oversized height ratio', { kind: 'presentModal', id: 'x', size: { heightRatio: 1.5 } }],
@@ -194,15 +204,15 @@ describe('DesktopSurfaceController', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: { ...LAYOUT, pinned: true }, effects: window })
     expect(controller.snapshot('orb')).toEqual({
-      form: 'orb', role: 'orb', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true,
+      form: 'orb', role: 'orb', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true, orbMenu: null,
       orbHovered: false, modalOpen: false,
     })
     expect(controller.snapshot('surface')).toEqual({
-      form: 'orb', role: 'surface', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true,
+      form: 'orb', role: 'surface', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true, orbMenu: null,
       orbHovered: false, modalOpen: false,
     })
     expect(controller.snapshot('bubbles')).toEqual({
-      form: 'orb', role: 'bubbles', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true,
+      form: 'orb', role: 'bubbles', presentation: 'orb', pinned: true, available: true, modal: null, orbDocked: true, orbMenu: null,
       orbHovered: false, modalOpen: false,
     })
   })
@@ -229,6 +239,55 @@ describe('DesktopSurfaceController', () => {
     expect(window.publishedOrb.at(-1)).toMatchObject({ role: 'orb', presentation: 'orb' })
   })
 
+  it('grows the orb window into its options ring and reports the ring geometry', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'setOrbMenu', open: true }, 'surface')
+    const menu = orbMenuBounds(LAYOUT, WORK_AREA)
+    const orb = orbBounds(LAYOUT, WORK_AREA)
+    expect(boundsOf(window, 'orb').at(-1)).toEqual(menu)
+    expect(window.orbFocused).toBe(1)
+    expect(controller.snapshot('orb').orbMenu).toEqual({
+      anchorX: orb.x - menu.x,
+      anchorY: orb.y - menu.y,
+      direction: orbMenuDirection(LAYOUT, WORK_AREA),
+    })
+    expect(window.publishedOrb.at(-1)?.orbMenu).toEqual(controller.snapshot('orb').orbMenu)
+    expect(window.publishedSurface.at(-1)?.orbMenu).toEqual(controller.snapshot('orb').orbMenu)
+
+    controller.dispatch({ kind: 'setOrbMenu', open: false }, 'orb')
+    expect(boundsOf(window, 'orb').at(-1)).toEqual(orb)
+    expect(controller.snapshot('surface').orbMenu).toBeNull()
+  })
+
+  it('rejects an options ring request from a window that cannot own the orb', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    controller.dispatch({ kind: 'setOrbMenu', open: true }, 'bubbles')
+    expect(controller.snapshot('orb').orbMenu).toBeNull()
+    expect(window.orbFocused).toBe(0)
+  })
+
+  it('collapses the options ring when a modal takes over or the orb window loses focus', () => {
+    const window = effects()
+    const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
+    const orb = orbBounds(LAYOUT, WORK_AREA)
+    controller.dispatch({ kind: 'setOrbMenu', open: true }, 'orb')
+    controller.dispatch({ kind: 'presentModal', id: 'orb.chat' })
+    expect(controller.snapshot('orb').orbMenu).toBeNull()
+    expect(boundsOf(window, 'orb').at(-1)).toEqual(orb)
+
+    controller.dispatch({ kind: 'dismissModal' })
+    controller.dispatch({ kind: 'setOrbMenu', open: true }, 'orb')
+    controller.closeOrbMenu()
+    expect(controller.snapshot('orb').orbMenu).toBeNull()
+    expect(boundsOf(window, 'orb').at(-1)).toEqual(orb)
+    // Closing an already closed ring is a no-op.
+    const published = window.publishedOrb.length
+    controller.closeOrbMenu()
+    expect(window.publishedOrb.length).toBe(published)
+  })
+
   it('raises the panel for a shell-owned document and stays idempotent', () => {
     const window = effects()
     const controller = new DesktopSurfaceController({ layout: LAYOUT, effects: window })
@@ -246,7 +305,7 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'orb.chat' })
     expect(controller.ensurePanel()).toBe(false)
     expect(controller.snapshot('surface')).toEqual({ form: 'orb', role: 'surface', presentation: 'modal', pinned: false,
-      available: true, modal: 'orb.chat', orbDocked: true, orbHovered: false, modalOpen: true })
+      available: true, modal: 'orb.chat', orbDocked: true, orbMenu: null, orbHovered: false, modalOpen: true })
   })
 
   it('ignores expand while already expanded and collapse while collapsed', () => {
@@ -389,7 +448,7 @@ describe('DesktopSurfaceController', () => {
     controller.dispatch({ kind: 'presentModal', id: 'settings-card' })
     controller.blurred()
     expect(controller.snapshot('surface')).toEqual({
-      form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: true,
+      form: 'orb', role: 'surface', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: true, orbMenu: null,
       orbHovered: false, modalOpen: false,
     })
   })

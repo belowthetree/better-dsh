@@ -19,7 +19,8 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ManagementSessionController } from './management-session.ts'
 import { ORB_CHAT_MODAL_ID } from './modals.ts'
-import { OrbLayer } from './OrbLayer.tsx'
+import { createOrbActions } from './orb-actions.ts'
+import { OrbDialogActionIcon, OrbLayer } from './OrbLayer.tsx'
 import type { OrbOverlayInjected, OrbSurfaceActions } from './OrbLayer.tsx'
 import { ORB_WORKBENCH_MODAL_ID, ORB_WORKBENCH_MODAL_SIZE, OrbWorkbench, OrbWorkbenchConversation } from './OrbWorkbench.tsx'
 import type { OrbWorkbenchInjected } from './OrbWorkbench.tsx'
@@ -120,6 +121,8 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   const { management, surface } = options
   const role = surface.getSnapshot().role
   const primary = role === 'surface'
+  const orbActions = createOrbActions()
+  ctx.provide('orbActions', orbActions)
 
   const reducedMotion = createSnapshotStore(false)
   ctx.effect(() => {
@@ -266,6 +269,15 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   const openChat = (): void => { issue(() => ctx.surface.presentModal(ORB_CHAT_MODAL_ID)) }
   const openSettings = (): void => { ctx.get('settingsUi')?.open() }
   const dismissModal = (): void => { issue(() => ctx.surface.dismissModal()) }
+  const setOptions = (open: boolean): void => { issue(() => ctx.surface.setOrbMenu(open)) }
+  const activateAction = (id: string): void => {
+    setOptions(false)
+    try {
+      orbActions.run(id)
+    } catch (error) {
+      console.error(`orb: action ${id} failed`, error)
+    }
+  }
 
   const toggleVoice = (): void => {
     if (role === 'orb') {
@@ -311,6 +323,8 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
     openChat,
     openWorkbench,
     openSettings,
+    setOptions,
+    activateAction,
     dragBy: (deltaX, deltaY) => { issue(() => ctx.surface.dragBy(deltaX, deltaY)) },
     pointerInside: (inside) => { ctx.surface.setPointerInside(inside) },
     toggleVoice,
@@ -318,12 +332,23 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   }
   const setTheme = (preference: ThemePreference): void => { ctx.theme.setTheme(preference) }
   const overlay: OrbOverlayInjected = {
-    hooks: { surface, capture: capturePhase, voice, reducedMotion, theme },
+    hooks: { surface, capture: capturePhase, voice, reducedMotion, theme, orbActions: orbActions.items },
     actions: { ...actions, setTheme },
   }
+  ctx.effect(() => orbActions.register({
+    id: 'dialog',
+    label: () => t('orb.action.dialog'),
+    icon: { key: 'dialog' },
+    order: 0,
+    run: openChat,
+  }), 'orb: assistant dialog action')
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay', id: 'orb', locale: NS, inject: () => overlay,
+    children: { 'orb.action.icon': { kind: 'keyed', scope: 'root', inline: true } },
   }, OrbLayer))
+  ctx.slots.inject('orb.action.icon', () => ctx.slots.register({
+    name: 'orb.action.icon', key: 'dialog',
+  }, OrbDialogActionIcon))
 
   const startDictation = async (): Promise<void> => {
     const service = ctx.get('voiceCapture')
@@ -385,16 +410,23 @@ export function applyOrb(ctx: ClientContext, options: OrbPluginOptions): void {
   ctx.effect(() => ctx.shortcuts.register({
     id: 'orb.open' as ShortcutCommandId,
     label: () => t('command.open'),
-    aliases: ['orb', 'chat', 'open', 'show'],
+    aliases: ['orb', 'options', 'menu', 'open', 'show'],
     defaults: {
       'desktop:windows': { code: 'KeyD', modifiers: ['control', 'alt'] },
       'desktop:macos': { code: 'KeyD', modifiers: ['control', 'alt'] },
     },
     regions: ['page'],
-    modals: [ORB_CHAT_MODAL_ID],
+    modals: [],
     scope: 'system',
-    resolve: () => ({ status: 'handled', run: openChat }),
-  }), 'orb: open command')
+    resolve: () => ({
+      status: 'handled',
+      run: () => {
+        // The OS-global shortcut reaches the surface renderer; both renderers read
+        // the same carrier snapshot, so the toggle is decided from that state.
+        setOptions(surface.getSnapshot().orbMenu === null)
+      },
+    }),
+  }), 'orb: options command')
   ctx.effect(() => ctx.shortcuts.register({
     id: 'orb.workbench' as ShortcutCommandId,
     label: () => t('orb.menu.workbench'),

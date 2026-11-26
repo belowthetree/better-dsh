@@ -41,7 +41,7 @@ let surfaceState: SnapshotStore<SurfaceSnapshot>
 /** Presentation without a carrier: the classic profile. */
 const CLASSIC_SURFACE: SurfaceSnapshot = {
   form: 'classic', role: 'classic', presentation: 'classic', pinned: false, available: false, modal: null,
-  orbDocked: false, orbHovered: false, modalOpen: false,
+  orbDocked: false, orbMenu: null, orbHovered: false, modalOpen: false,
 }
 const restoreProperties: (() => void)[] = []
 
@@ -811,7 +811,7 @@ describe('sidebar drawer', () => {
 describe('AppFrame surface presentations', () => {
   /** Presentation used by a form profile's collapsed and expanded states. */
   const ORB: SurfaceSnapshot = {
-    form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbHovered: false,
+    form: 'orb', role: 'orb', presentation: 'orb', pinned: false, available: true, modal: null, orbDocked: false, orbMenu: null, orbHovered: false,
     modalOpen: false,
   }
 
