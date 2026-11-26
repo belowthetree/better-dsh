@@ -16,6 +16,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 const sourceRepositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 let repositoryRoot = ''
 
+// The private repository copy and its removal are I/O-bound: a hosted four-vCPU
+// Windows runner scans every copied file and needs more than 90 seconds.
+const REPOSITORY_COPY_TIMEOUT_MS = 240_000
+
 // Probes belong to a private copy: repository compiler scans run in other workers and processes.
 beforeAll(async () => {
   repositoryRoot = await mkdtemp(join(tmpdir(), 'dsh-oxlint-contract-'))
@@ -36,11 +40,11 @@ beforeAll(async () => {
   }
   await symlink(join(sourceRepositoryRoot, 'node_modules'), join(repositoryRoot, 'node_modules'),
     process.platform === 'win32' ? 'junction' : 'dir')
-}, 90_000)
+}, REPOSITORY_COPY_TIMEOUT_MS)
 
 afterAll(async () => {
   if (repositoryRoot !== '') await rm(repositoryRoot, { recursive: true, force: true })
-}, 90_000)
+}, REPOSITORY_COPY_TIMEOUT_MS)
 const oxlintCli = fileURLToPath(new URL('../node_modules/oxlint/bin/oxlint', import.meta.url))
 const tsxCli = fileURLToPath(new URL('../node_modules/tsx/dist/cli.mjs', import.meta.url))
 
